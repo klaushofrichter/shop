@@ -89,7 +89,7 @@ From Klaus, 2026-11-23 and 2026-11-24. Each has an id for tracing.
 ## 7. Assumptions
 
 - A1. art's manifest is publicly readable from its home page and `uid` is stable (art's tests check permalinks by uid).
-- A2. Originals are camera JPEGs of the paintings, large enough for at least 8×10 at 150 DPI (to be measured; decides the largest sizes per picture).
+- A2. Originals are iPhone JPEGs (Display P3), up to 4032 × 3024: enough for 8 × 10 at ≥ 289 DPI for every painting, and for 16 × 20 at 144–189 DPI (measured 2026-11-24; [04 §5.3](04-catalog-and-print-files.md#53-validation)).
 - A3. Klaus is the merchant of record; Printful bills his Printful account; Stripe pays out to his bank.
 - A4. Shipping destinations start with the US only (ADR-0011, proposed); the design supports more countries by configuration.
 - A5. Printful API v2 (beta) stays compatible enough; the adapter isolates changes (ADR-0005).

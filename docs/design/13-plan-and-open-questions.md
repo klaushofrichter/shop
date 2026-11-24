@@ -53,7 +53,8 @@ Still Klaus's, outside the ADRs:
 8. **Mug layout**: the painting twice, left and right of the handle. Better: one wide panorama crop? (Taste.)
 9. **Orientation of prints**: does Printful's `orientation` field on the order item select landscape for posters, or is a landscape file enough? (To verify with a draft order.)
 10. **Fail-safe thresholds** (ADR-0020): do they stop misuse without bothering real customers? Is auto-refund after 72 h the right fail-safe default?
-11. **Is anything here over-engineered for < 10 orders a week?** Candidates: the provider interface, the jobs table, reconciliation every hour.
+11. **Originals are already public on art** (found 2026-11-24): art serves every original at full resolution at `/assets/<room>/<file>` (its download link). The internal originals endpoint (ADR-0006) and the caution about print-file URLs (ADR-0019) protect something that is public anyway. Proposed ADR-0025: fetch originals from art's existing URL, no internal endpoint. Klaus decides whether originals should stay public on art.
+12. **Is anything here over-engineered for < 10 orders a week?** Candidates: the provider interface, the jobs table, reconciliation every hour.
 
 ## 4. Items to verify before code depends on them
 

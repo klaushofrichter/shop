@@ -89,7 +89,7 @@ the shop's volume and used instead of art's original.
 
 One print file per offer, rendered by a job with `sharp`:
 
-1. Decode the original; apply EXIF orientation; convert to **sRGB** using the embedded ICC profile (camera files may be Adobe RGB).
+1. Decode the original; apply EXIF orientation; convert to **sRGB** using the embedded ICC profile. Measured: 34 of the 35 originals carry **Display P3** (iPhone); one has no profile and is treated as sRGB. P3 is wider than sRGB, so saturated colours are mapped into sRGB (relative colorimetric); the admin preview shows the converted file.
 2. Crop to the print area's aspect ratio. The crop is the offer's **crop box** (set in the admin, stored as fractions of the original), defaulting to:
    - `fill` (prints, framed prints, postcards): the largest centred box with the target ratio;
    - `fit` (mug, t-shirt): no crop; the whole picture is scaled to fit inside the area, the rest filled with white (mug) or left transparent (t-shirt, PNG with alpha, DTG allows it).
@@ -108,7 +108,7 @@ A print file is accepted only if:
 - under 200 MB (Pressline found a 213 MB file silently ignored by Printful);
 - **effective DPI** ≥ the SKU's `minDpi`, where effective DPI = (crop width in source pixels) ÷ (print width in inches). Below 200 DPI on paper the admin shows a warning; below `minDpi` the offer can't be enabled.
 
-Measured need for the 4:5 paintings: 8 × 10 at 150 DPI needs a 1200 × 1500 px crop; 16 × 20 needs 2400 × 3000. Camera JPEGs (typically 12–24 MP) cover both; this is assumption A2 and is checked per picture by the admin.
+Measured 2026-11-24 (Cluster, read-only on art's volume): 35 originals, all iPhone JPEGs; the largest are 4032 × 3024 (12 MP, 23 of them), the `colors/` paintings are cropped photos between 2890 × 2452 and 3920 × 2981. **No original reaches 300 DPI at 16 × 20** (4800 × 6000). Effective DPI for a 20 × 16 landscape crop (5:4): 4032 × 3024 → 3780 × 3024 → **189 DPI**; the smallest `colors/` original 2890 × 2452 → 2890 × 2312 → **144 DPI**, below the 150 floor, so 16 × 20 can't be enabled for it. 8 × 10 is ≥ 289 DPI for every original. The admin computes this per offer; the 16 × 20 SKUs stay in the set but are offered only where the DPI allows.
 
 ### 5.4 Serving to Printful
 

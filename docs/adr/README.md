@@ -43,3 +43,4 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0022](0022-predefined-skus-in-config.md) | A handful of predefined SKUs, defined in a config file | Accepted (2026-11-24) |
 | [0023](0023-address-once-via-stripe-customer.md) | The address is entered once, on the shop's page, and passed to Stripe as a Customer | Accepted (2026-11-24) |
 | [0024](0024-mock-printful-and-stripe.md) | Mock Printful and mock Stripe as an independent service, verified against the real ones | Accepted (2026-11-24) |
+| [0025](0025-originals-from-arts-public-url.md) | Fetch originals from art's existing public URL (supersedes ADR-0006 if accepted) | Proposed |
