@@ -57,10 +57,23 @@ jobs:
         run: |
           set -euo pipefail
           docker build --build-arg APP_VERSION=2099.01.01.1 -t shop:e2e .
+          # The mock services (fake art, mock Printful, mock Stripe) on the
+          # runner, up before the shop so its start-up checks find them.
+          SHOP_URL=http://localhost:8080 nohup npx tsx mocks/server.ts > "$RUNNER_TEMP/mocks.log" 2>&1 &
+          for i in $(seq 1 30); do
+            curl -s -o /dev/null http://localhost:9103/ && curl -s -o /dev/null http://localhost:9102/ && break
+            echo "waiting for the mocks (${i}/30)"; sleep 1
+          done
           # A test-only cookie secret and an example.com admin: the admin e2e mints
           # a real signed session cookie with them (no test login route exists).
+          # Mock mode against the mocks; mock keys only (the shop refuses real ones).
           docker run -d --name site --network host -e PORT=8080 \
-            -e COOKIE_SECRET="$E2E_COOKIE_SECRET" -e ALLOWED_EMAILS=e2e@example.com shop:e2e
+            -e COOKIE_SECRET="$E2E_COOKIE_SECRET" -e ALLOWED_EMAILS=e2e@example.com \
+            -v "$PWD/e2e/fixtures:/e2e:ro" -e SOURCES_CONFIG=/e2e/sources.json -e SOURCES_REFRESH=on \
+            -e MOCK_SOURCE_URL=http://localhost:9103 \
+            -e PRINTFUL_BASE_URL=http://localhost:9101 -e PRINTFUL_TOKEN=mock_printful_e2e \
+            -e STRIPE_API_BASE=http://localhost:9102 -e STRIPE_SECRET_KEY=mock_stripe_e2e \
+            -e STRIPE_WEBHOOK_SECRET=mock-whsec-e2e shop:e2e
           for i in $(seq 1 30); do
             curl -sf http://localhost:8080/health >/dev/null && break
             echo "waiting for the image (${i}/30)"; sleep 1
@@ -84,7 +97,7 @@ jobs:
           set -euo pipefail
           PW=$(node -p "require('@playwright/test/package.json').version")
           docker run --rm --network host --ipc=host -v "$PWD:/work" -w /work \
-            -e CI=true -e BASE_URL=http://localhost:8080 -e EXPECT_VERSION=2099.01.01.1 -e E2E_COOKIE_SECRET \
+            -e CI=true -e E2E_MOCKS=1 -e BASE_URL=http://localhost:8080 -e EXPECT_VERSION=2099.01.01.1 -e E2E_COOKIE_SECRET \
             "mcr.microsoft.com/playwright:v${PW}-resolute" npx playwright test
 
       # Lighthouse uses the runner's preinstalled Google Chrome.
@@ -108,7 +121,9 @@ jobs:
 
       - name: Server log when something failed
         if: failure()
-        run: docker logs site || true
+        run: |
+          docker logs site || true
+          cat "$RUNNER_TEMP/mocks.log" || true
 
   codeql:
     runs-on: ubuntu-latest

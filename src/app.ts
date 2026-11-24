@@ -9,6 +9,7 @@ import { authRouter, type AuthDeps } from './admin/auth';
 import { adminRouter, type AdminDeps } from './admin/router';
 import { publicRouter, type PublicDeps } from './public/router';
 import { webhookRouter, type WebhookDeps } from './orders/webhooks';
+import { mockPagesRouter } from './mock-pages';
 
 export interface AppDeps {
   /** `/health/worker`; absent → 503 (no runner in this process). */
@@ -22,6 +23,8 @@ export interface AppDeps {
   publicSite?: PublicDeps;
   /** Provider webhooks (raw bodies, outside the preview gate). */
   webhooks?: WebhookDeps;
+  /** Mock mode only: mock Stripe's address, whose checkout page is passed through (src/mock-pages.ts). */
+  mockStripePages?: string;
 }
 
 /** Content-addressed names only: 64 hex characters and a known extension. */
@@ -129,6 +132,7 @@ export function createApp(deps: AppDeps = {}): Express {
   }
 
   if (deps.webhooks) app.use(webhookRouter(deps.webhooks));
+  if (deps.mockStripePages) app.use(mockPagesRouter(deps.mockStripePages));
   if (deps.auth) app.use(authRouter(deps.auth));
   if (deps.admin) app.use('/admin', adminRouter(deps.admin));
 

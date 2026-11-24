@@ -83,6 +83,15 @@ describe('keys must agree with the mode (ADR-0029)', () => {
     expect(problems(testEnv({ PRINTFUL_TOKEN: 'mock_printful_x' })).join()).toMatch(/mock token/);
   });
 
+  it('takes the mock source address and the mock checkout pages in mock mode only, local only', () => {
+    const c = loadConfig({ MOCK_SOURCE_URL: 'http://localhost:9103/', STRIPE_API_BASE: 'http://localhost:9102' });
+    expect(c.mockSourceUrl).toBe('http://localhost:9103');
+    expect(c.mockStripePages).toBe('http://localhost:9102');
+    expect(loadConfig({}).mockStripePages).toBeUndefined();
+    expect(problems({ MOCK_SOURCE_URL: 'https://art.klaushofrichter.net' }).join()).toMatch(/MOCK_SOURCE_URL must be a local http address/);
+    expect(problems(testEnv({ MOCK_SOURCE_URL: 'http://localhost:9103' })).join()).toMatch(/MOCK_SOURCE_URL is for mock mode only/);
+  });
+
   it('needs the expected store per mode, and live must differ from test', () => {
     expect(problems(testEnv({ PRINTFUL_STORE_TEST: undefined })).join()).toMatch(/PRINTFUL_STORE_TEST is required/);
     const live = testEnv({ SHOP_MODE: 'live', STRIPE_SECRET_KEY: 'rk_live_x', PRINTFUL_STORE_LIVE: 'store-a' });

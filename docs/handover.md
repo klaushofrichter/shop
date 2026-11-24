@@ -25,7 +25,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 - **Step 4** (PRs #14, #15): sign-in, dashboard, works, the work page with offers, prices, anchors and readiness; print files rendered and registered at Printful; mockups (one task per 30 s, stored without metadata, the display image standing in until then).
 
 - **Step 5** (PRs #16, #17): preview gate, picture pages, cart, `/api/offers`; address form with the ZIP ↔ state table, the quote (one Printful call) with the pre-payment cost check.
-- **Step 6 in progress**: (a) Stripe client, webhook signatures, mock Stripe (PR #18); (b) `/checkout`, orders, the payment transaction with the fail-safes, the Stripe webhook and event job, the order status page, find my order. Still to come in step 6: the mock-mode passthrough of `/__mock-pages/` and a browser e2e of a purchase (needs the mocks running in CI).
+- **Step 6 done**: (a) Stripe client, webhook signatures, mock Stripe (PR #18); (b) `/checkout`, orders, the payment transaction with the fail-safes, the Stripe webhook and event job, the order status page, find my order (PR #19); (c) the mocks as one process (`mocks/server.ts`: mock Printful, mock Stripe, a fake art), the mock-mode passthrough of `/__mock-pages/stripe/`, and a browser e2e of a whole purchase in CI (`e2e/purchase.spec.ts`: enable a work, offer a print, buy it, see it paid).
 
 ## Waiting for Klaus
 
@@ -35,7 +35,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 ## Next
 
-1. Finish step 6, then step 7 (submission, Printful webhooks, holds and deadlines, refunds, disputes, reconciliation, purge) in the order of `docs/design/13-plan-and-open-questions.md` §1.
+1. Step 7 (submission, Printful webhooks, holds and deadlines, refunds, disputes, reconciliation, purge) in the order of `docs/design/13-plan-and-open-questions.md` §1.
 
 ## Keys
 

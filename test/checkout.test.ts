@@ -289,3 +289,24 @@ describe('webhooks and find my order', () => {
     expect(jobs('email.send').filter((j) => j.key.includes('/link/'))).toHaveLength(1);
   });
 });
+
+describe('the mock checkout page through the shop (mock mode only, 14 §9)', () => {
+  it('passes the page and its Pay button through, fixed paths only', async () => {
+    const v = visitor();
+    const { tok, quote } = await toQuote(v);
+    const res = await v.go('POST', '/checkout', { _csrf: tok, quote, shipping: 'STANDARD' });
+    const id = /cs_mock_\w+/.exec(res.location)![0];
+    const pageRes = await v.go('GET', `/__mock-pages/stripe/checkout/${id}`);
+    expect(pageRes.status).toBe(200);
+    expect(pageRes.text).toContain('Mock Stripe checkout');
+    const paid = await v.go('POST', `/__mock-pages/stripe/checkout/${id}/pay`, {});
+    expect(paid.status).toBe(303);
+    expect(paid.location).toContain(`/order/${order().id}`);
+    // The order page confirms the payment with Stripe itself (the runner isn't ticking here).
+    const link = await v.go('GET', new URL(paid.location).pathname + new URL(paid.location).search);
+    await v.go('GET', link.location ? new URL(link.location, shopUrl).pathname : new URL(paid.location).pathname);
+    expect(order().payment_state).toBe('paid');
+    expect((await v.go('GET', '/__mock-pages/stripe/checkout/..%2Fv1%2Fcustomers')).status).toBe(404);
+    expect((await v.go('POST', `/__mock-pages/stripe/checkout/${id}/refund`, {})).status).toBe(404);
+  });
+});

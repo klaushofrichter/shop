@@ -32,6 +32,10 @@ export interface Config {
   previewKey?: string;
   /** Refresh content sources on a schedule (on by default on the cluster, off in mock mode). */
   sourcesRefresh: boolean;
+  /** Mock mode only: read every content source from here (the fake art in the e2e run). */
+  mockSourceUrl?: string;
+  /** Mock mode only: the shop passes /__mock-pages/stripe/* through to mock Stripe, so its page is same-origin (14 §9). */
+  mockStripePages?: string;
   /** sharp's limitInputPixels and the upload limit (docs/design/04 §5.5). */
   maxInputPixels: number;
   printful: {
@@ -152,6 +156,8 @@ export function loadConfig(env: Env = process.env): Config {
     if (stripeKey && looksRealStripe(stripeKey)) problems.push('STRIPE_SECRET_KEY is a real Stripe key; mock mode takes mock keys only');
     if (stripeKey && !stripeKey.startsWith('mock_stripe_')) problems.push('STRIPE_SECRET_KEY must start with mock_stripe_ in mock mode');
     if (printfulToken && !printfulToken.startsWith('mock_printful_')) problems.push('PRINTFUL_TOKEN must start with mock_printful_ in mock mode');
+    const ms = get('MOCK_SOURCE_URL');
+    if (ms && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(ms)) problems.push('MOCK_SOURCE_URL must be a local http address');
     for (const [name, value, realHost] of [
       ['PRINTFUL_BASE_URL', printfulBase, REAL_PRINTFUL],
       ['STRIPE_API_BASE', stripeBase, REAL_STRIPE],
@@ -159,6 +165,7 @@ export function loadConfig(env: Env = process.env): Config {
       if (value && sameHost(value, realHost)) problems.push(`${name} points at the real service; mock mode needs the mock`);
     }
   } else {
+    if (get('MOCK_SOURCE_URL')) problems.push(`MOCK_SOURCE_URL is for mock mode only`);
     if (printfulBase) problems.push(`PRINTFUL_BASE_URL is for mock mode only`);
     if (stripeBase) problems.push(`STRIPE_API_BASE is for mock mode only`);
     need('PRINTFUL_TOKEN', inMode);
@@ -235,6 +242,8 @@ export function loadConfig(env: Env = process.env): Config {
     previewGate,
     previewKey,
     sourcesRefresh: refreshRaw === 'on',
+    mockSourceUrl: mode === 'mock' ? get('MOCK_SOURCE_URL')?.replace(/\/+$/, '') : undefined,
+    mockStripePages: mode === 'mock' && stripeBase ? stripeBase.replace(/\/+$/, '') : undefined,
     maxInputPixels: Math.round(mp * 1_000_000),
     printful: {
       token: printfulToken,
