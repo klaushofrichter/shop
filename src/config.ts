@@ -55,6 +55,18 @@ export interface Config {
   };
   statusTokenSecret?: string;
   limits: FailSafeLimits;
+  /** The pre-payment cost check and shipping (docs/design/05 §2). Not secret; defaults below. */
+  quote: QuoteSettings;
+}
+
+export interface QuoteSettings {
+  marginFloorCents: number;
+  shippingMarkupCents: number;
+  /** Sales tax Printful charges on wholesale until the resale certificate is on file, in percent. */
+  providerTaxAllowancePct: number;
+  /** Stripe's card fee plus Stripe Tax, in percent, and the fixed part in cents. */
+  stripeFeePct: number;
+  stripeFeeFixedCents: number;
 }
 
 export class ConfigError extends Error {
@@ -193,6 +205,24 @@ export function loadConfig(env: Env = process.env): Config {
 
   const limits = loadLimits(env, mode, problems);
 
+  const num = (name: string, dflt: number, max: number, integer = true): number => {
+    const raw = get(name);
+    if (raw === undefined) return dflt;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n > max || (integer && !Number.isInteger(n))) {
+      problems.push(`${name} must be a number between 0 and ${max}`);
+      return dflt;
+    }
+    return n;
+  };
+  const quote: QuoteSettings = {
+    marginFloorCents: num('MARGIN_FLOOR_CENTS', 0, 100_000),
+    shippingMarkupCents: num('SHIPPING_MARKUP_CENTS', 0, 10_000),
+    providerTaxAllowancePct: num('PROVIDER_TAX_ALLOWANCE_PCT', 8.25, 20, false),
+    stripeFeePct: num('STRIPE_FEE_PCT', 3.4, 10, false),
+    stripeFeeFixedCents: num('STRIPE_FEE_FIXED_CENTS', 30, 200),
+  };
+
   if (problems.length) throw new ConfigError(problems);
 
   return {
@@ -221,6 +251,7 @@ export function loadConfig(env: Env = process.env): Config {
     admin,
     statusTokenSecret,
     limits,
+    quote,
   };
 }
 

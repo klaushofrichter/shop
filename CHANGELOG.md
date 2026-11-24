@@ -5,6 +5,7 @@ then empties it on `main`.
 
 ## [Unreleased]
 
+- The cart takes a US shipping address (with a ZIP check against the state) and shows a quote: the items, the shipping methods Printful offers, and the total before tax.
 - Picture pages (`/p/<work>`) with the products on offer, a cart, and `/api/offers` for the gallery's link. Before go-live a preview key closes the shop, and test shops say so on every page.
 - Admin at `/admin`: Google sign-in for the allowed address only, a dashboard, the works from the galleries with enable and disable, and per work the products offered, prices and crops, with a preview of each print file and Printful's mockup of the product.
 - Picture images and print files are served from the shop itself (`/img/*`, `/files/*`), named by their content, rate-limited.

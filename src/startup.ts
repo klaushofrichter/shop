@@ -76,6 +76,9 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
   });
   if (config.sourcesRefresh) scheduleSourceRefresh(dbs.orders, clock, sources.map((s) => s.id));
   const startedAtMs = clock.now();
+  const provider = config.printful.token ? new PrintfulClient({ baseUrl: config.printful.baseUrl, token: config.printful.token }) : undefined;
+  // Set once ready() has checked Printful's identity.
+  let providerStatus: ProviderStatus | undefined;
   const app = createApp({
     workerHealth: () => workerHealth(dbs.orders, clock, { checkReconciliation: false, checkAlerts: false, startedAtMs }),
     dataDir: config.dataDir,
@@ -115,10 +118,15 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
       previewKey: config.previewKey,
       adminSecret: config.admin.cookieSecret,
       allowedEmails: config.admin.allowedEmails,
+      quote: {
+        settings: config.quote,
+        provider,
+        providerReady: () => !!providerStatus?.verified,
+        log,
+      },
     },
   });
   console.log(JSON.stringify({ level: 'info', msg: 'configuration', detail: describeConfig(config), skus: skus.skus.length, sources: sources.map((s) => s.id) }));
-  const provider = config.printful.token ? new PrintfulClient({ baseUrl: config.printful.baseUrl, token: config.printful.token }) : undefined;
   const shop: Shop = {
     config,
     skus,
@@ -135,6 +143,7 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
       const verification = await verifyIdentity(provider, config.printful.expectedStore);
       const status = new ProviderStatus(clock, verification);
       shop.providerStatus = status;
+      providerStatus = status;
       log({ level: verification.state === 'verified' ? 'info' : 'warn', msg: `Printful ${verification.state}` });
       const providerDeps = {
         provider,
