@@ -47,11 +47,14 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0026](0026-cart-with-any-pictures.md) | A cart with products of any picture (supersedes ADR-0008) | Accepted (2026-11-25) |
 | [0027](0027-customer-emails-at-launch.md) | Customer e-mails at launch (amends ADR-0021) | Accepted (2026-11-25) |
 | [0028](0028-private-repository-for-sensitive-data.md) | Sensitive test data in a private repository without CI | Accepted (2026-11-25) |
-| [0029](0029-modes-and-printful-test-store.md) | One mode switch, a database file and a Printful store per mode | Accepted (test store); Proposed (rest) |
-| [0030](0030-stripe-webhook-endpoints.md) | Stripe webhook endpoints created by Klaus in the Dashboard, with the pinned API version | Proposed |
+| [0029](0029-modes-and-printful-test-store.md) | One mode switch, a Printful store per mode, test mode only before go-live | Accepted (test store; test mode only before go-live, 2026-11-26); Proposed (rest) |
+| [0030](0030-stripe-webhook-endpoints.md) | Stripe webhook endpoints created by Klaus in the Dashboard | Proposed |
 | [0031](0031-data-minimisation.md) | Send no personal data that isn't needed; consent where it would be | Accepted (2026-11-25) |
 | [0032](0032-random-order-numbers.md) | Random five-digit order numbers | Accepted (2026-11-25) |
 | [0033](0033-launch-print-sizes.md) | Launch sizes up to 12 × 16 in, landscape and portrait | Accepted (2026-11-25) |
 | [0034](0034-order-state-model.md) | Separate payment, fulfilment and dispute state; holds with deadlines; invariants | Proposed |
 | [0035](0035-content-sources.md) | Works from content sources, keyed by source; the shop renders its own display images | Proposed |
 | [0036](0036-quote-checks-before-payment.md) | Address and cost checks before payment, without Printful's estimation task | Proposed |
+| [0037](0037-status-links-from-a-secret.md) | Status links computed from a secret, not stored | Accepted (2026-11-26) |
+| [0038](0038-ses-bounces-by-email.md) | SES bounce and complaint notices forwarded by e-mail | Accepted (2026-11-26) |
+| [0039](0039-go-live-behind-the-preview-gate.md) | Go live behind the preview gate; record Printful only | Accepted (2026-11-26) |

@@ -2,7 +2,7 @@
 // Capture how the real Printful and Stripe APIs behave, for the mock services
 // (docs/design/14-mock-services.md §7.2). Run on the cluster node, where the keys are:
 //
-//   node scripts/capture/capture-apis.mjs --env <path to the shop .env on the node> --out captures/2026-11-24
+//   node scripts/capture/capture-apis.mjs --env <path to the shop .env on the node> --out <shop-private checkout>/captures/<date>
 //
 // Klaus allowed (2026-11-24): the Stripe TEST key, and careful Printful DRAFT orders,
 // "but never actually order something". So, enforced below, not just by convention:
@@ -10,6 +10,10 @@
 //   - Printful: every request must match ALLOW; there is no rule for
 //     /v2/orders/{id}/confirmation, and any path containing "confirm" is refused
 //     outright. Drafts are created with external_id "capture-…" and deleted at the end.
+//   - Printful: only the TEST store's token (PRINTFUL_TOKEN_TEST) is read; the live
+//     store's token is never used (ADR-0029).
+//   - Output: --out is required and must be outside this public repository's work tree
+//     (raw captures belong in the private repository, ADR-0028).
 //   - Requests are sequential and paced (rate limits).
 // Output: one JSON file per scenario with method, path, request body, status,
 // selected headers and response body. Secrets never appear: the Authorization header
@@ -17,7 +21,8 @@
 // Needs Node 26 (global fetch). No dependencies.
 
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, relative, isAbsolute, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 
@@ -31,7 +36,9 @@ for (let i = 2; i < process.argv.length; i++) {
   else { args[a.slice(2)] = next; i++; }
 }
 const envPath = resolve(String(args.env ?? '.env').replace(/^~/, homedir()));
-const outDir = resolve(String(args.out ?? `captures/${new Date().toISOString().slice(0, 10)}`));
+const outDir = args.out ? resolve(String(args.out)) : null;
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const insideRepo = (dir) => { const r = relative(REPO_ROOT, dir); return r === '' || (!r.startsWith('..') && !isAbsolute(r)); };
 const only = args.only ? String(args.only).split(',') : ['printful', 'stripe'];
 const skipDrafts = args['no-drafts'] === true;
 
@@ -44,9 +51,9 @@ function readEnv(path) {
   return env;
 }
 const env = args['self-test'] ? {} : readEnv(envPath);
-const PRINTFUL_TOKEN = env.PRINTFUL_TOKEN;
+const PRINTFUL_TOKEN = env.PRINTFUL_TOKEN_TEST; // the test store only; PRINTFUL_TOKEN (live) is never read
 const STRIPE_KEY = env.STRIPE_TEST_TOKEN;
-if (!args['self-test'] && (only.includes('printful') || only.includes('estimation') || only.includes('files')) && !PRINTFUL_TOKEN) die('PRINTFUL_TOKEN missing');
+if (!args['self-test'] && (only.includes('printful') || only.includes('estimation') || only.includes('files')) && !PRINTFUL_TOKEN) die('PRINTFUL_TOKEN_TEST missing (the live store token is never used)');
 if (!args['self-test'] && only.includes('stripe')) {
   if (!STRIPE_KEY) die('STRIPE_TEST_TOKEN missing');
   if (!/^(rk|sk)_test_/.test(STRIPE_KEY)) die('STRIPE_TEST_TOKEN is not a test-mode key; refusing');
@@ -344,12 +351,16 @@ async function selfTest() {
   for (const [m, p, expectRefused] of cases) if (refused(m, p) !== expectRefused) { bad++; quiet(`self-test FAILED: ${m} ${p} expected ${expectRefused ? 'refused' : 'allowed'}`); }
   console.error = quiet;
   if (!/^(rk|sk)_test_/.test('rk_test_x') || /^(rk|sk)_test_/.test('rk_live_x')) bad++;
-  console.log(bad ? `self-test: ${bad} failure(s)` : `self-test: all ${cases.length} guard cases pass`);
+  // output location: inside the public repository is refused, outside is allowed
+  if (!insideRepo(REPO_ROOT) || !insideRepo(join(REPO_ROOT, 'captures', 'x')) || insideRepo(resolve(REPO_ROOT, '..', 'shop-private', 'captures'))) { bad++; quiet('self-test FAILED: output location check'); }
+  console.log(bad ? `self-test: ${bad} failure(s)` : `self-test: all ${cases.length + 3} guard cases pass`);
   if (bad) process.exit(1);
 }
 
 // ---------- run ----------
 if (args['self-test']) { await selfTest(); process.exit(0); }
+if (!outDir) die('--out is required: a directory in a checkout of the private repository (ADR-0028)');
+if (insideRepo(outDir)) die(`--out ${outDir} is inside the public repository; raw captures go to the private repository (ADR-0028)`);
 mkdirSync(outDir, { recursive: true });
 try {
   if (only.includes('printful')) await printful();

@@ -22,3 +22,6 @@ Payment and fulfilment happen in two outside systems whose webhooks can arrive t
 
 - More tables (`order_transitions`, `inbound_events`, `shipments`, `jobs`, `reconciliation_runs`) and tests with fakes and recorded fixtures, but every failure mode found in those projects is covered.
 - Raw webhook payloads contain personal data and are redacted by the purge job (ADR-0014 retention).
+
+## Notes
+- 2026-11-26: the transition table is `order_events` (docs/design/07 §3), not `order_transitions`. Cancel uses v1 `DELETE` for confirmed orders and v2 `DELETE` for drafts and uncharged `failed`/`canceled` orders, where its success is the proof before a refund (ADR-0034). Stripe webhook payloads are no longer stored (only id, type and object id); Printful bodies are kept 30 days.

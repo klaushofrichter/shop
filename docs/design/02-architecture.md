@@ -70,11 +70,11 @@ Visitor             Shop                              Stripe               Print
 ## 4. Runtime
 
 - Kubernetes Deployment, namespace `shop`, `replicas: 1`, `Recreate`, image by digest, memory 256 Mi request / 512 Mi limit.
-- Retain PVC at `/var/lib/shop`: the mode's database file, `files/`, `img/`, `mockups/`.
+- Retain PVC: `catalog.db` and the mode's database file, `files/`, `img/`, `mockups/`.
 - Litestream sidecar to a new S3 bucket; Velero as a second line (ADR-0014).
 - Own Ingress and Certificate; compression in the app; strict CSP (`img-src 'self'`).
 - Egress: HTTPS to public addresses (Printful, Stripe, S3, SES) and art's pods; default-deny NetworkPolicy ([11 §1](11-operations.md#1-deployment)).
-- Modes `mock`, `test`, `live` (ADR-0029): which services, keys, store and database file are used.
+- Modes `mock` (CI only), `test` (before go-live), `live` (ADR-0029): which services, keys, store and database file are used; the preview gate is a separate switch (ADR-0039).
 - One process suffices: < 10 orders a week; the heaviest work (rendering a 3600 × 4800 print file) happens when an offer is set up, not per visitor.
 
 ## 5. Key design choices

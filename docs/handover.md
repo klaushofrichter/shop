@@ -11,21 +11,23 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 ## Status (2026-11-26)
 
-- `main` holds the design set, research, ADRs 0001–0036, the skeleton service and CI. Nothing is deployed (the stage-1 skeleton deploy waits for Klaus's go in Cluster's session).
-- **Design round 1**: two independent reviews, triaged in `docs/reviews/2026-11-25-triage.md`. Klaus decided (2026-11-25): a cart with any pictures (ADR-0026); customer e-mails at launch (ADR-0027); sensitive test data to a private repository without CI (ADR-0028); a Printful **test store** (ADR-0029); no unneeded personal data to third parties, consent where needed (ADR-0031); random five-digit order numbers (ADR-0032); launch sizes up to 12 × 16 in both orientations (ADR-0033); what art sells is art's decision, later.
-- **Design revised for round 2** (`docs/design/`, brief in `docs/design/REVIEW-BRIEF.md`): state model with payment/fulfilment/dispute state, holds and invariants I1–I9 (ADR-0034, Proposed); content sources (ADR-0035, Proposed); local quote checks (ADR-0036, Proposed); Stripe webhook endpoints by Klaus in the Dashboard (ADR-0030, Proposed); one `SHOP_MODE` (ADR-0029, Proposed part).
-- **Design round 2**: two independent reviews (A, B), both "ready after listed changes", triaged in `docs/reviews/2026-11-26-triage-round-2.md`. Klaus's decisions D1–D10 are in its §1; the state-model fixes (§2) and other changes (§3) are adopted and get folded in after his decisions; runner hardening (§4) goes to Cluster.
-- Real API behaviour captured twice on 2026-11-24 (Stripe test key; Printful reads and 3 drafts, all deleted). Raw captures are in the private repository `shop-private` (no CI); the public `capture/*` branches were deleted on 2026-11-25 after a byte-for-byte check.
-- Cluster, 2026-11-25: on a public repository a fork PR can reach a self-hosted runner; the shop's runner will have no Docker-in-Docker, an egress policy, and the repository will require approval for all outside contributors (Klaus approves). kube-setup is private (threshold values go there). Secret scanning and push protection are on.
+- `main` holds the design set, research, ADRs 0001–0039, the skeleton service and CI. Nothing is deployed.
+- **Design round 1**: two reviews, triaged in `docs/reviews/2026-11-25-triage.md`; Klaus's decisions are ADR-0026 to ADR-0033.
+- **Design round 2**: four reviews (A, B, C, D), triaged in `docs/reviews/2026-11-26-triage-round-2.md` (addendum for C and D at its end) and folded into `docs/design` and the ADRs on 2026-11-26. **The design is frozen; no third round.**
+  - Klaus decided 2026-11-26: test mode only before go-live and mock mode only in CI, so the first cluster deployment talks to Stripe test mode and makes drafts in the test store (ADR-0029); status links from `STATUS_TOKEN_SECRET` (ADR-0037); SES bounces forwarded by e-mail (ADR-0038); go-live behind the preview gate with Printful-only recording (ADR-0039).
+  - **Awaiting Klaus**: decisions 1, 2, 4, 6, 7, 8, 9 of the triage: accept ADR-0034 (state model), the shared catalog file (ADR-0029), ADR-0035 (art allow-list), ADR-0030, ADR-0036; the proposed notes on ADR-0010 and ADR-0020; the packing-slip contact address.
+  - For Cluster: runner hardening (triage §4 and 11 §1), the Knative egress question, the deploy token as an environment secret.
+- Real API behaviour captured twice on 2026-11-24; raw captures in the private repository `shop-private` (no CI). The capture script now reads only the test-store token and refuses to write inside this repository.
+- Cluster, 2026-11-25: a fork PR can reach a self-hosted runner on a public repository; the shop's runner gets no Docker-in-Docker and the repository requires approval for outside contributors. kube-setup is private (threshold values and store ids go there). Secret scanning and push protection are on.
 
 ## Next
 
-1. Klaus decides D1–D10 of the round-2 triage; fold the triage into `docs/design` and the ADRs.
-2. Build in the order of `docs/design/13-plan-and-open-questions.md` §1.
+1. Klaus decides the open items above.
+2. Build in the order of `docs/design/13-plan-and-open-questions.md` §1, starting with step 2.
 
 ## Keys
 
-Names only, in the shop's `.env` on the node: `PRINTFUL_TOKEN` (live store), `PRINTFUL_TOKEN_TEST` (test store), `STRIPE_TEST_TOKEN` (`rk_test_`), `STRIPE_LIVE_TOKEN` (`rk_live_`), the Google OAuth values, `ALLOWED_EMAILS`, `COOKIE_SECRET`, and the deploy tokens. All checked by Cluster without printing. Only test keys are used until go-live.
+Names only, in the shop's `.env` on the node: `PRINTFUL_TOKEN` (live store), `PRINTFUL_TOKEN_TEST` (test store), `STRIPE_TEST_TOKEN` (`rk_test_`), `STRIPE_LIVE_TOKEN` (`rk_live_`), the Google OAuth values, `ALLOWED_EMAILS`, `COOKIE_SECRET`, and the deploy tokens. Still to add when their step comes: `STATUS_TOKEN_SECRET` (step 8), the webhook secrets and Printful's webhook public key (step 10), `PREVIEW_KEY` (step 9), the SES credentials (step 8); see `.env.example`. All checked by Cluster without printing. Only test keys are used until go-live.
 
 ## Environment notes
 

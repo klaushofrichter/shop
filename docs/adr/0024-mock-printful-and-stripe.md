@@ -26,3 +26,6 @@ Location (recommendation, for the review): its own directory `mocks/` in this re
 - Real services are touched only in safe ways: Stripe in test mode, Printful read-only. No Printful order (not even a draft) unless Klaus allows drafts later.
 - A real API change shows up as a drift report rather than as a production incident.
 - Work: estimated as large as a third of the shop itself.
+
+## Notes
+- 2026-11-26: superseded in detail by ADR-0029 and docs/design/14 §7: Printful **drafts** are allowed in the test store (Klaus, 2026-11-24), never confirmed; shadow calls are dropped (review 1 F23.2); mock mode runs only in CI, not as a deployment (ADR-0029); Stripe requests are validated against hand-written schemas, Printful's against its OpenAPI spec.

@@ -16,3 +16,6 @@ Order numbers are five random digits, 10000–99999, unique, drawn in the order'
 
 - At ~500 orders a year the chance of a redraw stays small for years; widening to six digits is a configuration change that doesn't affect existing numbers.
 - Customers quote the number with their e-mail in "find my order"; the pair, not the number alone, identifies an order.
+
+## Notes
+- 2026-11-26 (review C F13): orders never paid are deleted entirely after 7 days, with their Stripe Customer, which frees their numbers.

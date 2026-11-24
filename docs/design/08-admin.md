@@ -1,6 +1,6 @@
 # 8. Admin
 
-Revised for review round 2 (2026-11-25): works by source, holds instead of states, PKCE in the sign-in, fewer pages (review 1 F29), threshold values not shown in public docs.
+Revised for review round 2 (2026-11-25): works by source, holds instead of states, PKCE in the sign-in, fewer pages (review 1 F29), threshold values not shown in public docs. Round 2 fold-in (2026-11-26): hold actions per reason, refunds as records, linked reshipments.
 
 ## 1. Principle
 
@@ -26,16 +26,16 @@ The cluster's hand-rolled Google OAuth pattern (ADR-0013, vault "Building a New 
 
 | Page | Content | Actions |
 |---|---|---|
-| **Dashboard** `/admin` | Mode banner (MOCK / TEST / LIVE); open **holds** with kind, reasons and time to deadline ("refunds automatically in 17 h"); the circuit breaker; orders by derived status (today, 7 days); last reconciliation and its alarms; backup age; SES bounces. | — |
-| **Works** `/admin/works` | Every work from every source: thumbnail, title, source, kind, original size, `prints_allowed` (from the source), enabled, offers and readiness (print file, provider file, mockup). | Enable/disable a work (only where `prints_allowed`); refresh sources. |
-| **Work** `/admin/works/:source/:work` | One row per SKU: enable, price (default shown), orientation, effective DPI (refused below `minDpi`), a preview of the crop with **nine anchor positions** (review 1 F29: no draggable box at launch), print file and provider-file status, mockup. | Enable/disable an offer; price override; anchor; upload a print master; regenerate the mockup. |
+| **Dashboard** `/admin` | Mode banner (MOCK / TEST / LIVE); open **holds** with kind, reasons and time to deadline ("refunds automatically in 17 h"); the circuit breaker; orders by derived status (today, 7 days); last reconciliation and its alarms; backup age; the runner's heartbeat; addresses refused by the ZIP ↔ state check (count, to spot a false rejection). | — |
+| **Works** `/admin/works` | Every work from every source: thumbnail, title, source, kind, original size, `prints_allowed` (from the source), enabled, offers and readiness (print file, provider file, mockup). | Enable/disable a work (only where `prints_allowed`); refresh sources; a title override (sources with captions). |
+| **Work** `/admin/works/:source/:work` | One row per SKU: enable, price (default shown), orientation, effective DPI (refused below `minDpi`), a preview of the crop with **nine anchor positions** (review 1 F29: no draggable box at launch) and how much of the picture it cuts, print file and provider-file status, mockup. | Enable/disable an offer; price override; anchor; upload a print master; regenerate the mockup. |
 | **Orders** `/admin/orders` | Search by number, e-mail, status, date. | — |
-| **Order** `/admin/orders/:id` | Items by picture; amounts (paid, tax, Stripe fee, Printful cost, margin); payment, fulfilment and dispute state; holds; attempts at Printful; shipments and tracking; e-mails sent and bounces; the full event history; links to the order in the Stripe and Printful dashboards. | **Approve** (approval hold); retry submission; confirm anyway (cost-guard hold); cancel at Printful; **full** refund (partial refunds in the Stripe Dashboard); resend an e-mail; purge personal data. Each asks for confirmation and is written to `admin_audit`. |
-| **System** `/admin/system` | Version, mode, the configured stores and their webhook configuration (and expiry), Stripe endpoint health (last event received per type), rate-limit headroom, job queue, recent alarms. | Run reconciliation now; **reset the circuit breaker**. |
+| **Order** `/admin/orders/:id` | Items by picture; amounts (paid, tax, Stripe fee, Printful cost, margin); payment, fulfilment and dispute state; holds with their reasons and actions; refunds (requested, succeeded, failed); attempts at Printful (including linked reshipments); shipments with their shipment and delivery status; e-mails sent; the full event history; links to the order in the Stripe and Printful dashboards. | **Approve** (approval hold); **false alarm** (fraud hold from an early fraud warning: `warning → none`); retry submission (attempt N+1, at most 3, [07 §2.4](07-orders-data-jobs.md#24-submission-attempts)); confirm anyway (cost-guard hold, recorded on the attempt); cancel at Printful; **full** refund, or **refund anyway** on an order in production (no hold follows); **retry refund** and **fulfil anyway** after a failed refund; resend an e-mail (a fresh e-mail key); purge personal data. Each asks for confirmation; a hold is resolved by a conditional update (only the first action wins) and every action is written to `admin_audit`. |
+| **System** `/admin/system` | Version, mode, preview gate, the configured stores and their webhook configuration (and expiry), whether Printful is verified, Stripe endpoint health (last event received per type, and its API version next to the pinned one), rate-limit headroom, job queue and heartbeat, recent alarms. | Run reconciliation now; **reset the circuit breaker** (sets `breaker_reset_at`); on a reverse-sweep alarm for an unknown Printful order, **link it to order N as a reshipment**. |
 
 Dropped for launch (review 1 F29): the SKU page (config file), the tax report (Stripe Tax's
 report is what is filed; per-order tax stays recorded), a "re-register webhooks" button
-(the script), partial refunds (Stripe Dashboard).
+(the script), partial refunds (Stripe Dashboard), a reship action (Klaus reships in Printful's dashboard and links it; review C).
 
 ## 4. What the admin cannot do
 

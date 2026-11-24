@@ -40,9 +40,9 @@ From Klaus, 2026-11-23 to 2026-11-25. Each has an id for tracing. Revised for re
 | R14 | Start in mock mode, then Stripe test mode with drafts in a separate Printful test store; go live only when Klaus says so (ADR-0029). |
 | R15 | Follow the cluster's repository and deployment rules (ADR-0016). |
 | R16 | **Fail-safes against large or unusual orders** (misuse, not real customers): hard limits, a hold for approval with an automatic refund if nobody approves, and a circuit breaker on volume (Klaus, 2026-11-24; ADR-0020). |
-| R17 | **Sales tax as legally required**: collected via Stripe Tax wherever Klaus is registered, recorded per order and line, exportable by period and state (Klaus, 2026-11-24; ADR-0012). |
+| R17 | **Sales tax as legally required**: collected via Stripe Tax wherever Klaus is registered, recorded per order and line; Stripe Tax's own report is what is filed (Klaus, 2026-11-24; ADR-0012). |
 | R18 | **Mock Printful and mock Stripe**, usable instead of the real services by configuration, in CI and in test deployments, and verified against the real services by recording and comparing (Klaus, 2026-11-24; ADR-0024). |
-| R19 | Test deployments execute **no transaction with a real service and no Printful order** (Klaus, 2026-11-24). |
+| R19 | Test deployments **never confirm a Printful order and never move real money**: they use only Stripe test mode and drafts in the Printful test store (Klaus, 2026-11-24; reworded 2026-11-26 when mock mode moved to CI only, ADR-0029). |
 | R20 | **No personal data to third parties that isn't needed**; where it would be needed for tracking or progress information, the customer's consent (Klaus, 2026-11-25; ADR-0031). |
 | R21 | **Random order numbers**, five digits at the beginning (Klaus, 2026-11-25; ADR-0032). |
 | R22 | **Smaller sizes at launch**, in landscape and portrait (Klaus, 2026-11-25; ADR-0033). |
@@ -52,7 +52,7 @@ From Klaus, 2026-11-23 to 2026-11-25. Each has an id for tracing. Revised for re
 
 | Id | Quality | Target |
 |---|---|---|
-| Q1 | No lost money | A payment that Stripe reports as succeeded always ends in exactly one of: a confirmed Printful order, or a full refund. Never neither, never two Printful orders. |
+| Q1 | No lost money | A payment that Stripe reports as succeeded always ends in a confirmed Printful order, a full refund, or both when Printful cancels a confirmed order (its charge returns to Klaus) or Klaus refunds anyway; a lost dispute is the bank's reversal. Never neither, never two confirmed Printful orders. |
 | Q2 | No silent failure | Any order not progressing for longer than its expected time is detected within 1 hour and, if not auto-recoverable, reported to Klaus. |
 | Q3 | Price integrity | The amount charged is computed by the server from configuration and Printful's quote; nothing price-related is taken from the browser. |
 | Q4 | Privacy | Card data never reaches the shop. Personal data goes only where needed (R20) and is kept only as long as needed ([10 §4](10-security-privacy-legal.md#4-privacy)). |
@@ -83,7 +83,7 @@ From Klaus, 2026-11-23 to 2026-11-25. Each has an id for tracing. Revised for re
 | R16 | [05 §3](05-quote-checkout-payment.md#3-checkout-session), [06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders), ADR-0020 |
 | R17 | [05 §6](05-quote-checkout-payment.md#6-tax), ADR-0012 |
 | R18 | [14](14-mock-services.md), [12](12-testing.md), ADR-0024 |
-| R19 | [14 §9](14-mock-services.md#9-mock-mode-deployment), [11 §2.1](11-operations.md#21-mode-adr-0029) |
+| R19 | [14 §9](14-mock-services.md#9-where-mock-mode-runs), [11 §2.1](11-operations.md#21-mode-adr-0029) |
 | R20 | [10 §4](10-security-privacy-legal.md#4-privacy), [06 §3](06-fulfilment.md#3-printful-adapter), ADR-0031 |
 | R21 | [07 §1](07-orders-data-jobs.md#1-identifiers), ADR-0032 |
 | R22 | [04 §2](04-catalog-and-print-files.md#2-skus-at-launch-adr-0033), ADR-0033 |
@@ -103,7 +103,7 @@ From Klaus, 2026-11-23 to 2026-11-25. Each has an id for tracing. Revised for re
 ## 7. Assumptions
 
 - A1. art's manifest is publicly readable and `uid` is stable (art's tests check permalinks by uid); a contract test and a daily check guard the format ([04 §4.3](04-catalog-and-print-files.md#43-the-art-adapter)).
-- A2. art's 35 originals (25 works plus detail views; 3 paintings, 22 photographs) are iPhone JPEGs (Display P3) up to 4032 × 3024: every one reaches ≥ 181 DPI at 12 × 16 and ≥ 286 at 8 × 10 (measured 2026-11-24; [04 §2](04-catalog-and-print-files.md#2-skus-at-launch-adr-0033)).
+- A2. art's 35 originals (25 works plus detail views; 3 paintings, 22 photographs) are iPhone JPEGs (Display P3) up to 4032 × 3024: all but one wide work reach ≥ 180 DPI at 12 × 16 (that one about 175, so its 12 × 16 offers are refused), and all reach ≥ 262 at 8 × 10 (measured 2026-11-24, corrected by review C F10; [04 §2](04-catalog-and-print-files.md#2-skus-at-launch-adr-0033)).
 - A3. Klaus is the merchant of record; Printful bills his Printful account; Stripe pays out to his bank.
 - A4. Shipping destinations start with the US only (ADR-0011); more countries are configuration plus tax registration.
 - A5. Printful API v2 (beta) stays compatible enough; the adapter isolates changes (ADR-0005).

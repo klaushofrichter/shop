@@ -22,7 +22,7 @@ review's privacy and web details.
 | Price manipulation | Prices computed on the server from config and Printful; the browser sends only ids and quantities; checkout re-validates. |
 | Forged webhooks | Stripe signature (300 s); Printful HMAC with public key and `store_id` check; the shop re-fetches before acting and uses nothing else from a payload. |
 | Replayed or reordered webhooks | Event ledger unique on (provider, event id); conditional updates; re-fetch gives the current state. |
-| Double fulfilment, lost money | The invariants I1–I9 of [07 §2.6](07-orders-data-jobs.md#26-invariants), tested by random sequences against the mocks ([12](12-testing.md)). |
+| Double fulfilment, lost money | The invariants I1–I11 of [07 §2.8](07-orders-data-jobs.md#28-invariants), tested by random sequences against the mocks ([12](12-testing.md)). |
 | Abuse of the quote endpoint (Printful's 120 calls/min) | Rate limits per client address (IPv6 per /64); one Printful call per quote. |
 | Card testing, stolen cards | Stripe Radar; sessions only after a valid quote, rate-limited; early fraud warnings and disputes stop fulfilment; fail-safe holds ([06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders)). |
 | Abuse that reads the thresholds | The fail-safe **numbers** live in deployment configuration in kube-setup (private), not in this repository; the docs describe the mechanism (review 1 F27). |
@@ -54,7 +54,8 @@ it's ever needed for tracking or progress information, ask the customer's consen
 
 - If a carrier ever requires a phone number (e.g. a future express or international option), the checkout asks for it with a consent line naming its use.
 - Cookies: `shop_cart`, order-status cookies, `shop_admin`, the preview key in non-live modes. All functional; no consent banner needed. No analytics, no third-party scripts on shop pages.
-- Retention ([07 §6](07-orders-data-jobs.md#6-retention-and-purge)): personal data 180 days after the order's end (chargebacks), then purged; Stripe Customers deleted at the same time; amounts kept 10 years.
+- Retention ([07 §6](07-orders-data-jobs.md#6-retention-and-purge)): personal data 180 days after the order is complete (chargebacks), then purged; Stripe Customers deleted at the same time; amounts kept 10 years. **Stripe keeps** the name and address on the Checkout Session, PaymentIntent and Charge under its own retention, and the shop's **backups** keep purged data until they age out (Litestream 30 days, nightly copies); the privacy text says both (review B, R1 F28).
+- What the shop itself keeps (review C F14): Stripe webhook payloads are not stored (only event id, type and object id); the cart holds no address or e-mail (they live on the quote, 7 days); never-paid orders are deleted after 7 days; alerts to Klaus carry no customer data; the confirmation e-mail shows the ship-to as name, city and state.
 - Deletion on request: the admin purges an order's personal data (amounts stay).
 
 ## 5. What may be in this public repository

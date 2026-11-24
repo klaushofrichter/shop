@@ -2,7 +2,9 @@
 
 Revised for review round 2 (2026-11-25): a cart with any pictures (ADR-0026), routes per
 source (ADR-0035), "find my order", the status token exchanged for a cookie, a
-side-effect-free cancel return, a preview gate before go-live.
+side-effect-free cancel return, a preview gate before go-live. Round 2 fold-in
+(2026-11-26): the gate is its own switch and spares the files Printful and Stripe fetch;
+the cart empties on payment.
 
 All pages are server-rendered HTML with a little progressive-enhancement JavaScript;
 every page works without JavaScript; forms POST and redirect. **All public forms carry a
@@ -25,7 +27,8 @@ CSRF token** (review 1 F28).
 | GET, POST | `/order/find` | **Find my order**: order number + e-mail → the link is e-mailed. |
 | GET | `/terms`, `/privacy`, `/shipping-returns`, `/contact` | Legal pages (Klaus's texts). |
 | GET | `/health` | `{status, version}`. |
-| GET | `/api/offers?source=…` | Work ids with a sellable offer (art reads it to show its link). Empty in non-live modes. |
+| GET | `/health/worker` | 200 while the job runner and alerts work, else 503 ([11 §4](11-operations.md#4-observability)). |
+| GET | `/api/offers?source=…` | Work ids with a sellable offer (art reads it to show its link). Empty while the preview gate is on. |
 | GET | `/img/*`, `/mockups/*`, `/static/*`, `/files/*` | Display images, mockups, CSS and icon, print files. |
 | POST | `/webhooks/stripe`, `/webhooks/printful` | Provider webhooks (not behind the preview gate). |
 | GET/POST | `/admin/*`, `/auth/google/*` | Admin ([08](08-admin.md)). |
@@ -85,13 +88,13 @@ replaced by "This combination can't be ordered right now" ([05 §2](05-quote-che
 
 `POST /checkout` → Stripe's hosted page, which shows the items, shipping, tax, total, and
 "Ships to …" above the pay button. Returns:
-- **success_url** → the status page (§7).
+- **success_url** → the status page (§7). The cart is emptied when the payment is recorded, so a later visit starts with an empty cart.
 - **cancel_url** → the cart, unchanged. Nothing is closed by this return ([05 §5](05-quote-checkout-payment.md#5-return-from-stripe)).
 
 ## 7. Order status page
 
 - The link in e-mails and on the success page carries the token once: `/order/:id?t=…` sets an HttpOnly, Secure, SameSite=Lax cookie scoped to `/order/:id` and redirects to the clean URL (review 1 F18). The shop's logs never record query strings. Wrong or missing token → 404.
-- Shows: order number, date, items by picture, totals as paid, ship-to (name, city, state only), the derived status ([07 §2.5](07-orders-data-jobs.md#25-customer-facing-status-derived)) and a **per-parcel** block (contents, carrier, tracking link, estimated delivery).
+- Shows: order number, date, items by picture, totals as paid, ship-to (name, city, state only), the derived status ([07 §2.6](07-orders-data-jobs.md#26-customer-facing-status-derived)) and a **per-parcel** block (contents, carrier, tracking link, estimated delivery).
 - While "confirming your payment" it refreshes itself (meta refresh, every 5 s, up to 2 minutes).
 - `noindex`, `Cache-Control: no-store`.
 
@@ -104,10 +107,15 @@ matched. Rate-limited per client address and per order number.
 ## 9. Before go-live
 
 In `mock` and `test` mode (ADR-0029, review 1 F24): a banner on every public page ("Test
-shop — nothing is charged or shipped"), `noindex` everywhere, `/api/offers` empty (art
-shows no link), customer e-mails only to an allow-list, and a **preview gate**: every
-page except `/health`, `/webhooks/*` and `/auth/*` asks for a shared preview key (set as a
-cookie) or an admin session.
+shop — nothing is charged or shipped"), `noindex` everywhere, and customer e-mails only to
+an allow-list.
+
+The **preview gate** is its own switch (`PREVIEW_GATE`), on in mock and test mode and
+**also in live mode until Klaus's own first orders have arrived** (review C F5). While it
+is on, `/api/offers` is empty (art shows no link) and every page asks for a shared
+preview key (set as a cookie) or an admin session, except `/health*`, `/webhooks/*`,
+`/auth/*`, and `/files/*`, `/img/*`, `/mockups/*`, which Printful and Stripe fetch
+without a cookie (review B F2; those URLs are unguessable hashes).
 
 ## 10. Errors the customer can see
 

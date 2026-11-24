@@ -1,6 +1,6 @@
 # ADR-0021: What ships at launch and what waits
 
-- Status: Accepted; customer e-mails amended by ADR-0027 (2026-11-25)
+- Status: Accepted; one picture per order superseded by ADR-0026, customer e-mails amended by ADR-0027 (2026-11-25)
 - Date: 2026-11-24
 - Decided by: Klaus, 2026-11-24: the minimum requirements in his message ("…a handful of pre-defined SKUs…", "…may send tracking information and status update to the customer as well (this is optional for now)")
 
@@ -15,3 +15,6 @@ Launch with the minimum requirements R1–R15 of docs/design/01-requirements.md,
 ## Consequences
 
 - The data model leaves room for editions (a counter per picture and SKU), currencies (amounts stored with a currency code) and a second provider (ADR-0017), so adding them later does not need a migration of existing orders.
+
+## Notes
+- 2026-11-26: "one picture per order (ADR-0008)" is superseded by ADR-0026 (a cart with any pictures); customer e-mails are at launch (ADR-0027).

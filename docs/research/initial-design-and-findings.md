@@ -3,7 +3,7 @@
 > Superseded on 2026-11-24 by the design set in [docs/design/](../design/README.md). Kept for its research findings (§2) and history. Links below are relative to the former location `docs/design.md`.
 
 Status: draft for Klaus's review, 2026-11-24. No service code exists yet.
-Every decision here is an ADR in [docs/adr](adr/README.md). Proposed ones wait for Klaus's decision.
+Every decision here is an ADR in [docs/adr](../adr/README.md). Proposed ones wait for Klaus's decision.
 
 ## 1. Goal
 
@@ -22,7 +22,7 @@ Sources: Printful's v1 and v2 API docs and help center, Stripe's docs and pricin
 
 ### Printful
 
-- **API version.** v2 (`https://api.printful.com/v2/...`) is still labelled beta (announced 2023-09). v1 keeps working with no announced sunset date. v2 has what we need and v1 lacks: catalog prices and availability per region, print-area sizes and DPI per placement, explicit draft → confirm orders, signed webhooks. → [ADR-0005](adr/0005-printful-api-v2.md)
+- **API version.** v2 (`https://api.printful.com/v2/...`) is still labelled beta (announced 2023-09). v1 keeps working with no announced sunset date. v2 has what we need and v1 lacks: catalog prices and availability per region, print-area sizes and DPI per placement, explicit draft → confirm orders, signed webhooks. → [ADR-0005](../adr/0005-printful-api-v2.md)
 - **Auth.** A private token, store-level, with chosen scopes (`orders`, `file_library`, `webhooks`, and the read variants). Tokens expire and are rotated by hand. No OAuth app needed for one store. Klaus created the token 2026-11-24 (`PRINTFUL_TOKEN` in the shop's `.env` on the node).
 - **Catalog.** `GET /v2/catalog-products`, `/catalog-variants`, `/prices`, `/availability`, `/mockup-styles` (print-area pixels and DPI per placement), `/shipping-countries`. Product ids, checked against the live v1 catalog 2026-11-24: Enhanced Matte Paper Poster (in) **1** (33 variants, 10×10 to 24×36), Enhanced Matte Paper Framed Poster (in) **2** (39 variants: 8×10, 11×14, 12×16, 16×20, 18×24, 24×36 and more, in several frame colors), White Glossy Mug **19** (11, 15, 20 oz), Standard Postcard **433** (4×6, one variant), Unisex Staple T-Shirt Bella+Canvas 3001 **71** (628 variants, XS–5XL, many colors), Unisex Basic Softstyle T-Shirt Gildan 64000 **12** (249 variants).
 - **Print files.** PNG or JPG, at most about 100–200 MB and 20,000 px per side. Paper products want 300 DPI, apparel 150 DPI. Printful fetches files by URL (in the order item, or registered once in the file library). A 16×20 print at 300 DPI is 4800×6000 px.
@@ -57,10 +57,10 @@ Sources: Printful's v1 and v2 API docs and help center, Stripe's docs and pricin
 ### Stripe
 
 - **Checkout.** Hosted Checkout fits a server-rendered shop: the server creates a Checkout Session with ad-hoc `price_data` line items (no product catalog in Stripe), `client_reference_id` = our order id, and redirects. Card data never touches the shop (PCI SAQ A).
-- **Shipping.** Hosted Checkout takes fixed `shipping_options`. Computing shipping after the customer enters the address inside Checkout ("dynamic shipping", `permissions.update_shipping_details`) works only with the embedded form or Elements; Stripe's docs (checked 2026-11-24): "The full embedded page and full hosted page don't support dynamically customizing shipping options". It also disables Apple Pay and Google Pay *(verify)*. → [ADR-0007](adr/0007-checkout-and-shipping-quote.md)
+- **Shipping.** Hosted Checkout takes fixed `shipping_options`. Computing shipping after the customer enters the address inside Checkout ("dynamic shipping", `permissions.update_shipping_details`) works only with the embedded form or Elements; Stripe's docs (checked 2026-11-24): "The full embedded page and full hosted page don't support dynamically customizing shipping options". It also disables Apple Pay and Google Pay *(verify)*. → [ADR-0007](../adr/0007-checkout-and-shipping-quote.md)
 - **Webhooks.** `checkout.session.completed` (fulfil only if `payment_status = paid`), `checkout.session.async_payment_succeeded/failed`, `checkout.session.expired`, `charge.refunded`. Verify `Stripe-Signature` on the raw body. Live mode retries for 3 days; handlers must be idempotent (unique on event id).
 - **Testing.** Sandboxes and test cards, `stripe listen` for local webhooks.
-- **Stripe Tax.** `automatic_tax: {enabled: true}`. Collects only where Klaus has registered with the tax authority; 0.5% of volume through Checkout. → [ADR-0012](adr/0012-sales-tax-and-vat.md)
+- **Stripe Tax.** `automatic_tax: {enabled: true}`. Collects only where Klaus has registered with the tax authority; 0.5% of volume through Checkout. → [ADR-0012](../adr/0012-sales-tax-and-vat.md)
 - **Refunds.** Full and partial via the API. Stripe keeps its original processing fee.
 - **Fees.** 2.9% + 30¢ for US cards, +1.5% for international cards, +1% for currency conversion, no monthly fee.
 - **Keys.** A restricted key (`rk_`): Checkout Sessions write, Refunds write, PaymentIntents/Charges/Events read, nothing else.
@@ -68,7 +68,7 @@ Sources: Printful's v1 and v2 API docs and help center, Stripe's docs and pricin
 
 ### Open-source projects
 
-See [§12](#12-open-source-projects) and the deeper study in [research/oss-learnings.md](research/oss-learnings.md) (patterns, Prodigi/Gelato, feature tiers). Summary: none is a good base to adapt; we build a small service and borrow patterns. → [ADR-0003](adr/0003-build-not-adapt.md), [ADR-0017](adr/0017-fulfilment-provider-interface.md), [ADR-0021](adr/0021-launch-scope.md)
+See [§12](#12-open-source-projects) and the deeper study in [research/oss-learnings.md](oss-learnings.md) (patterns, Prodigi/Gelato, feature tiers). Summary: none is a good base to adapt; we build a small service and borrow patterns. → [ADR-0003](../adr/0003-build-not-adapt.md), [ADR-0017](../adr/0017-fulfilment-provider-interface.md), [ADR-0021](../adr/0021-launch-scope.md)
 
 ### art (measured 2026-11-24, with Cluster)
 
@@ -90,19 +90,19 @@ See [§12](#12-open-source-projects) and the deeper study in [research/oss-learn
                └──► email (order and shipping notices)
 ```
 
-- **A separate service** in its own repo and namespace, not part of art. art stays a fast public gallery without secrets; the shop holds payment and order data and its own deploy cycle. → [ADR-0002](adr/0002-separate-shop-service.md)
-- **Built here, not adapted** from an existing project. → [ADR-0003](adr/0003-build-not-adapt.md)
-- **Stack**: Node 26, TypeScript, a small HTTP framework with server-rendered HTML (no SPA), SQLite through Node's built-in `node:sqlite` or better-sqlite3, `sharp` for print files. One process holds the web server and a job runner backed by a jobs table. One replica, because SQLite has one writer. → [ADR-0004](adr/0004-stack-and-runtime.md)
+- **A separate service** in its own repo and namespace, not part of art. art stays a fast public gallery without secrets; the shop holds payment and order data and its own deploy cycle. → [ADR-0002](../adr/0002-separate-shop-service.md)
+- **Built here, not adapted** from an existing project. → [ADR-0003](../adr/0003-build-not-adapt.md)
+- **Stack**: Node 26, TypeScript, a small HTTP framework with server-rendered HTML (no SPA), SQLite through Node's built-in `node:sqlite` or better-sqlite3, `sharp` for print files. One process holds the web server and a job runner backed by a jobs table. One replica, because SQLite has one writer. → [ADR-0004](../adr/0004-stack-and-runtime.md)
 - **Runtime**: a plain Deployment (`replicas: 1`, `strategy: Recreate`, image pinned by digest), the cluster's shape for a single SQLite writer (cams-admin, games-cloud), with a Retain PVC, a Litestream sidecar, its own Ingress and Certificate, and Traefik's `compress-text` middleware. The runner may only get/watch/patch this one Deployment. Cluster writes the manifests in kube-setup.
 
 ## 4. From art to the shop
 
-- art adds, on each work's page, a link **"Prints & merchandise"** to `https://shop.klaushofrichter.net/p/<uid>`, visually separate from its "Buy the original" button. That is art's only change besides the internal endpoint (§7). → [ADR-0009](adr/0009-art-to-shop-handoff.md)
+- art adds, on each work's page, a link **"Prints & merchandise"** to `https://shop.klaushofrichter.net/p/<uid>`, visually separate from its "Buy the original" button. That is art's only change besides the internal endpoint (§7). → [ADR-0009](../adr/0009-art-to-shop-handoff.md)
 - No session, token or state is carried across: the uid is enough. The shop reads art's public manifest (fetched from the home page, cached, refreshed every few minutes and on demand from the admin) for title, artist, date, description and the public derivative images used for previews.
 - A uid the admin has not enabled for sale shows "Prints of this picture aren't available yet" with a link back to the picture on art.
 - The shop page shows the picture, the title, "Prints and merchandise of *Title* by Klaus Hofrichter", the products offered for it, a link back to art, and, if the original is available, a line pointing to art's originals page. It has its own look but shares art's typography so the step feels continuous *(Klaus's call)*.
 - Product page: product mockup images (pre-generated, §8), size/variant choice, price, "Add to cart".
-- **Cart**: a small server-side cart keyed by a cookie, so a postcard and a mug share one shipment. A cart holds items from several pictures. → [ADR-0008](adr/0008-cart.md)
+- **Cart**: a small server-side cart keyed by a cookie, so a postcard and a mug share one shipment. A cart holds items from several pictures. → [ADR-0008](../adr/0008-cart.md)
 
 ## 5. Checkout and payment
 
@@ -111,9 +111,9 @@ See [§12](#12-open-source-projects) and the deeper study in [research/oss-learn
 3. The customer pays on Stripe and returns to `/order/<id>?token=…`, which shows the status.
 4. `checkout.session.completed` with `payment_status = paid` moves the order to `paid`. The shop compares the address entered in Checkout with the quoted one: if the country or state differs, the order goes to `needs_attention` instead of to Printful (the shipping price might be wrong).
 
-Alternative: embedded Checkout with dynamic shipping (address entered once, inside Stripe's form; no Apple/Google Pay). → [ADR-0007](adr/0007-checkout-and-shipping-quote.md)
+Alternative: embedded Checkout with dynamic shipping (address entered once, inside Stripe's form; no Apple/Google Pay). → [ADR-0007](../adr/0007-checkout-and-shipping-quote.md)
 
-Currency: USD only to start. Shipping region: to be decided, recommended US + Canada + EU + UK. → [ADR-0011](adr/0011-currency-and-shipping-region.md)
+Currency: USD only to start. Shipping region: to be decided, recommended US + Canada + EU + UK. → [ADR-0011](../adr/0011-currency-and-shipping-region.md)
 
 ## 6. Orders: states and automation
 
@@ -139,12 +139,12 @@ quoted ──► checkout_open ──► paid ──► files_ready ──► su
 | needs_attention | Something after payment failed | Email Klaus; admin: fix and retry, or refund |
 | refunded | Full or partial Stripe refund issued | — |
 
-- **Ledger and reconciliation** follow the patterns in [research/oss-learnings.md](research/oss-learnings.md): transitions recorded with their cause, an inbound-event ledger, claim before submit, `@external_id` lookup, v1 for cancel, shipments per parcel, hourly reconciliation. → [ADR-0018](adr/0018-order-ledger-and-reconciliation.md)
-- **Approval hold**: paid orders above an amount wait for Klaus's approval. → [ADR-0020](adr/0020-approval-hold-above-amount.md)
+- **Ledger and reconciliation** follow the patterns in [research/oss-learnings.md](oss-learnings.md): transitions recorded with their cause, an inbound-event ledger, claim before submit, `@external_id` lookup, v1 for cancel, shipments per parcel, hourly reconciliation. → [ADR-0018](../adr/0018-order-ledger-and-reconciliation.md)
+- **Approval hold**: paid orders above an amount wait for Klaus's approval. → [ADR-0020](../adr/0020-approval-hold-above-amount.md)
 - **Jobs.** Each transition after `paid` is a job in the jobs table, retried with backoff (1 min, 5 min, 30 min, 2 h). Every step is idempotent: print files keyed by (uid, variant, version); Printful orders by `external_id`; emails by (order, kind).
 - **Polling.** Webhooks can be lost; a job polls Printful for every open order every 30 minutes and Stripe for sessions still open past their expiry.
 - **Cost guard.** Before confirming, the shop compares Printful's estimated cost with what the customer paid. If the margin is below a floor the admin sets (e.g. negative), the order goes to `needs_attention` instead of being confirmed.
-- **Failure policy** (payment fine, Printful fails): retry automatically for up to 24 h, then `needs_attention` and an email to Klaus. Proposal: if unresolved after 72 h, refund in full automatically and tell the customer. → [ADR-0010](adr/0010-order-failure-and-refunds.md)
+- **Failure policy** (payment fine, Printful fails): retry automatically for up to 24 h, then `needs_attention` and an email to Klaus. Proposal: if unresolved after 72 h, refund in full automatically and tell the customer. → [ADR-0010](../adr/0010-order-failure-and-refunds.md)
 - **Printful defects and returns**: Klaus reports them in Printful's dashboard (photo within 30 days); the shop records the outcome. Reprints arrive as new shipments of the same order.
 - **Test mode.** `SHOP_MODE=test`: Stripe test keys, Printful draft orders that are never confirmed (or a separate Printful test store). Going live is Klaus's switch, a config change in his session.
 
@@ -154,15 +154,15 @@ quoted ──► checkout_open ──► paid ──► files_ready ──► su
   - A bearer token is mandatory (a Secret shared by art and shop, created by Cluster or Klaus).
   - art's public route sends every path to the service, so `/internal` must also be blocked on the public route (a Traefik rule), or art refuses it unless the request came in through the cluster-local host name. Both, preferably.
   - The shop calls `http://art.art.svc.cluster.local/internal/originals/<uid>`.
-  → [ADR-0006](adr/0006-originals-access.md)
+  → [ADR-0006](../adr/0006-originals-access.md)
 - Fallback/override: the admin can upload a print file for a picture (e.g. a better scan, or a pre-cropped file for one product).
 - The shop renders one print file per (picture, Printful variant): crop or fit to the print area's aspect ratio as set in the admin, resize to the print area's pixels, sRGB JPG. Files are cached on the shop's volume.
-- Printful fetches files by URL, also later for reprints, and caches by URL. The shop serves them at immutable, content-addressed, unguessable URLs `https://shop.klaushofrichter.net/files/<sha256>.jpg` that never expire; a new crop or source gives a new URL. A product is offered only after its print file was rendered and validated (exact pixels, 8-bit sRGB, under 200 MB, DPI floor). → [ADR-0019](adr/0019-print-files-before-sale.md)
+- Printful fetches files by URL, also later for reprints, and caches by URL. The shop serves them at immutable, content-addressed, unguessable URLs `https://shop.klaushofrichter.net/files/<sha256>.jpg` that never expire; a new crop or source gives a new URL. A product is offered only after its print file was rendered and validated (exact pixels, 8-bit sRGB, under 200 MB, DPI floor). → [ADR-0019](../adr/0019-print-files-before-sale.md)
 - **Resolution check.** The admin shows each picture's effective DPI per product and refuses to offer a product below a threshold (proposed: 150 DPI for paper, 100 for apparel and mugs). The originals' pixel size is not yet known; a camera JPEG of 4000×3000 px gives 200 DPI at 20×15 in, so the largest framed sizes may need to be excluded per picture.
 
 ## 8. Admin
 
-- Inside the shop at `/admin`, behind Google sign-in with the cluster's hand-rolled pattern (`google-auth-library`, `state` cookie, `ALLOWED_EMAILS`, HMAC-signed session cookie, logout that lands on a 200 page with a Sign in link, `Cache-Control: no-store`), its own OAuth client in the cluster's Google Cloud project; CSRF protection on admin forms. → [ADR-0013](adr/0013-admin-in-shop.md)
+- Inside the shop at `/admin`, behind Google sign-in with the cluster's hand-rolled pattern (`google-auth-library`, `state` cookie, `ALLOWED_EMAILS`, HMAC-signed session cookie, logout that lands on a 200 page with a Sign in link, `Cache-Control: no-store`), its own OAuth client in the cluster's Google Cloud project; CSRF protection on admin forms. → [ADR-0013](../adr/0013-admin-in-shop.md)
 - **SKUs**: Klaus picks Printful catalog products and variants (e.g. framed poster 16×20 black frame, mug 11 oz, t-shirt M white). The list comes from Printful's catalog API, so only supported variants can be chosen. Each SKU stores Printful's product and variant ids, the placement, the print area (pixels, DPI) and a default retail price. A job refreshes Printful's prices and availability daily and flags SKUs that went out of stock or got more expensive.
 - **Pictures**: from art's manifest. Per picture: enabled or not, which SKUs it offers, price overrides, crop/position per product (a simple crop box on the preview), the effective DPI per SKU, mockups.
 - **Prices**: per SKU, with optional per-picture override. The admin shows Printful's cost (product + typical shipping), Stripe's fee and the margin next to each price.
@@ -172,7 +172,7 @@ quoted ──► checkout_open ──► paid ──► files_ready ──► su
 
 ## 9. Data
 
-SQLite on a Retain PVC, continuously replicated by Litestream to a new S3 bucket (hourly snapshots like cams-admin, continuous WAL shipping), plus a Velero file-system backup of a `VACUUM INTO` snapshot as a second line. Restore is tested before go-live. Klaus creates the bucket and IAM user (e.g. `klaushofrichter-k3s-shop-backups`). → [ADR-0014](adr/0014-data-store-and-backup.md)
+SQLite on a Retain PVC, continuously replicated by Litestream to a new S3 bucket (hourly snapshots like cams-admin, continuous WAL shipping), plus a Velero file-system backup of a `VACUUM INTO` snapshot as a second line. Restore is tested before go-live. Klaus creates the bucket and IAM user (e.g. `klaushofrichter-k3s-shop-backups`). → [ADR-0014](../adr/0014-data-store-and-backup.md)
 
 Tables (first cut): `skus`, `pictures` (uid, enabled, crop settings), `picture_skus` (offered, price override), `print_files`, `mockups`, `carts`, `cart_items`, `orders` (state, amounts, Stripe and Printful ids, quoted address), `order_items`, `order_events` (append-only history: every state change, webhook and admin action), `jobs`, `webhook_events` (raw events, unique on provider+id), `emails`.
 
@@ -183,14 +183,14 @@ Personal data: name, email, shipping address, order contents. No card data. Rete
 - Payment receipt: Stripe's receipt email (turn on in Stripe), plus the shop's own order confirmation with a link to the order status page.
 - Shipping: the shop emails the tracking link on `shipment_sent`. Printful does not email the end customer for API orders *(verify)*.
 - Klaus: an email for every new paid order (optional) and for every `needs_attention`.
-- Sending: needs an email provider. Options: Amazon SES (AWS is already in use), or an SMTP account Klaus has. → [ADR-0015](adr/0015-email-provider.md)
+- Sending: needs an email provider. Options: Amazon SES (AWS is already in use), or an SMTP account Klaus has. → [ADR-0015](../adr/0015-email-provider.md)
 
 ## 11. Legal pages, tax and costs
 
 These are Klaus's decisions; the shop will host what he approves. Not legal or tax advice.
 
 - **Pages**: terms of sale, privacy policy (Stripe and Printful as processors; the email provider; Google for admin sign-in only; cookies: cart and session only, no tracking), shipping and returns (mirrors Printful: misprints and damage reported within 30 days with a photo are reprinted or refunded; no change-of-mind returns, as every item is printed to order), contact/imprint.
-- **Sales tax / VAT** → [ADR-0012](adr/0012-sales-tax-and-vat.md). Facts: Stripe Tax only collects where Klaus is registered; US states require registration once sales into a state pass an economic-nexus threshold (commonly $100,000 a year), and Klaus's home state from the first sale if it taxes these goods; EU VAT on goods shipped from outside the EU has its own rules (IOSS for consignments up to €150). Separately, Printful charges Klaus US sales tax on its wholesale price unless he files resale certificates, and EU VAT unless he has a VAT id.
+- **Sales tax / VAT** → [ADR-0012](../adr/0012-sales-tax-and-vat.md). Facts: Stripe Tax only collects where Klaus is registered; US states require registration once sales into a state pass an economic-nexus threshold (commonly $100,000 a year), and Klaus's home state from the first sale if it taxes these goods; EU VAT on goods shipped from outside the EU has its own rules (IOSS for consignments up to €150). Separately, Printful charges Klaus US sales tax on its wholesale price unless he files resale certificates, and EU VAT unless he has a VAT id.
 - **Costs**: no monthly fees for Stripe or a Printful API store *(verify Printful)*. Per order: Printful wholesale + shipping (+ tax charged by Printful), Stripe 2.9% + 30¢ (+1.5% international, +1% conversion), Stripe Tax 0.5% if used. Fixed: S3 storage for backups (cents a month), email (SES: $0.10 per 1,000). The admin shows the margin per product so Klaus can price.
 
 ## 12. Open-source projects
@@ -207,11 +207,11 @@ Checked 2026-11-24 (commit dates from clones; nothing was run).
 | kerkkoh/simple-clothing-store | MIT, 2026-05 | v1 | PayPal | Broke when Printful retired legacy Basic-auth store keys for Bearer tokens; still confirms the wrong order id. |
 | notrab/headless-dropshipping-starter | no license, active | v1 | Stripe Payment Element | Good idea to copy (ideas only, no license): confirm the Printful draft only if the amount paid covers Printful's total. |
 
-Patterns we take (→ [ADR-0003](adr/0003-build-not-adapt.md)): one order id through Stripe (`client_reference_id`, metadata) and Printful (`external_id`); every state transition recorded with its cause; submit = look up by `external_id`, create draft, confirm; honour `Retry-After`; webhooks are hints followed by a re-fetch; a reconciliation sweep that alarms on paid orders that are stuck; the amount check before confirming.
+Patterns we take (→ [ADR-0003](../adr/0003-build-not-adapt.md)): one order id through Stripe (`client_reference_id`, metadata) and Printful (`external_id`); every state transition recorded with its cause; submit = look up by `external_id`, create draft, confirm; honour `Retry-After`; webhooks are hints followed by a re-fetch; a reconciliation sweep that alarms on paid orders that are stuck; the amount check before confirming.
 
 ## 13. Delivery plan (after Klaus's decisions)
 
-All of it follows the cluster's repository and deployment rules (→ [ADR-0016](adr/0016-follow-cluster-repository-rules.md)): calendar versions `YYYY.MM.DD.N` generated at deploy time, the three workflows, protected `production`, required checks `test`/`codeql`/`e2e`, Node 26, non-root image, the public-pages baseline.
+All of it follows the cluster's repository and deployment rules (→ [ADR-0016](../adr/0016-follow-cluster-repository-rules.md)): calendar versions `YYYY.MM.DD.N` generated at deploy time, the three workflows, protected `production`, required checks `test`/`codeql`/`e2e`, Node 26, non-root image, the public-pages baseline.
 
 1. Repo baseline: package.json (Node 26), `.gitignore` with `.env`, lint and unit tests, `production-checks.yml` with `npm audit --audit-level=high`, CodeQL, `build-push.yml`, `.github/dependabot.yml` (npm + github-actions, weekly Monday, labels `dependencies` and `ci`), README badge row, `CHANGELOG.md` with `## [Unreleased]`, Dockerfile (`ARG APP_VERSION=dev`, `USER 1000:1000`), `GET /health` with the version. Cluster: `production` branch protection, labels.
 2. Skeleton service: health, art manifest reader, public picture/product pages with fake data, admin sign-in.

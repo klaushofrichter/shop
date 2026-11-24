@@ -37,3 +37,4 @@ Option 3. All values are configuration; defaults below are proposals for Klaus t
 ## Notes
 
 - 2026-11-25: the threshold values above were proposals; the values in use live in deployment configuration (kube-setup, private), not in this public repository (review 1 F27, ADR-0028). The repeat-customer rule became cumulative and all reasons are recorded (docs/design/06 §8).
+- 2026-11-26, **proposed note** (round-2 reviews A and B, awaiting Klaus): a breaker reset releases only holds whose **sole** reason is the breaker (others stay for a decision), and counting restarts at the reset. The deployed threshold values are set privately in kube-setup and **should differ** from the proposals published above, which protect nothing once public. The checks run inside the payment transaction (docs/design/07 §2.1), so a restart can't skip them.
