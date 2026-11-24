@@ -10,6 +10,8 @@ import { defineConfig, devices } from '@playwright/test';
  *    site (read-only tests only).
  */
 const BASE_URL = process.env.BASE_URL;
+/** Test-only; the admin e2e mints a session cookie with it (docs/design/12 §1). */
+export const E2E_COOKIE_SECRET = process.env.E2E_COOKIE_SECRET || 'e2e-only-cookie-secret-not-a-real-one-0001';
 const LIVE = BASE_URL?.startsWith('https://');
 
 const chromiumLaunch = process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {};
@@ -41,7 +43,7 @@ export default defineConfig({
     : {
         command: 'npm run build && node dist/src/server.js',
         url: 'http://localhost:8080/health',
-        env: { PORT: '8080' },
+        env: { PORT: '8080', COOKIE_SECRET: E2E_COOKIE_SECRET, ALLOWED_EMAILS: 'e2e@example.com' },
         reuseExistingServer: !process.env.CI,
         timeout: 60_000,
       },
