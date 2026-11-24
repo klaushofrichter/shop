@@ -65,6 +65,17 @@ ALTER TABLE works ADD COLUMN listed INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE display_images ADD COLUMN height_px INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX display_images_work ON display_images(source_id, work_id);
 `,
+  // 3: the daily catalog check per SKU (docs/design/04 §2): the last good answer
+  // is kept when Printful doesn't answer; a mismatch disables the SKU.
+  `
+CREATE TABLE sku_checks (
+  sku_id TEXT PRIMARY KEY,
+  ok INTEGER NOT NULL,
+  wholesale_cents INTEGER,
+  problem TEXT,
+  checked_at TEXT NOT NULL
+);
+`,
 ];
 
 export const MODE_MIGRATIONS: string[] = [

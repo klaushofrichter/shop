@@ -21,7 +21,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 - Cluster, 2026-11-25: a fork PR can reach a self-hosted runner on a public repository; the shop's runner gets no Docker-in-Docker and the repository requires approval for outside contributors. kube-setup is private (threshold values and store ids go there). Secret scanning and push protection are on.
 
 - **Step 2 done** (PR #12): configuration and mode checks, SKU and source files, both database files with migrations, the `Clock`, the job runner and `/health/worker`.
-- **Step 3 in progress**, in two PRs: (a) the art adapter, works in `catalog.db`, original checks by SHA-256 and display images at `/img/*`; (b) the Printful adapter (catalog, shipping rates, files) and mock Printful stage 1.
+- **Step 3** (PR #13): the art adapter (contract test against a recorded manifest), works in `catalog.db`, original checks by SHA-256 and display images (`/img/*`); the Printful adapter (identity, catalog, shipping rates, file library) with startup verification (wrong answer stops the start, no answer doesn't), the daily SKU check, print-file registration and `/files/*`; mock Printful stage 1 (`mocks/printful/`) with request validation against the pinned v2 spec.
 
 ## Next
 

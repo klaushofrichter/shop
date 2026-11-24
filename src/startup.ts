@@ -17,6 +17,9 @@ import { registerCatalogJobs, scheduleSourceRefresh } from './catalog/jobs';
 import { FileStore } from './images/store';
 import { JobRunner } from './jobs';
 import { createSources } from './sources';
+import { verifyIdentity } from './providers/checks';
+import { ProviderStatus, registerProviderJobs, scheduleProviderJobs } from './providers/jobs';
+import { PrintfulClient } from './providers/printful';
 import { workerHealth } from './worker-health';
 
 export interface Shop {
@@ -26,6 +29,14 @@ export interface Shop {
   dbs: Databases;
   runner: JobRunner;
   app: Express;
+  provider?: PrintfulClient;
+  providerStatus?: ProviderStatus;
+  /**
+   * Checks that need the network, before the shop listens: Printful's store
+   * and scopes. A wrong answer throws (the start is refused); no answer leaves
+   * the provider unverified and the shop starts anyway (06 §3).
+   */
+  ready(): Promise<void>;
   stop(): void;
 }
 
@@ -56,16 +67,42 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
     dataDir: config.dataDir,
   });
   console.log(JSON.stringify({ level: 'info', msg: 'configuration', detail: describeConfig(config), skus: skus.skus.length, sources: sources.map((s) => s.id) }));
-  return {
+  const provider = config.printful.token ? new PrintfulClient({ baseUrl: config.printful.baseUrl, token: config.printful.token }) : undefined;
+  const shop: Shop = {
     config,
     skus,
     sources,
     dbs,
     runner,
     app,
+    provider,
+    async ready() {
+      if (!provider) {
+        log({ level: 'warn', msg: 'no Printful token: provider jobs off' });
+        return;
+      }
+      const verification = await verifyIdentity(provider, config.printful.expectedStore);
+      const status = new ProviderStatus(clock, verification);
+      shop.providerStatus = status;
+      log({ level: verification.state === 'verified' ? 'info' : 'warn', msg: `Printful ${verification.state}` });
+      registerProviderJobs(runner, {
+        provider,
+        status,
+        expectedStore: config.printful.expectedStore,
+        storeLabel: config.mode,
+        publicUrl: config.publicUrl,
+        catalog: dbs.catalog,
+        orders: dbs.orders,
+        clock,
+        skus,
+        log,
+      });
+      scheduleProviderJobs(dbs.orders, clock, status);
+    },
     stop() {
       runner.stop();
       dbs.close();
     },
   };
+  return shop;
 }

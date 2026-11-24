@@ -18,7 +18,7 @@ describe('database files (ADR-0029)', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'shop-db-'));
     dirs.push(dir);
     const dbs = openDatabases(dir, 'test');
-    expect(tables(dbs.catalog)).toEqual(['display_images', 'offers', 'print_files', 'provider_files', 'works']);
+    expect(tables(dbs.catalog)).toEqual(['display_images', 'offers', 'print_files', 'provider_files', 'sku_checks', 'works']);
     expect(tables(dbs.orders)).toContain('orders');
     expect(tables(dbs.orders)).not.toContain('works');
     expect(dbs.orders.prepare('PRAGMA journal_mode').get()).toEqual({ journal_mode: 'wal' });

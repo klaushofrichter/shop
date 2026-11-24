@@ -171,5 +171,6 @@ describe('/img', () => {
     expect((await request(app).get(`/img/${'0'.repeat(64)}.webp`)).status).toBe(404);
     expect((await request(app).get('/img/..%2F..%2Fetc%2Fpasswd')).status).toBe(404);
     expect((await request(app).get(`/img/${sha}.png`)).status).toBe(404);
+    expect(ok.headers['ratelimit-policy']).toMatch(/600/);
   });
 });
