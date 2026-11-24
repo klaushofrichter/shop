@@ -6,19 +6,21 @@ import { loadSkus, parseSources } from '../src/catalog-config';
 import { FakeClock } from '../src/clock';
 import { loadConfig, type Mode } from '../src/config';
 import { memoryDatabases } from '../src/db';
+import type { FulfilmentProvider } from '../src/providers/types';
 
 const SKUS = loadSkus('config/skus.json', 'test');
 const SOURCES = parseSources({ sources: [{ id: 'art', default: true, adapter: 'x', publicUrl: 'https://art.example.com', printsAllowedDefault: false }] });
 const SECRET = 's'.repeat(40);
 const LIMITS = { ...loadConfig({}).limits, maxItemsPerOrder: 5, maxQuantity: { default: 3, 'postcard-4x6': 4 } };
 
-function setup(opts: { mode?: Mode; gate?: boolean; key?: string } = {}) {
+function setup(opts: { mode?: Mode; gate?: boolean; key?: string; provider?: FulfilmentProvider } = {}) {
   const clock = new FakeClock();
   const { catalog, orders } = memoryDatabases();
   const app = createApp({
     publicSite: {
       catalog, orders, clock, mode: opts.mode ?? 'test', skus: SKUS, sources: SOURCES, limits: LIMITS, storeLabel: 'test',
       secret: SECRET, previewGate: opts.gate ?? false, previewKey: opts.key, adminSecret: SECRET, allowedEmails: ['admin@example.com'],
+      quote: { settings: loadConfig({}).quote, provider: opts.provider, providerReady: () => true, log: () => {} },
     },
   });
   const work = (id: string, sellable: string[], enabled = 1) => {
