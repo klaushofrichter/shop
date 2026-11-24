@@ -3,7 +3,7 @@ name: Deploy production
 # Scaffolding until kube-setup has the shop namespaces, the runner and the
 # Deployment (made by the Cluster session). The first push to `production` is
 # the first deploy; `production` is created and protected then. Adapted from
-# klaushofrichter/shop, the other plain-Deployment service with SQLite.
+# klaushofrichter/cams-admin, the other plain-Deployment service with SQLite.
 
 on:
   push:

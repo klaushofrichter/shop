@@ -1,152 +1,133 @@
 # 14. Mock services
 
-ADR-0024. A service, **shop-mocks**, that impersonates Printful's and Stripe's APIs
-closely enough that the shop can't tell the difference, in CI, on a developer machine
-and in a test deployment; and a verification harness that keeps the mocks honest
-against the real services.
+ADR-0024. Revised for review round 2 (2026-11-25): requests validated against the specs,
+Stripe fidelity details, one clock, more scenarios, shadow mode dropped, recording
+moved to the private repository and into the go-live orders, built step by step with
+the shop (review 1 F23, review 2 F12).
 
 ## 1. Goals
 
 | Id | Goal |
 |---|---|
-| M1 | Switching the shop between real and mock is configuration only: base URLs and keys. No mock-specific code paths in the shop. |
-| M2 | Covers every endpoint and webhook the shop uses ([05](05-quote-checkout-payment.md), [06](06-fulfilment.md)), with realistic state: orders progress, costs calculate asynchronously, shipments appear with tracking. |
-| M3 | Scriptable: tests and testers can force any failure in [06 §7](06-fulfilment.md#7-failure-handling) and any fail-safe in [06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders). |
-| M4 | Runs in CI (a container, and in-process for unit/integration tests), on a laptop, and as a cluster Deployment. |
-| M5 | **Verified** against the real services: responses conform to the published OpenAPI specs; recorded real interactions are compared with the mock's; read-only calls can be shadowed in real time. |
-| M6 | **Safe**: no path through the mocks or the verification can create a real payment or a real Printful order. |
+| M1 | Switching between real and mock is configuration only (`SHOP_MODE=mock`, base URLs, keys). No mock-specific code path in the shop. |
+| M2 | Covers every endpoint and webhook the shop uses, with realistic state (asynchronous costs, file processing, order progression, shipments, holds). |
+| M3 | Scriptable: every failure in [06 §7](06-fulfilment.md#7-failure-handling), every fail-safe in [06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders), every scenario in §6. |
+| M4 | Runs in-process for tests, as a container in CI, and as a Deployment in a mock-mode test environment. |
+| M5 | Verified: responses **and requests** conform to the published specs; behaviour is compared with recorded real interactions. |
+| M6 | Safe: no path through the mocks or their verification can create a real payment or a real Printful order. |
 
 ## 2. Shape
 
 ```
-             ┌──────────────────────────── shop-mocks (one Node 26 process) ───────────────────────────┐
- shop ──────►│ /printful/v2/...  /printful/orders/{id} (v1 cancel)       mock Printful                  │
- (adapter)   │ /stripe/v1/...                                            mock Stripe                    │
-             │ /stripe/checkout/{session}   ◄── tester's or Playwright's browser: Pay / Decline / 3DS…   │
-             │ /__mock/...                  ◄── control API: scenarios, clock, advance orders, inspect  │
-             │ webhook sender ──────────────────► shop /webhooks/printful, /webhooks/stripe (signed)    │
-             │ state: in memory, optional SQLite file; deterministic ids with a seed                     │
-             └───────────────────────────────────────────────────────────────────────────────────────────┘
+             ┌──────────────── shop-mocks (one Node 26 process) ────────────────┐
+ shop ──────►│ /printful/v2/…, /printful/orders/{id} (v1 cancel)   mock Printful │
+ (adapters)  │ /stripe/v1/…                                         mock Stripe  │
+ browser ───►│ /stripe/checkout/{session}   Pay / Decline / 3-D Secure / Cancel  │
+ tests ─────►│ /__mock/…                    control API (not exposed publicly)   │
+             │ webhook sender ───► shop /webhooks/printful, /webhooks/stripe      │
+             │ state in memory (optional SQLite file), seeded ids, the shared Clock│
+             └───────────────────────────────────────────────────────────────────┘
 ```
 
-- Node 26, Express, TypeScript, same conventions and CI as the shop (ADR-0016). Directory `mocks/` with its own package and image `ghcr.io/klaushofrichter/shop-mocks`.
-- Also exported as a library: `createMocks({ webhookTarget, clock })` returns the Express app, so vitest integration tests run it in-process on a random port.
+Directory `mocks/` with its own package and image `ghcr.io/klaushofrichter/shop-mocks`;
+also a library, `createMocks({ webhookTarget, clock, publicUrl })`, for in-process tests.
 
-## 3. Selecting mocks in the shop
+## 3. Selecting mocks
 
-| Variable | Real | Mock |
-|---|---|---|
-| `PRINTFUL_BASE_URL` | `https://api.printful.com` | `http://shop-mocks:8090/printful` |
-| `STRIPE_API_BASE` | `https://api.stripe.com` | `http://shop-mocks:8090/stripe` (stripe-node's `host`/`port`/`protocol` options) |
-| `PRINTFUL_TOKEN` | the real token | `pf_mock_…` |
-| `STRIPE_SECRET_KEY` | `rk_test_…` / `rk_live_…` | `rk_test_mock_…` |
-| webhook secrets | from registration | fixed test values the mock signs with |
-
-Guards (M6), enforced by the shop at startup:
-- a key that is not a mock key may only be sent to the official hosts; a mock key only to a non-official host. So a real key can never leak to a mock, and a mock configuration can never reach a real API by mistake;
-- `STRIPE_MODE=live` refuses mock URLs; the admin shows **MOCK** (in addition to TEST) when either provider is mocked.
-
-The mock rejects any key without the `_mock_` marker, so a real key sent to it by mistake is refused, not accepted silently.
+`SHOP_MODE=mock` (ADR-0029) sets `PRINTFUL_BASE_URL` and `STRIPE_API_BASE` to the mock
+and requires mock keys. Startup guards: a mock key only to a mock host, a real key only
+to a real host; the mock rejects anything that isn't a mock key. **Mock keys don't look
+like real keys** (short, oddly shaped, e.g. `mock-printful-1`, `mock-stripe-1`, fixed test
+webhook secrets of the same style), so secret scanners don't trip and nobody mistakes
+them (review 1 F23.10).
 
 ## 4. Mock Printful
 
-Endpoints (the subset the shop uses, response shapes from the v2 OpenAPI spec):
-- Catalog: `GET /v2/catalog-products/{id}`, `/catalog-variants/{id}`, `/catalog-products/{id}/mockup-styles`, `/catalog-variants/{id}/prices`, `/availability`. Data seeded from **recorded real responses** (§7), so variant ids, print areas and prices are real.
-- `POST /v2/shipping-rates`: a rate table by country/state/weight class, seeded from recorded real quotes; same response shape including `shipments[]` and the optional delivery fields.
-- Orders: `POST /v2/orders` (draft, `costs.calculation_status: calculating` then `done` after a configurable delay), `GET /v2/orders/{id}` and `@external_id`, `POST /v2/orders/{id}/confirmation`, `DELETE /v2/orders/{id}` (drafts only, as the real API), `GET /v2/orders/{id}/shipments`; v1 `DELETE /orders/{id}` (cancel). `external_id` uniqueness forever, as Printful.
-- Mockups: `POST /v2/mockup-tasks`, `GET /v2/mockup-tasks` returning a generated preview (the print file composited onto a plain product silhouette), with the 2–10 per minute limit enforced.
-- Files: `POST /v2/files`, `GET /v2/files/{id}` (fetches the URL like Printful does: `waiting` → `ok` with width, height, size, MIME type, or `failed`; de-duplicates by URL). `DELETE /v2/files/{id}` answers 404, as the real API does.
-- Webhooks: `POST/GET/DELETE /v2/webhooks` returning `secret_key` (hex) and `public_key`; events delivered with `x-pf-webhook-signature` (HMAC-SHA256 of the body with the hex-decoded secret) and `x-pf-webhook-public-key`, retried at 1, 4, 16, 64, 256, 1024 minutes of **mock clock** time.
-- Rate limiting: `X-Ratelimit-*` headers and `429` with `Retry-After`, configurable.
+Response shapes from the v2 OpenAPI spec and the captures; behaviour from the captures
+where observed, from the spec where not.
 
-Order life cycle on the mock clock (defaults): confirmed → `inprocess` after 1 h → `shipment_sent` (carrier "USPS", a fake tracking number and a `tracking_url` to the mock's own tracking page) after 2 days → `shipment_delivered` after 5 days; each step emits its webhook. Multi-facility orders split into two shipments when they contain both apparel and paper products (as Printful does by departure facility).
+- Catalog: products, variants, prices, availability, mockup styles for the configured SKUs (seeded from scrubbed captures).
+- `POST /v2/shipping-rates`: a rate table by state and item class; the error shapes of the captures (missing state 400, invalid state 400, unknown variant 404, string id 400).
+- Files: `POST /v2/files` → `waiting`, then `ok` (width, height, size, MIME type) or `failed` after a delay; de-duplicated by URL; `visible` honoured; `DELETE /v2/files/{id}` → 404 (as the real API).
+- Orders: create (draft, costs `calculating` → `done`, or `failed` by scenario), get, `@external_id`, `PATCH` (costs back to `calculating`), confirm, v2 `DELETE` (drafts), v1 `DELETE` (→ `canceled`, stays visible), shipments; `external_id` unique forever (400 with the captured message); statuses including `inreview`; `store_id` in every webhook.
+- Mockups: tasks `pending` → `completed` after ~20 s mock time; 2–10 per minute enforced.
+- Webhooks: configuration with `secret_key`, `public_key`, `expires_at`; deliveries with `x-pf-webhook-signature` and `x-pf-webhook-public-key`, `occurred_at`, `retries`, `store_id`; retries at 1, 4, 16, 64, 256, 1024 minutes of mock time; shipment details only via `GET …/shipments` (the webhook body carries no carrier or estimate, as in the spec).
+- Rate-limit headers as captured (`x-ratelimit-policy: 120;w=60;`, `remaining`, `reset`); 429 with `Retry-After`.
+- **Everything after confirmation is spec-derived and unverified** until the go-live recording (§7.3); the code marks those behaviours as such.
 
 ## 5. Mock Stripe
 
-- `POST /v1/customers`, `GET /v1/customers/{id}`.
-- `POST /v1/checkout/sessions` (validates the parameters the shop sends against Stripe's spec; idempotency keys honoured), `GET /v1/checkout/sessions/{id}` with `expand[]=payment_intent`, `POST /v1/checkout/sessions/{id}/expire`.
-- **Checkout page** `GET /stripe/checkout/{session}`: shows line items, shipping, tax and total as Stripe would compute them, and buttons that mirror Stripe's test cards: *Pay* (4242…), *Decline* (…0002), *3-D Secure fail*, *Delayed payment then succeed / fail*, *Cancel* (→ cancel_url). Accessible markup so Playwright drives it by role.
-- Payment results: PaymentIntent and Charge objects with `outcome.risk_level` (settable: `normal`, `elevated`, `highest`) and `payment_method_details.card.fingerprint` (settable, to test the repeat-customer hold).
-- Tax: when `automatic_tax.enabled`, a configurable rate table by state (default: a fixed rate for one "registered" state, zero elsewhere), mirroring Stripe Tax's fields (`total_details.amount_tax`).
-- `POST /v1/refunds`; `charge.refunded`.
-- Disputes: `POST /__mock/stripe/charges/{id}/dispute` creates `charge.dispute.created`.
-- Events: `GET /v1/events/{id}`; webhook delivery with a correct `Stripe-Signature` (`t=…,v1=` HMAC-SHA256 of `t.payload` with the endpoint secret), the same event types and payload shapes as Stripe's API version pinned by the shop.
+- Form-encoded bodies with bracket keys; `expand[]`; Stripe's error envelope; **requests with any `Stripe-Version` other than the pinned one are rejected**; idempotency: a replay returns the first response, different parameters → 400 (captured message).
+- Customers (create, get, delete); Checkout Sessions (create with the shop's parameters validated, get, expire); the session `url` is the mock's **public** checkout page address (a setting, so a phone can reach it in a mock-mode deployment; same origin for the CSP's `form-action`).
+- **Checkout page**: shows items, shipping, tax, total and the `custom_text` ship-to line; buttons mirroring test cards: Pay, Decline, 3-D Secure fail, Cancel; accessible markup for Playwright.
+- Payments: PaymentIntent with `latest_charge` (`outcome.risk_level` and `payment_method_details.card.fingerprint` settable, or absent as for some wallets).
+- Tax: a table with one state that taxes shipping (Texas-like) and one that doesn't; `total_details.amount_tax`, `shipping_cost.amount_subtotal` vs `amount_total` as in the pinned version.
+- Refunds (`charge_already_refunded`, `refund.failed` by scenario), disputes, early fraud warnings.
+- Events and webhooks: `Stripe-Signature` (`t=…,v1=…`), payloads in the pinned version; one scenario sends a 2017-shaped payload.
 
-## 6. Control API (`/__mock`, never exposed publicly)
+## 6. Control API
+
+`/__mock/*`, never routed publicly:
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /__mock/reset` | Clear state (between tests), optional seed. |
-| `POST /__mock/clock/advance {duration}` | Move the mock clock; due order progressions and webhook retries fire. |
-| `POST /__mock/scenario {provider, rule}` | Inject behaviour, e.g. `{"match":"POST /v2/orders","respond":"timeout_after_create","times":1}`, `"status":503`, `"status":429,"retryAfter":30`, `"permanent":"invalid_address"`, `costs_delay`, `hold:"billing"`, `cancel`, `return`. |
-| `POST /__mock/printful/orders/{id}/advance {to}` | Jump an order to a state, emitting webhooks. |
-| `POST /__mock/webhooks/pause`, `/resume`, `/drop-next` | Simulate lost or delayed webhooks. |
-| `GET /__mock/requests` | Every request the mock received (for assertions: "exactly one order was created"). |
-| `GET /__mock/state` | Orders, sessions, payments, refunds as the mock sees them. |
+| `POST /__mock/reset` | clear state, seed |
+| `POST /__mock/clock/advance` | move the **shared clock** (shop and mock use one `Clock`; in a deployed mock environment a clock offset, refused outside mock mode) |
+| `POST /__mock/scenario` | inject behaviour: status codes, 429 with `Retry-After`, timeouts, **confirm that succeeds but whose answer is lost**, **cancel whose answer is lost**, costs `failed`, `inreview`, holds, cancellation by Printful, returns, refund failure, dispute, early fraud warning |
+| `POST /__mock/webhooks/{pause,resume,drop-next,duplicate-next,reorder}` | lost, duplicated and reordered deliveries |
+| `POST /__mock/webhooks/send` | a delivery with a **bad signature** or a **stale timestamp** |
+| `POST /__mock/stripe/sessions/{id}/pay` | **pay after cancel** or after the shop closed the checkout; two paid sessions for one cart |
+| `POST /__mock/printful/orders/{id}/advance` | jump an order to a state, emitting webhooks |
+| `GET /__mock/requests`, `GET /__mock/state` | assertions and the oracle for the invariant tests |
 
 ## 7. Verification against the real services
 
-Four complementary checks. All of them touch real services only in the ways allowed
-by M6.
+**7.1 Spec conformance, every CI run.** The mock validates every **request** it receives
+against the pinned Printful v2 OpenAPI document and Stripe's OpenAPI spec of the pinned
+version, and in tests **fails on unknown fields** (Printful tends to ignore a misspelled
+field silently; the strict mock is the only place a typo in `orientation` would show).
+Its own responses are validated too.
 
-**7.1 Schema conformance (every CI run).** The mock's own test suite validates every
-response it produces against the published specs: Printful's v2 OpenAPI document
-(`https://developers.printful.com/docs/v2-beta/openapi.json`, a pinned copy in
-`mocks/specs/` refreshed by a script) and Stripe's OpenAPI spec (`stripe/openapi` on
-GitHub, pinned to the API version the shop uses). A mock response that violates the
-spec fails CI.
+**7.2 Record and compare.** The recorder runs against the **test store** and Stripe
+test mode only (never live), writes raw recordings to the **private repository**
+(ADR-0028), and an **allow-list scrubber** (per endpoint: the fields kept verbatim;
+everything else replaced by typed placeholders; ids rewritten consistently) produces the
+synthetic fixtures committed here. Scenarios: catalog, shipping rates and errors, file
+registration, mockup tasks, **draft create → get → patch → delete**, v1 cancel of a draft,
+Stripe customers and sessions. The comparator replays the scenarios against the mock and
+diffs status codes, headers, structure, types, enums and state changes. It runs by hand
+or on a schedule on the cluster (no CI in the private repository). A drift report is a
+file in the private repository; only scrubbed findings reach the public one.
 
-**7.2 Record and compare (scheduled, and on demand).**
-- A **recorder** (`mocks/verify/record.ts`) runs a fixed list of scenarios against the real services and stores normalised request/response pairs as fixtures (`mocks/fixtures/real/<provider>/<scenario>.json`, with tokens, ids, timestamps, emails and addresses replaced by placeholders):
-  - Printful, **read-only and order-free**: catalog products/variants/prices/availability/mockup-styles for every configured SKU; shipping rates for a set of addresses and carts; webhook configuration read; error responses (unknown variant, invalid address on shipping rates, missing auth). Mockup tasks optionally (no cost, rate-limited).
-  - Stripe, **test mode only** (`rk_test_`; the recorder refuses any other key): create Customer; create Checkout Session with the shop's exact parameters; retrieve; expire; error cases (bad parameter, idempotency conflict). Completing a test payment needs Stripe's hosted page: optional, by Playwright with test card 4242 (still test mode, no money), which also records the real `checkout.session.completed` payload via a test webhook endpoint.
-- The same scenarios run against the mock; a **comparator** diffs the normalised pairs: status codes, header presence (`X-Ratelimit-*`), JSON structure, types, enum values, field presence (required and optional), error shapes. Values that legitimately differ (ids, times, prices if the seed is old) are compared by type or tolerance. The result is a drift report.
-- Run where the secrets live: on the cluster (in-cluster runner, weekly, using the test-mode Stripe key and the Printful token from the shop's Secret), not on GitHub-hosted runners. Drift opens a GitHub issue with the report; refreshed fixtures come back as a PR, so the mock and its seed data follow the real APIs.
+**7.3 Recording at go-live.** The go-live test orders ([12 §4](12-testing.md#4-go-live-checklist-klaus-decides-each-box))
+are recorded: every webhook body with its signature headers, every GET; one confirmed
+order is cancelled on purpose. This closes the "after confirmation" gap.
 
-**7.3 Shadow mode (real time, test deployment).** With `SHADOW_PRINTFUL=readonly`, the
-shop's Printful adapter sends every read-only call (catalog, availability, shipping
-rates) to both the mock and the real API, uses the real answer, and records a diff
-(metric `shop_shadow_diffs_total{endpoint}` and a log line with the normalised
-difference). Write calls (orders, confirmation, files, webhooks config) are never
-shadowed. Same for Stripe in test mode with `SHADOW_STRIPE=test` for retrieve calls.
+**7.4 Real Stripe hosted page, weekly.** Playwright through Stripe's real test-mode page
+with card 4242 and a real test-mode webhook ([12 §3](12-testing.md#3-against-the-real-services-before-go-live)).
 
-**7.4 Webhook signatures from the real services.** Recorded real webhook deliveries (a
-Stripe test-mode event, a Printful event from the webhook test tool or a mockup task
-finish) are replayed against the shop's verification code in CI, so the mock's signing
-and the real signing are proven to verify identically.
-
-**Gap, by Klaus's rule (no Printful orders):** order creation, confirmation, cancel and
-shipment payloads can't be recorded from the real API. They are checked against the
-OpenAPI spec (7.1) and Printful's documented examples. If Klaus later allows **draft**
-orders (never charged or fulfilled, deleted right after), the recorder gains
-create-draft → get → delete scenarios and closes most of this gap.
+Shadow mode is **dropped** (review 1 F23.2): it was a mock-specific path in the adapter
+and put a real token into a mock deployment.
 
 ## 8. In CI
 
-- `mocks` gets its own jobs in `production-checks.yml`: `mocks-test` (unit + schema conformance) as part of `test`, so required checks stay `test`, `codeql`, `e2e`.
-- The shop's integration tests start the mocks in-process.
-- The shop's `e2e` job runs the shop image and the mocks image side by side (`docker run --network host`), and Playwright completes purchases through the mock Checkout page: happy path, decline, cancel, held order + approval in the admin, refund.
-- No secrets in GitHub Actions for any of this.
+The mocks' tests (spec conformance, scenarios) run in the `test` job; the shop's
+integration and invariant tests start the mocks in-process; `e2e` runs both images side
+by side. No secrets.
 
-## 9. Test deployment
+## 9. Mock-mode deployment
 
-Namespace `shop` holds both Deployments while testing: `shop` configured with mock
-URLs and mock keys, and `shop-mocks` (ClusterIP only). The mock Checkout page and the
-mock tracking page are reached through the shop's ingress under `/__mock-pages/`
-(an Ingress path routed to `shop-mocks`, present only in test deployments), so a
-tester can buy from a phone. `/__mock` control endpoints are cluster-internal only.
-
-**No real transaction can happen there**, by construction:
-- the shop's Secret in the test deployment contains **no real Stripe key and no real Printful token** (`scripts/create-secrets.sh --mock`);
-- the startup guards of §3 refuse real hosts with mock keys;
-- `FULFILMENT_CONFIRM=false` in addition.
-Shadow mode (7.3) is the only exception and is off by default; turning it on adds the
-real Printful token for **read-only** calls, which create no orders.
+`SHOP_MODE=mock` on the cluster: the shop and shop-mocks (ClusterIP), the mock's checkout
+and tracking pages routed through the shop's ingress under `/__mock-pages/` behind the
+preview gate, `/__mock` cluster-internal. **No real transaction can happen** (R19): the
+shop's Secret holds only mock keys (`create-secrets.sh --mock`), and the startup guards
+refuse real hosts with mock keys.
 
 ## 10. Build order
 
-Mocks come early, because every later step tests against them (updates [13 §1](13-plan-and-open-questions.md#1-build-order)):
-1. Skeleton, control API, clock, request log; Printful catalog and shipping rates seeded from the existing probe data; schema conformance in CI.
-2. Printful orders, webhooks with signing, life cycle; Stripe Customers, Sessions, Checkout page, events, refunds.
-3. Recorder + comparator; first real recording (Printful read-only, Stripe test mode).
-4. Shadow mode in the shop's adapter.
+Each mock piece is built when the shop step that needs it starts (review 1 F23.11;
+expect roughly the shop's own size again):
+1. With step 3 (catalog, shipping rates): mock catalog, shipping rates, files, the clock, the control API skeleton, spec validation.
+2. With step 6 (checkout): mock Stripe customers, sessions, checkout page, events and signatures.
+3. With step 7 (submission): orders, webhooks, holds, shipments, all §6 scenarios; the invariant tests.
+4. After the MVP (review 2 F12): the recorder, the allow-list scrubber and the comparator; then the go-live recording.

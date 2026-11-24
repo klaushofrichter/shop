@@ -33,3 +33,7 @@ Option 3. All values are configuration; defaults below are proposals for Klaus t
 - Large or unusual orders wait for Klaus, at most 72 h, and fail safe to a refund. Klaus gets an alert for each.
 - New state `awaiting_approval`; new admin actions Approve, Reset breaker; Radar's risk level is read from the PaymentIntent's charge (needs Charges read, already granted).
 - The thresholds trade a little friction for real customers against bounded damage from misuse; Klaus can tune them from his experience.
+
+## Notes
+
+- 2026-11-25: the threshold values above were proposals; the values in use live in deployment configuration (kube-setup, private), not in this public repository (review 1 F27, ADR-0028). The repeat-customer rule became cumulative and all reasons are recorded (docs/design/06 §8).

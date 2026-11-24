@@ -23,3 +23,7 @@ Option 1, with the windows as proposed: retries for 24 h; automatic full refund 
 - A customer never waits indefinitely for a paid order. Stripe keeps its fee on refunds.
 - Printful cancellations (`order_canceled`) and refunds (`order_refunded`, a credit to Klaus's Printful wallet) also land in needs_attention; refunding the customer stays Klaus's decision there.
 - A cost guard stops confirmation when Printful's estimate exceeds what the customer paid (minus a margin floor).
+
+## Notes
+
+- 2026-11-25: Printful cancellations refund automatically when ADR-0034's invariant I4 allows (a fresh read shows Printful can't charge); otherwise Klaus is alerted. Holds replace `needs_attention` (ADR-0034).

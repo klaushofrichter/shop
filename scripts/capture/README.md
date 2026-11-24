@@ -15,7 +15,7 @@ orders, "but never actually order something". The script enforces it:
 Run on the cluster node (the keys are in its `.env`):
 
 ```bash
-NODE_USE_ENV_PROXY=1 node scripts/capture/capture-apis.mjs --env ~/Development/shop/.env --out captures/$(date +%F)
+NODE_USE_ENV_PROXY=1 node scripts/capture/capture-apis.mjs --env <path to the shop .env on the node> --out captures/$(date +%F)
 # options: --only printful,stripe,estimation,files (comma-separated), --no-drafts,
 #          --stripe-version 2026-11-18.endive (default: the version stripe-node pins)
 ```

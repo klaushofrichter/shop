@@ -1,141 +1,126 @@
 # 5. Quote, checkout and payment
 
+Revised for review round 2 (2026-11-25): cart with any pictures (ADR-0026), quote
+without Printful's estimation task but with a pre-payment cost check (ADR-0036), one
+open checkout per cart, shipping compared without tax, Stripe webhook endpoints with a
+pinned version (ADR-0030), more Checkout parameters, refund details.
+
 ## 1. Money
 
-- USD only (ADR-0011). All amounts are integer cents. Printful returns decimal strings (`"8.49"`); the adapter converts with exact decimal parsing (no floats).
-- Item prices come from the offer ([04 §3](04-catalog-and-print-files.md#3-offers-and-prices)), shipping from Printful's quote, tax (if enabled) from Stripe. **No amount is accepted from the browser** (Q3): the browser sends SKU ids, quantities, an address and a shipping option id.
+- USD only (ADR-0011). Integer cents everywhere. Printful's decimal strings are converted at the adapter boundary with exact decimal parsing.
+- Prices come from the offers, shipping from Printful's rates, tax from Stripe. **The browser sends only ids, quantities, an address and a shipping option id** (Q3).
 
 ## 2. Quote
 
 `POST /cart/address` → `quote.create(cart, address)`:
 
-1. Validate the address ([03 §4](03-customer-journey.md#4-cart-and-address)) and that the country is enabled.
-2. Call the provider: Printful `POST /v2/shipping-rates`
+1. **Validate the address locally**: required fields ([03 §4](03-customer-journey.md#4-cart-and-address)); the country is enabled; **ZIP ↔ state** consistency from a static ZIP-prefix table (< 1 KB, no network). The captures showed Printful's own checks catch exactly this and nothing more (no street validation), so the local table gives the same protection in under a millisecond (review 2 F6). A wrong street can only surface later as a returned parcel ([06 §7](06-fulfilment.md#7-failure-handling)).
+2. **Shipping rates**: Printful `POST /v2/shipping-rates` with the recipient's country, state, ZIP, city and street, and every cart item as `{source: catalog, catalog_variant_id, quantity}` (integers; strings are rejected). One call, ~1 s (Q6 holds). Keep at most 3 options, `STANDARD` first. A `400`/`404` "cannot ship" → the page says which item can't ship there.
+3. **Pre-payment cost check** (review 1 F9, ADR-0036): estimated provider cost = Σ (cached wholesale price of the variant × quantity, from the daily catalog refresh) + the quoted shipping rate + an allowance for the sales tax Printful charges Klaus (`PROVIDER_TAX_ALLOWANCE_PCT`, until his resale certificate is on file). If `items + shipping − Stripe fee estimate − estimated provider cost < MARGIN_FLOOR_CENTS`, **Pay is not offered** ("This combination can't be ordered right now") and Klaus gets an alert: it means a price is misconfigured. Customer tax never counts as revenue.
+4. Optional shipping markup (`SHIPPING_MARKUP_CENTS`, default 0).
+5. Store the **quote** (items with unit prices, normalised address, options, `est_cost_cents`, `expires_at = now + 30 min`) and link it to the cart.
 
-   ```json
-   {
-     "recipient": { "name": "Jane Doe", "address1": "1 Main St", "address2": null, "city": "Austin",
-                    "state_code": "TX", "zip": "78701", "country_code": "US", "phone": null },
-     "order_items": [
-       { "source": "catalog", "catalog_variant_id": 4651, "quantity": 1 },
-       { "source": "catalog", "catalog_variant_id": 11513, "quantity": 4 }
-     ],
-     "currency": "USD"
-   }
-   ```
+"Normalised address": trimmed, internal whitespace collapsed, US state as its two-letter
+code, ZIP as 5 or 9 digits with a hyphen, the country code upper-case, line 2 empty →
+null. Printful accepts Latin characters; non-Latin input is refused with a message.
+PO boxes are allowed (USPS delivers them; Printful ships standard by USPS); APO/FPO/DPO
+and US territories are not in the launch list (ADR-0011 scope).
 
-   Response (per option): `shipping` (method id, e.g. `STANDARD`), `shipping_method_name`, `rate`, `currency`, `min/max_delivery_days`, `min/max_delivery_dates` (may be absent), `shipments[]` (one entry per departure facility, with `customs_fees_possible`). Confirmed against the v2 OpenAPI spec, 2026-11-24.
-3. Keep at most 3 options: `STANDARD` first, then by price. A `400` "cannot ship" means no option: the quote page says so.
-4. Optional shipping markup: `SHIPPING_MARKUP_CENTS` per order (default 0; Klaus's choice).
-5. **Validate the address and get the exact cost** with a Printful order-estimation task (`POST /v2/order-estimation-tasks`, no order is created; ~2–3 s): Printful rejects invalid addresses when an order is created, which in this flow is after payment (captured 2026-11-24), so the shop asks before payment. If the estimate rejects the address, the address form shows Printful's message. Captured: the estimate rejects state/ZIP mismatches and invalid states (400, the same messages as order creation); Printful validates no street addresses at all, so the form requires the street line and a wrong street can only surface as a returned parcel ([research](../research/api-capture-findings.md)).
-6. Store a **quote** row: cart snapshot (SKU, variant, quantity, unit price), normalised address, options, `expires_at = now + 30 min`. The quote id goes into the cart.
-
-Caching: an identical request (same variants, quantities, country, state, zip) within 5 minutes reuses the previous response, which protects the 120 requests/minute limit and makes "back" cheap.
-
-Rate limit on the public side: quotes are limited per client IP (e.g. 20 per 10 minutes), since each one costs a Printful call ([10 §2](10-security-privacy-legal.md#2-threats-and-controls)).
+The public quote endpoint is rate-limited per client address (each quote costs one
+Printful call).
 
 ## 3. Checkout Session
 
-`POST /checkout` (body: quote id, chosen shipping option id, CSRF token; checkbox "I agree to the terms of sale" if Stripe's own consent collection is not used):
+`POST /checkout` (CSRF token, the quote id, the chosen shipping option):
 
-1. Re-validate: hard limits (ADR-0020: quantity per item, items per order, order total) — exceeded → the cart page with a message; quote exists, not expired, belongs to this cart; every offer still enabled, its print file ready, its price unchanged; the chosen option is in the quote. On any change → re-quote and show `/quote` again with a notice.
-2. Create the **order** in one transaction: `orders` row (state `checkout_open`, order number, status token hash, address, email, shipping method and amount, item subtotal, expected total excluding tax), `order_items` rows (copies of SKU name, variant, picture title, unit price, quantity, print file hash), and a transition row (cause `storefront`).
-3. Create a **Stripe Customer** for this order:
-   ```
-   customers.create({ email, name, phone,
-     address:  { line1, line2, city, state, postal_code, country },   // for tax
-     shipping: { name, phone, address: { … same … } },
-     metadata: { order_id } })
-   ```
-   One Customer per order (no accounts). This lets Checkout show the address the customer already typed, keeps the paid-for address identical to the quoted one, and gives Stripe Tax its address (ADR-0023).
-4. Create the **Checkout Session** with `Idempotency-Key: checkout-<order_id>`:
+1. **One open checkout per cart** (I9, review 1 F2). If the cart has an `open_order_id` whose session is still open and whose quote and option are unchanged → redirect to that session's URL again. If anything changed → expire that session at Stripe and wait for the confirmation (§5) before continuing. A double-click is caught by the same rule.
+2. Re-validate: limits ([06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders)), quote not expired, every offer still enabled with a ready print file, prices unchanged. On any change → re-quote, show `/quote` with a notice.
+3. Create the **order** in one transaction: `orders` row (`payment_state = checkout_open`, order number, token hash, address, e-mail, shipping, amounts), `order_items`, an `order_events` row; set `carts.open_order_id`.
+4. Create a **Stripe Customer** for this order (ADR-0023): e-mail, name, `address` and `shipping` = the quoted address (Stripe Tax reads it), metadata `order_id`. No phone (ADR-0031).
+5. Create the **Checkout Session**, `Stripe-Version: 2026-11-18.endive`, `Idempotency-Key: checkout-<order id>`:
 
-   | Parameter | Value |
-   |---|---|
-   | `mode` | `payment` |
-   | `customer` | the Customer from step 3 |
-   | `client_reference_id` | order id |
-   | `metadata.order_id`, `payment_intent_data.metadata.order_id` | order id |
-   | `line_items[]` | per item: `price_data { currency: usd, unit_amount, tax_behavior: exclusive, product_data { name: "Framed print 8 × 10 in, black frame — Undertow", images: [mockup URL], tax_code } }`, `quantity` |
-   | `shipping_options` | exactly one: `shipping_rate_data { type: fixed_amount, fixed_amount { amount, currency: usd }, display_name, delivery_estimate { minimum/maximum business_day }, tax_behavior: exclusive, tax_code: txcd_92010001 }`. Works without `shipping_address_collection` (captured 2026-11-24: total = items + shipping). |
-   | `shipping_address_collection` | not set: the address comes from the Customer |
-   | `billing_address_collection` | `auto` |
-   | `automatic_tax.enabled` | `TAX_ENABLED` (ADR-0012) |
-   | `consent_collection.terms_of_service` | `required` (needs the terms URL set in the Stripe Dashboard) |
-   | `payment_method_types` | not set (Dashboard decides); the Dashboard should enable only **immediate** methods (cards, Apple Pay, Google Pay, Link) so payment is never delayed |
-   | `allow_promotion_codes` | `false` (out of scope) |
-   | `expires_at` | now + 60 min |
-   | `success_url` | `https://shop…/order/<id>?t=<token>&from=checkout` |
-   | `cancel_url` | `https://shop…/checkout/cancelled?o=<id>&t=<token>` |
+| Parameter | Value |
+|---|---|
+| `mode` | `payment` |
+| `customer` | from step 4 |
+| `client_reference_id`, `metadata.order_id`, `payment_intent_data.metadata.order_id` | order id |
+| `payment_intent_data.description` | `Order 48213` (so Stripe's receipt names the order) |
+| `payment_intent_data.shipping` | the recipient (Radar uses it; dispute evidence starts there) |
+| `payment_method_types` | set in code: `card` and `link` only (cards cover Apple Pay and Google Pay). No delayed method can be enabled by a Dashboard toggle. |
+| `line_items[]` | per item: `price_data { currency: usd, unit_amount, tax_behavior: exclusive, product_data { name: "Framed print 12 × 16 in, black — <title>", images: [display image URL], tax_code } }`, `quantity` |
+| `shipping_options` | exactly one, `shipping_rate_data { type: fixed_amount, fixed_amount, display_name, delivery_estimate, tax_behavior: exclusive, tax_code: txcd_92010001 }`. Works without `shipping_address_collection` (captured). |
+| `shipping_address_collection` | not set |
+| `custom_text.submit.message` | "Ships to Jane Doe, 1 Main St, Austin, TX 78701" (Stripe's page doesn't show the Customer's address otherwise; review 1 F13) |
+| `billing_address_collection` | `auto` |
+| `automatic_tax.enabled` | `true` when Stripe Tax is configured for the mode (ADR-0012) |
+| `consent_collection.terms_of_service` | `required` (terms URL set in the Stripe Dashboard) |
+| `allow_promotion_codes` | `false` |
+| `expires_at` | now + **30 min** (Stripe's minimum; narrows every window) |
+| `success_url` | `https://shop…/order/<id>?t=<token>&from=checkout` |
+| `cancel_url` | `https://shop…/cart?from=checkout` (side-effect free, §5) |
 
-5. Store `stripe_customer_id`, `stripe_checkout_session_id`; `303` to `session.url`.
+6. Store the Customer and Session ids; `303` to `session.url`.
 
-If step 3 or 4 fails: the order goes to `abandoned` (cause `storefront`, note with the
-error), the customer sees "Payment is unavailable right now, please try again", and no
-Stripe object is left that could be paid.
+Errors: `customer_tax_location_invalid` from Stripe Tax → the address form, with the
+message (it validates the Customer's address and does not fall back). Any other Stripe
+failure → no order remains open: the order goes to `closed_unpaid` (there is no session
+to pay) and the cart is unchanged; "Payment is unavailable right now".
 
 ## 4. Payment webhooks
 
-`POST /webhooks/stripe` (raw body, before any JSON parser):
+**Endpoints** (ADR-0030): one per mode, created by Klaus in the Stripe Dashboard with the
+pinned API version `2026-11-18.endive` (an endpoint created without a version gets the
+account default, 2017-04-06, and its payloads would arrive in that shape), the URL
+`https://shop.klaushofrichter.net/webhooks/stripe` (live) or the test deployment's
+address (test), and exactly the events below. The signing secret goes into the node's
+`.env` as `STRIPE_TEST_WEBHOOK_SECRET` / `STRIPE_LIVE_WEBHOOK_SECRET`.
 
-1. Verify `Stripe-Signature` with the webhook secret of the current mode (300 s tolerance). Invalid → 400, nothing stored.
-2. Insert into `inbound_events` (provider `stripe`, `event.id` unique). A duplicate → 200 with no further work.
-3. Enqueue a job `stripe.event(<event id>)` and answer **200 immediately**.
+`POST /webhooks/stripe` (raw body): verify `Stripe-Signature` (300 s tolerance) → insert
+into `inbound_events` (unique event id; duplicate → 200) → enqueue → 200.
 
-Events subscribed (and nothing else):
+**Handlers use only `event.id`, `event.type` and `data.object.id` from the payload**; every
+other value comes from a re-fetch with the pinned version (review 1 F12). A test fixture
+in the 2017 shape proves it.
 
-| Event | Job does |
+| Event | Job does (after re-fetch) |
 |---|---|
-| `checkout.session.completed` | Re-fetch the session (`expand: payment_intent`). If `payment_status = paid`: check `currency = usd`, `amount_subtotal` = order's item subtotal, `shipping_cost.amount_total` = order's shipping, `customer` = order's customer; record `amount_total`, `total_details.amount_tax`, `payment_intent` id; transition `checkout_open → paid`; then the **fail-safe check** ([06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders)) either enqueues `order.submit` or moves the order to `awaiting_approval`. A mismatch → `needs_attention` with a note (should never happen: we created the session). If `unpaid` (delayed method): stay, wait for the async events. |
-| `checkout.session.async_payment_succeeded` | Same as completed-and-paid. |
-| `checkout.session.async_payment_failed` | `checkout_open → payment_failed` (terminal). |
-| `checkout.session.expired` | `checkout_open → expired` (terminal). |
-| `charge.refunded` | Record refunded amount (full → `refunded`; partial → annotation). Covers refunds made in the Stripe Dashboard too. |
-| `charge.dispute.created`, `charge.dispute.closed` | Annotate the order; alert Klaus (a dispute needs evidence: the shipment's tracking). |
+| `checkout.session.completed`, `checkout.session.async_payment_succeeded` | If paid (`expand: payment_intent.latest_charge`): check currency, `amount_subtotal` = items, **`shipping_cost.amount_subtotal`** = shipping (not `amount_total`, which includes tax where shipping is taxed, e.g. Texas; review 1 F3), and `amount_total = amount_subtotal + shipping subtotal + total_details.amount_tax`. Record paid amount, tax per line, PaymentIntent, card fingerprint and Radar risk level (absent for some methods: not a hold reason). `payment_state → paid` from `checkout_open` **or `closed_unpaid`** (I1). Then the fail-safe check ([06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders)). A mismatch → `paid` is still recorded, then an `attention` hold. |
+| `checkout.session.async_payment_failed` | `closed_unpaid` (no delayed methods are enabled; kept as a safety net) |
+| `checkout.session.expired` | `closed_unpaid` |
+| `charge.refunded`, `refund.updated`, `refund.failed` | Re-read the charge's `amount_refunded`: `partially_refunded` / `refunded`; I7 (cancel fulfilment or alert). A failed refund → `attention` hold. |
+| `radar.early_fraud_warning.created` | `dispute_state = warning`; not yet confirmed → `fraud` hold with action refund; confirmed and cancellable → cancel, then refund; otherwise alert (review 1 F6). |
+| `charge.dispute.created`, `charge.dispute.closed` | `dispute_state`; not confirmed → `fraud` hold, **no refund** (the bank already took the money); confirmed → cancel if cancellable; alert with the tracking evidence. |
 
-Webhook endpoint registration is a one-time script (`scripts/stripe-webhook.ts`)
-run per mode; it prints where the signing secret must go, never the secret. Stripe
-retries undelivered events for up to 3 days (live); reconciliation covers the rest
-([07 §5](07-orders-data-jobs.md#5-reconciliation)).
+Stripe retries for up to 3 days (live). Reconciliation covers the rest ([07 §5](07-orders-data-jobs.md#5-reconciliation)).
 
-## 5. The return to the shop
+## 5. Return from Stripe
 
-The success page does not wait for the webhook: if the order is still
-`checkout_open`, the page handler re-fetches the Checkout Session (id stored on the
-order) and, if paid, performs the same transition as the webhook job (idempotent: the
-conditional update lets only one of them win). So the customer sees "Payment received"
-at once, and a lost webhook does not leave the order unpaid in the shop.
+- **success_url**: exchanges the token for a cookie and redirects to the clean URL ([03 §7](03-customer-journey.md#7-order-status-page)). If the order is still `checkout_open`, the handler re-fetches the session and, if paid, performs the same transition as the webhook (conditional update: only one wins). The page refreshes itself while "confirming your payment".
+- **cancel_url**: shows the cart. **It changes nothing** (a GET with side effects is also triggered by link previews and history). The open session stays payable until it expires (≤ 30 min) or the next `POST /checkout` expires it (§3 step 1). If the customer pays it after all, that is a normal payment (I1).
 
 ## 6. Tax
 
-ADR-0012 (accepted): collect sales tax as legally required, via Stripe Tax; background
-and Klaus's steps in [research/sales-tax.md](../research/sales-tax.md).
-
-- `TAX_ENABLED=true` in live mode once Klaus's registration is in Stripe Tax (and a test-mode registration for testing). Stripe calculates only for states with a registration; elsewhere the tax is $0, which is correct while the shop is below other states' thresholds.
-- Prices are tax-exclusive; the quote page says "Sales tax, if any, is calculated on the payment page".
-- Tax codes in `config/skus.json` per SKU kind: `txcd_99999999` (general tangible goods) for prints, framed prints, postcards and mugs; `txcd_30011000` (Clothing & Footwear, confirmed) for t-shirts; `txcd_92010001` on the shipping rate.
-- After payment the shop stores `total_details.amount_tax` on the order and each line's tax (from the session's line items, `expand: line_items`), with the ship-to state and ZIP.
-- The admin exports, per period and state: items, shipping, tax collected, refunds (CSV), to cross-check Stripe's tax report when filing.
-- Address source: the Customer's address (ADR-0023). Captured 2026-11-24: a session with `automatic_tax` and the address only on the Customer is accepted with `automatic_tax.status: complete` (tax 0 without a test-mode registration; the amount is checked once one exists).
-- Printful separately charges Klaus tax on wholesale unless his resale certificate is on file (his step, not software).
+ADR-0012: Stripe Tax wherever Klaus is registered; tax-exclusive prices; tax codes
+`txcd_99999999` (prints, framed prints, postcards, mugs), `txcd_30011000` (t-shirts,
+captured), `txcd_92010001` (shipping). Per order and per line the tax is stored from the
+session. Stripe's own tax report is what gets filed (review 1 F29: no separate tax page).
+The quote page says "Sales tax, if any, is calculated on the payment page". Stripe Tax
+amounts are verified once Klaus adds a test-mode registration, with one state that taxes
+shipping (Texas) and one that doesn't.
 
 ## 7. Refunds
 
-- **Full refund**: `refunds.create({ payment_intent, reason: 'requested_by_customer' | 'duplicate' | 'fraudulent', metadata: { order_id } })` with `Idempotency-Key: refund-<order_id>-full`. Used by the failure policy ([06 §7](06-fulfilment.md#7-failure-handling)) and by the admin.
-- **Partial refund** (admin only, e.g. one damaged item after Printful refused a reprint): amount entered by Klaus, idempotency key with a counter.
-- Before refunding a paid order that reached Printful, the job cancels the Printful order if it is still cancellable ([06 §6](06-fulfilment.md#6-cancellation)); a refund never happens while Printful may still ship, except by Klaus's explicit choice.
-- Stripe keeps its fee on refunds; a refunded order costs Klaus about 2.9% + 30¢.
+- Before any refund, read the charge's `amount_refunded`; the idempotency key (`refund-<order>-<n>`) lives only 24 h at Stripe. `charge_already_refunded` counts as success. A refund is final only when it succeeds (`refund.updated`).
+- Write `orders.refund_requested_at` first (I3: no confirm afterwards), then the refund, then I7.
+- Full refunds: automatic per the hold rules (I4), or by Klaus in the admin. **Partial refunds** are made in the Stripe Dashboard; the shop records them from `charge.refunded` (review 1 F14/F29).
+- Stripe keeps its fee on refunds (about 2.9% + 30¢).
 
 ## 8. Keys and modes
 
-| Variable | Use |
+| Item | Value |
 |---|---|
-| `STRIPE_MODE` | `test` (default) or `live` |
-| API version | **pinned** in code: `2026-11-18.endive` (what stripe-node 23 pins). The account's default is `2017-04-06` (captured 2026-11-24), whose response shapes differ, so the shop never relies on the default. |
-| `STRIPE_SECRET_KEY` | the restricted key of the current mode; the pod only ever holds one. Built by `scripts/create-secrets.sh` from the node's `STRIPE_TEST_TOKEN`, or from `STRIPE_LIVE_TOKEN` at go-live ([11 §1](11-operations.md#1-deployment)). The process refuses to start if the key's prefix (`rk_test_`/`rk_live_`) doesn't match `STRIPE_MODE`. |
-| `STRIPE_WEBHOOK_SECRET` | `whsec_…` of that mode's endpoint registration |
-
-Restricted key permissions (set by Klaus, identical in both modes): Checkout Sessions
-write, Customers write, Refunds write, PaymentIntents read, Charges read, Events read,
-Disputes read; everything else none. (Customers write is needed for §3 step 3; it was
-missing from the first list given to Klaus.)
+| Mode | `SHOP_MODE = mock | test | live` (ADR-0029) decides everything below |
+| API key | `STRIPE_SECRET_KEY`, built from the node's `STRIPE_TEST_TOKEN` (test) or `STRIPE_LIVE_TOKEN` (live); a mock key in mock mode. The process refuses to start if the prefix doesn't match the mode. |
+| Webhook secret | `STRIPE_WEBHOOK_SECRET` of that mode's endpoint |
+| API version | pinned in code, `2026-11-18.endive` (stripe-node 23) |
+| Restricted key permissions | Checkout Sessions write, Customers write, Refunds write, PaymentIntents read, Charges read, Events read, Disputes read, Radar early fraud warnings read; everything else none. Webhook endpoints are **not** in the key's permissions: Klaus creates them in the Dashboard (ADR-0030). |

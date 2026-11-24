@@ -1,62 +1,58 @@
 # Shop design
 
-Design of `shop.klaushofrichter.net`: prints and merchandise of the paintings on
-`art.klaushofrichter.net`, paid with Stripe, printed and shipped by Printful.
+Design of `shop.klaushofrichter.net`: prints and merchandise of the works shown in
+Klaus's galleries (art.klaushofrichter.net at launch), paid with Stripe, printed and
+shipped by Printful.
 
-- Status: **ready for review**, 2026-11-24, before implementation. Reviewer brief: [REVIEW-BRIEF.md](REVIEW-BRIEF.md).
-- Owner: Klaus Hofrichter (decides). Author: Shop - Cloud (agent).
-- Decisions behind this design: [docs/adr](../adr/README.md). Research: [docs/research](../research/).
+- Status: **revised for review round 2**, 2026-11-25, before implementation. Round 1: two independent reviews, merged in [reviews/2026-11-25-triage.md](../reviews/2026-11-25-triage.md). Reviewer brief: [REVIEW-BRIEF.md](REVIEW-BRIEF.md).
+- Owner: Klaus Hofrichter (decides). Author: the Shop session.
+- Decisions: [docs/adr](../adr/README.md). Evidence: [docs/research](../research/).
 
 ## Reading order
 
 | # | Document | What it settles |
 |---|---|---|
-| 1 | [Requirements](01-requirements.md) | What must work, for whom, at what volume; what is out of scope |
-| 2 | [Architecture](02-architecture.md) | Components, boundaries, the end-to-end process, alternatives to building it |
-| 3 | [Customer journey](03-customer-journey.md) | Every page and step from the gallery to the order status page |
-| 4 | [Catalog, SKUs and print files](04-catalog-and-print-files.md) | The predefined products, per-picture offers, prices, print files, previews |
-| 5 | [Quote, checkout and payment](05-quote-checkout-payment.md) | Shipping quote, totals, Stripe Checkout, payment webhooks, refunds |
-| 6 | [Fulfilment](06-fulfilment.md) | The provider interface, the Printful adapter, submission, tracking, failures |
-| 7 | [Orders, data and jobs](07-orders-data-jobs.md) | State machine, database schema, job runner, reconciliation, retention |
-| 8 | [Admin](08-admin.md) | What Klaus can see and do, and what he never has to do |
-| 9 | [Notifications](09-notifications.md) | Emails to customers (optional at launch) and alerts to Klaus |
-| 10 | [Security, privacy and legal](10-security-privacy-legal.md) | Threats, secrets, personal data, legal pages, tax |
-| 11 | [Operations](11-operations.md) | Configuration, deployment, backup, monitoring, runbooks |
-| 12 | [Testing](12-testing.md) | Unit, integration, e2e, test mode, go-live checks |
-| 13 | [Delivery plan and open questions](13-plan-and-open-questions.md) | Build order, what Klaus still decides, what the review should challenge |
-| 14 | [Mock services](14-mock-services.md) | Mock Printful and mock Stripe for CI and test deployments, and how they are verified against the real services |
+| 1 | [Requirements](01-requirements.md) | What must work, for whom, at what volume; R1–R23, Q1–Q9 |
+| 2 | [Architecture](02-architecture.md) | Components, boundaries, the end-to-end process, alternatives |
+| 3 | [Customer journey](03-customer-journey.md) | Every page from a gallery to the order status page; cart; find my order |
+| 4 | [Catalog, sources and print files](04-catalog-and-print-files.md) | Launch SKUs, content sources, print files, display images, mockups |
+| 5 | [Quote, checkout and payment](05-quote-checkout-payment.md) | Local checks, shipping rates, Stripe Checkout, webhooks, tax, refunds |
+| 6 | [Fulfilment](06-fulfilment.md) | Provider interface, Printful adapter, submission, tracking, failures, fail-safes |
+| 7 | [Orders, data and jobs](07-orders-data-jobs.md) | **The state model and invariants**, schema, jobs, reconciliation, retention |
+| 8 | [Admin](08-admin.md) | What Klaus sets up and sees; he is never a step in an order |
+| 9 | [Notifications](09-notifications.md) | Customer e-mails (at launch) and alerts |
+| 10 | [Security, privacy and legal](10-security-privacy-legal.md) | Threats, data minimisation, what may be public, the runner |
+| 11 | [Operations](11-operations.md) | Modes, configuration, deployment, backup, runbooks |
+| 12 | [Testing](12-testing.md) | Unit, integration, invariant and e2e tests; real-service checks; go-live |
+| 13 | [Plan and open questions](13-plan-and-open-questions.md) | Build order, Klaus's items, questions for round 2 |
+| 14 | [Mock services](14-mock-services.md) | Mock Printful and Stripe, verified against recordings |
 
 ## The process in one paragraph
 
-A visitor looking at a painting on art clicks **Prints & merchandise** and lands on
-`shop.klaushofrichter.net/p/<uid>`. The shop shows that painting with the products
-it is offered as (Printful mockup previews), the visitor picks one or more products
-and quantities, enters a shipping address, and sees a quote: items, shipping
-(live from Printful) and, if enabled, tax. **Pay** redirects to Stripe's hosted
-Checkout. When Stripe confirms the payment by webhook, the shop creates the Printful
-order (draft), checks that the money received covers Printful's cost, and confirms
-it. Printful prints and ships; its webhooks (and an hourly poll) bring status and
-tracking back. The customer can follow the order on a private status page and,
-once email is enabled, gets confirmation and tracking emails. Nothing in this
-path needs Klaus; he is told only when something cannot be fixed automatically.
+A visitor looking at a work on art clicks **Prints & merchandise** and lands on the work's
+page in the shop, which shows the products it is offered as, with Printful mockups.
+Products of any number of works go into one cart. The visitor enters a shipping
+address; the shop checks it locally, asks Printful for shipping rates and checks its own
+margin, then shows a quote. **Pay** redirects to Stripe's hosted Checkout, which already
+knows the address. When Stripe reports the payment, the shop records it (even if the
+checkout had been closed meanwhile), applies the fail-safes, creates a Printful draft
+with only name and address, checks the real cost, and confirms it. Printful's webhooks
+and an hourly poll bring status and tracking back; the customer gets a confirmation and
+one e-mail per parcel with the tracking link, and can always find the order again.
+Exceptions become holds with deadlines that resolve themselves; Klaus is told, and acts
+only where only he can.
 
-## Conventions in these documents
+## Conventions
 
-- **MUST / SHOULD / MAY** as in RFC 2119.
-- *(verify)* marks a fact that must be checked in Stripe test mode or with a Printful draft order before code depends on it.
-- Money is integer **cents** (USD) everywhere in the code and database; Printful's decimal strings are converted at the adapter boundary.
-- Times are UTC in storage, shown in America/Chicago to Klaus.
-- "Picture", "painting" and "work" mean an entry of art's manifest, identified by its `uid`.
+- **MUST / SHOULD / MAY** as in RFC 2119. *(verify)* marks a fact still to be checked against a real service ([13 §4](13-plan-and-open-questions.md#4-items-to-verify)).
+- Money in integer cents (USD); Printful's decimal strings are converted at the adapter boundary.
+- Times in UTC; shown to Klaus in America/Chicago. All code takes time from one `Clock`.
+- "Work" is an image from a content source, keyed `(source, id)`.
+- This repository is public: threshold values, account ids, host details and raw recordings are elsewhere (ADR-0028).
 
-## Review checklist (for the design review)
+## Review checklist (round 2)
 
-1. Is every minimum requirement in [01](01-requirements.md#3-minimum-requirements) traced to a design element (table in §5 there)?
-2. Can a paid order get lost or be fulfilled twice? Walk [07 §2](07-orders-data-jobs.md#2-state-machine) with each failure in [06 §7](06-fulfilment.md#7-failure-handling).
-3. Can the customer be charged a price the shop didn't compute, or ship to an address that wasn't quoted? ([05 §3](05-quote-checkout-payment.md#3-checkout-session))
-4. Does anything require Klaus's routine involvement? (Requirement R9.)
-5. Are secrets, the originals and customer data protected as [10](10-security-privacy-legal.md) claims?
-6. Is anything here more than <10 orders a week needs? (Simplicity is a requirement, R11.)
-7. Should we build at all? ([02 §6](02-architecture.md#6-alternatives-to-building-it))
-8. Do the fail-safes ([06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders)) stop misuse without bothering real customers, and can a held order ever cost Klaus a Printful charge?
-9. Can the mock services ([14](14-mock-services.md)) drift from the real APIs unnoticed, and is any path through them able to reach a real payment or a real Printful order (R19)?
-10. Does the design use what the real APIs actually did ([research/api-capture-findings.md](../research/api-capture-findings.md)), e.g. address validation before payment and print files via the file library?
+The questions in [13 §3](13-plan-and-open-questions.md#3-questions-for-review-round-2), and in particular:
+1. Walk every invariant of [07 §2.6](07-orders-data-jobs.md#26-invariants) against every failure of [06 §7](06-fulfilment.md#7-failure-handling), the fail-safes of [06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders) and the webhook table of [05 §4](05-quote-checkout-payment.md#4-payment-webhooks).
+2. Check that every round-1 finding marked "adopted" in the triage is actually in the documents.
+3. Look for new problems the revision introduced (cart, sources, modes, e-mails, holds).

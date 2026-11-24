@@ -22,3 +22,7 @@ Option 1. Proposed by Cluster, agreed by Shop.
 - art keeps its security and performance profile; the shop's outages don't affect the gallery.
 - Two changes in art's repo are needed (the link and the internal originals endpoint), done by art's owner session.
 - The shop depends on art's public manifest format; a change there needs coordination (covered by an e2e check in the shop).
+
+## Notes
+
+- 2026-11-25: the internal originals endpoint mentioned in the consequences was dropped by ADR-0025; art's only change is the link.

@@ -1,46 +1,46 @@
-# Design review brief
+# Design review brief — round 2
 
-For the agent reviewing the shop's design before implementation starts. Klaus
-(the owner) launches the review; the author is the "Shop - Cloud" session.
+For agents reviewing the shop's design before implementation. Klaus (the owner)
+launches the reviews; the author is the Shop session. Round 1 (two reviews) is done; the
+design was revised in response.
 
 ## What to review
 
 Repository `klaushofrichter/shop`, branch `main`:
 
-1. `docs/design/README.md`, then documents 01–14 in order. They are the design.
-2. `docs/adr/` (25 decision records). **Accepted** records are Klaus's decisions: challenge them only with a concrete reason (a failure, a cost, a requirement they break), and say so explicitly. All are Accepted except ADR-0006, superseded by ADR-0025.
-3. Evidence behind the design: `docs/research/` — `api-capture-findings.md` (what the real Printful and Stripe APIs did on 2026-11-24), `process-alternatives.md` (build vs Shopify etc.), `sales-tax.md`, `oss-learnings.md`. Raw captures: branches `capture/2026-11-24` and `capture/2026-11-24b`.
-4. The code that exists: a service skeleton (`src/`), CI (`.github/workflows/`), `scripts/capture/capture-apis.mjs`.
+1. `docs/reviews/2026-11-25-triage.md`: what round 1 found, what was decided and what was adopted. Read it first.
+2. `docs/design/README.md`, then documents 01–14. Document 07 §2 (state model and invariants) is the heart of round 2.
+3. `docs/adr/`. **Accepted** records are Klaus's decisions: challenge only with a concrete reason (a failure, a cost, a broken requirement). ADR-0029 (mode switch part), 0030, 0034, 0035 and 0036 are **Proposed** and open to challenge.
+4. Evidence: `docs/research/` (`api-capture-findings.md`: what the real APIs did; `process-alternatives.md`; `sales-tax.md`; `oss-learnings.md`). The raw recordings are being moved to a private repository (ADR-0028); please do not review or quote the `capture/*` branches.
+5. The code that exists: a skeleton (`src/`), CI (`.github/workflows/`), `scripts/capture/capture-apis.mjs`.
 
-Context: one artist, fewer than 10 orders a week, fully automated, on a single-node k3s
-cluster with established conventions (ADR-0016). Simplicity is a requirement (R11).
+Context: one artist, fewer than 10 orders a week, fully automated (R9), a single-node k3s
+cluster with established conventions (ADR-0016), simplicity as a requirement (R11). The
+second gallery (christina-art, instagetter) is not needed now; the design only has to
+allow it.
 
 ## What we want from you
 
-Use the checklist at the end of `docs/design/README.md`, and in particular:
-
-- **Correctness of money and orders**: can a payment end without either a Printful order or a refund? Can an order be fulfilled twice? Can a held order cost Klaus money? Walk the state machine (07 §2) against every failure (06 §7) and fail-safe (06 §8).
-- **Security and privacy**: webhooks, secrets, the admin, customer data, the "no real transaction in test deployments" rule (R19).
-- **Gaps against the real APIs**: anything the design assumes that the captures contradict or don't cover.
-- **Over-engineering**: what could be removed or deferred at this volume without risk.
-- **Missing pieces** an implementer would have to invent.
-- **Build vs buy**: is the case for a custom service (02 §6, `process-alternatives.md`) sound?
+- **Round-1 closure**: is every adopted finding really in the documents, consistently?
+- **The state model**: walk I1–I9 against every failure, webhook and fail-safe. Can money be stranded, an order be fulfilled twice, a confirmed order be refunded by a timer, or a test order reach a live service?
+- **New problems** introduced by the revision: the cart with several works, content sources, modes and the test store, holds and deadlines, customer e-mails, data minimisation, the hardened runner.
+- **Over-engineering** still present for this volume.
+- **Gaps** an implementer would still have to invent.
 
 ## Output
 
-Write one file, `docs/reviews/2026-11-25-design-review.md`, on a branch, and open a pull
-request to `main`. Structure:
+One file, `docs/reviews/2026-11-26-design-review-round-2-<your short name>.md`, on a
+branch, with a pull request to `main`:
+1. Verdict: ready to implement / ready after listed changes / needs rework.
+2. Findings: id (R2-F1…), severity (**blocker**, **major**, **minor**, **question**), document and section, the problem, a concrete scenario, a suggested change.
+3. Round-1 findings not (or wrongly) addressed, by their round-1 id.
+4. Challenges to Accepted ADRs, separately, with the reason.
+5. Things done well, briefly.
 
-1. Summary verdict: ready to implement / ready after listed changes / needs rework.
-2. Findings, each with: id (F1, F2…), severity (**blocker**, **major**, **minor**, **question**), the document and section, what is wrong or unclear, why it matters (a concrete scenario), and a suggested change.
-3. Challenges to Accepted ADRs, if any, separately, with the reason.
-4. Things done well (short), so they aren't changed by accident.
-
-Do not edit the design documents yourself; the author folds the findings in and records
-any changed decision as an ADR.
+Don't edit the design documents; the author folds findings in.
 
 ## Rules
 
-- **Read-only toward the outside world.** Do not call the Printful or Stripe APIs, do not run `scripts/capture/`, and do not use or ask for any key. Public documentation (developers.printful.com, docs.stripe.com) may be read.
-- No secrets exist in the repository; if you find one, stop and report it.
-- Don't merge anything; Klaus decides on the review's pull request.
+- **Read-only toward the outside world**: no Printful or Stripe API calls, no capture runs, no keys. Public documentation (developers.printful.com, docs.stripe.com) may be read.
+- The repository is public: don't put account ids, host details, threshold values or anything sensitive into your file. If you find something sensitive in the repository, report it to Klaus directly, not in the file.
+- Don't merge anything.

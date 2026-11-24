@@ -22,3 +22,7 @@ Option 1: address and live Printful quote on the shop's page, then a redirect to
 
 - No card data on our side (PCI SAQ A), wallets keep working.
 - An address mismatch between quote and payment sends the order to needs_attention.
+
+## Notes
+
+- 2026-11-25: the address reaches Stripe on a Customer and Checkout collects no address (ADR-0023), so `allowed_countries` and the post-payment address comparison described above are not used.
