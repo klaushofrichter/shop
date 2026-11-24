@@ -16,7 +16,7 @@ Framed prints are the most expensive items and a target for stolen cards; a char
 
 ## Decision
 
-Option 2 proposed; the amount is Klaus's. Setting it to 0 turns the gate off.
+Recommendation changed 2026-11-24 to **option 1 (no gate, Stripe Radar only)**: an approval step is routine manual work, which Klaus ruled out ("the main objective is that this process is automated (no extra work by klaus)"). Revisit if fraudulent orders appear. Still Proposed: Klaus rejects or accepts.
 
 ## Consequences
 

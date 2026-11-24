@@ -16,7 +16,7 @@ The risky case is: payment succeeded, Printful order failed (address rejected, p
 
 ## Decision
 
-Option 1 proposed; the 24 h / 72 h windows are Klaus's to set.
+Option 1 proposed; the 24 h / 72 h windows are Klaus's to set. Updated 2026-11-24 after Klaus's requirement that the process be fully automated with no routine work for him (R9): every exception has a timer that ends in an automatic refund if he doesn't act, and permanent failures (invalid address, discontinued variant) refund at once. Details: docs/design/06-fulfilment.md §7.
 
 ## Consequences
 

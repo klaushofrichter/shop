@@ -1,8 +1,8 @@
 # ADR-0007: Stripe hosted Checkout, shipping quoted on the shop's own page
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-24, by describing the process: "The idea is that the customer selects a image in art.klaushofrichter.net, transitions to the shop application, selects there one or more products for this image, provides shipping address gets quoted the costs, possibly with previews from printful. The process is redirected to Stripe for payment processing."
 
 ## Context
 
@@ -16,7 +16,7 @@ Shipping cost comes from Printful and depends on the address and the cart. Strip
 
 ## Decision
 
-Option 1 (proposed). Option 3 is a sensible simplification if Klaus prefers fewer steps; the admin's margin view shows what flat rates would cost.
+Option 1: address and live Printful quote on the shop's page, then a redirect to Stripe's hosted Checkout. How the address reaches Stripe without being typed twice is ADR-0023.
 
 ## Consequences
 

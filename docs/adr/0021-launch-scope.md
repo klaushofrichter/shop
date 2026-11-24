@@ -1,8 +1,8 @@
 # ADR-0021: What ships at launch and what waits
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-24: the minimum requirements in his message ("…a handful of pre-defined SKUs…", "…may send tracking information and status update to the customer as well (this is optional for now)")
 
 ## Context
 
@@ -10,7 +10,7 @@ The research produced a long list of shop features ([tiers](../research/oss-lear
 
 ## Decision
 
-Launch with the "Launch" tier in the research document. The "Within a year" and "Nice to have" tiers are not built until Klaus asks; each then gets its own ADR. Exclusions that matter: no customer accounts (order page by link instead), one currency, no limited editions, no second provider.
+Launch with the minimum requirements R1–R15 of docs/design/01-requirements.md, which narrow the research's "Launch" tier: a handful of predefined SKUs (ADR-0022), one picture per order (ADR-0008), customer emails optional. The "Within a year" and "Nice to have" tiers are not built until Klaus asks; each then gets its own ADR. Exclusions that matter: no customer accounts (order page by link instead), one currency, no limited editions, no second provider.
 
 ## Consequences
 

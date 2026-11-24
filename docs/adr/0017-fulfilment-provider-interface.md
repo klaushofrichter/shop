@@ -1,8 +1,8 @@
 # ADR-0017: A fulfilment-provider interface; Printful first, Prodigi to evaluate for framed prints
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-24: "It is Ok the have a thin abstraction layer for different fulfillment."
 
 ## Context
 
@@ -16,7 +16,7 @@ Printful has the best API and does mugs, t-shirts and postcards well, but few fi
 
 ## Decision
 
-Option 2 proposed. The interface adds little code because the Printful adapter exists anyway (ADR-0005).
+Option 2. The interface adds little code because the Printful adapter exists anyway (ADR-0005). Sample orders from Prodigi remain a separate, optional decision (cost).
 
 ## Consequences
 

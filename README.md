@@ -15,7 +15,7 @@ served at `shop.klaushofrichter.net`: a visitor picks a picture in the gallery,
 chooses a product (postcard, print, framed print, mug, t-shirt), pays with
 Stripe, and the order goes to Printful, which prints and ships it.
 
-- Design: [docs/design.md](docs/design.md)
+- Design: [docs/design/](docs/design/README.md)
 - Decisions: [docs/adr](docs/adr/README.md)
 - Research: [docs/research/oss-learnings.md](docs/research/oss-learnings.md)
 - Current state: [docs/handover.md](docs/handover.md)
