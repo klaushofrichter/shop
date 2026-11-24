@@ -58,7 +58,7 @@ where observed, from the spec where not.
 ## 5. Mock Stripe
 
 - Form-encoded bodies with bracket keys; `expand[]`; Stripe's error envelope; **requests with any `Stripe-Version` other than the pinned one are rejected**; idempotency: a replay returns the first response, different parameters → 400 (captured message).
-- Customers (create, get, delete); Checkout Sessions (create with the shop's parameters validated, get, expire); the session `url` is the mock's **public** checkout page address (a setting, so a phone can reach it in a mock-mode deployment; same origin for the CSP's `form-action`).
+- Customers (create, get, delete); Checkout Sessions (create with the shop's parameters validated, get, expire); the session `url` is the mock's checkout page under the shop's own `/__mock-pages/` (same origin for the CSP's `form-action`, §9).
 - **Checkout page**: shows items, shipping, tax, total and the `custom_text` ship-to line; buttons mirroring test cards: Pay, Decline, 3-D Secure fail, Cancel; accessible markup for Playwright.
 - Payments: PaymentIntent with `latest_charge` (`outcome.risk_level` and `payment_method_details.card.fingerprint` settable, or absent as for some wallets).
 - Tax: a table with one state that taxes shipping (Texas-like) and one that doesn't; `total_details.amount_tax`, `shipping_cost.amount_subtotal` vs `amount_total` as in the pinned version.
@@ -82,9 +82,10 @@ where observed, from the spec where not.
 
 ## 7. Verification against the real services
 
-**7.1 Spec conformance, every CI run.** The mock validates every **request** it receives
-against the pinned Printful v2 OpenAPI document and Stripe's OpenAPI spec of the pinned
-version, and in tests **fails on unknown fields** (Printful tends to ignore a misspelled
+**7.1 Spec conformance, every CI run.** The mock validates every Printful **request** it
+receives against the pinned Printful v2 OpenAPI document, and every Stripe request
+against **hand-written schemas** for the endpoints the shop calls (Stripe's full spec is
+too large for what it buys; review B F16); in tests it **fails on unknown fields** (Printful tends to ignore a misspelled
 field silently; the strict mock is the only place a typo in `orientation` would show).
 Its own responses are validated too.
 
@@ -96,15 +97,20 @@ synthetic fixtures committed here. Scenarios: catalog, shipping rates and errors
 registration, mockup tasks, **draft create → get → patch → delete**, v1 cancel of a draft,
 Stripe customers and sessions. The comparator replays the scenarios against the mock and
 diffs status codes, headers, structure, types, enums and state changes. It runs by hand
-or on a schedule on the cluster (no CI in the private repository). A drift report is a
+(no CI in the private repository, no schedule: test mode exists only before go-live, ADR-0029). A drift report is a
 file in the private repository; only scrubbed findings reach the public one.
 
-**7.3 Recording at go-live.** The go-live test orders ([12 §4](12-testing.md#4-go-live-checklist-klaus-decides-each-box))
-are recorded: every webhook body with its signature headers, every GET; one confirmed
-order is cancelled on purpose. This closes the "after confirmation" gap.
+**7.3 Recording at go-live.** Klaus's own first orders ([12 §4](12-testing.md#4-go-live-checklist-klaus-decides-each-box)),
+made in live mode behind the preview gate, are recorded **for Printful only**: the shop
+exports its stored `inbound_events` (raw body and signature headers, kept 30 days) and a
+short-lived request trace of the Printful adapter to the private repository. Nothing is
+recorded from live Stripe (ADR-0028). One confirmed order is cancelled on purpose. This
+closes the "after confirmation" gap. The export and the trace are built before step 10
+(review C F5).
 
-**7.4 Real Stripe hosted page, weekly.** Playwright through Stripe's real test-mode page
-with card 4242 and a real test-mode webhook ([12 §3](12-testing.md#3-against-the-real-services-before-go-live)).
+**7.4 Real Stripe hosted page.** Playwright through Stripe's real test-mode page with
+card 4242 and a real test-mode webhook, during test mode before go-live
+([12 §3](12-testing.md#3-against-the-real-services-before-go-live)). No weekly run.
 
 Shadow mode is **dropped** (review 1 F23.2): it was a mock-specific path in the adapter
 and put a real token into a mock deployment.
@@ -115,13 +121,13 @@ The mocks' tests (spec conformance, scenarios) run in the `test` job; the shop's
 integration and invariant tests start the mocks in-process; `e2e` runs both images side
 by side. No secrets.
 
-## 9. Mock-mode deployment
+## 9. Where mock mode runs
 
-`SHOP_MODE=mock` on the cluster: the shop and shop-mocks (ClusterIP), the mock's checkout
-and tracking pages routed through the shop's ingress under `/__mock-pages/` behind the
-preview gate, `/__mock` cluster-internal. **No real transaction can happen** (R19): the
-shop's Secret holds only mock keys (`create-secrets.sh --mock`), and the startup guards
-refuse real hosts with mock keys.
+**Only in CI** (ADR-0029, review B F16): the shop image and the mocks image side by side.
+There is no mock-mode deployment on the cluster and no deployed clock offset. To share the
+CSP's `form-action 'self'`, the shop in mock mode passes `/__mock-pages/*` through to the
+mock, so the mock checkout page is same-origin (review C F8). The startup guards refuse
+real hosts with mock keys.
 
 ## 10. Build order
 
@@ -130,4 +136,5 @@ expect roughly the shop's own size again):
 1. With step 3 (catalog, shipping rates): mock catalog, shipping rates, files, the clock, the control API skeleton, spec validation.
 2. With step 6 (checkout): mock Stripe customers, sessions, checkout page, events and signatures.
 3. With step 7 (submission): orders, webhooks, holds, shipments, all §6 scenarios; the invariant tests.
-4. After the MVP (review 2 F12): the recorder, the allow-list scrubber and the comparator; then the go-live recording.
+4. Before step 10: the `inbound_events` export and the adapter's request trace for the go-live recording (§7.3).
+5. After the MVP (review 2 F12): the recorder, the allow-list scrubber and the comparator.

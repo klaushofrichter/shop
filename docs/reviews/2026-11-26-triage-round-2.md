@@ -59,3 +59,48 @@
 | Change | Findings |
 |---|---|
 | Runner: `kubectl` in the image (no download, no `sudo`); smoke test from a GitHub-hosted job or egress to the shop's Ingress; allow-list from GitHub's documented runner hosts; an admission policy so the runner can change only the shop's image digest (patch on the Deployment otherwise reaches every Secret in the namespace); ephemeral runner. | B F9 |
+
+## 5. Addendum: reviews C and D (2026-11-26)
+
+- Reviewer C: `2026-11-26-design-review-round-2-c.md` (20 findings, "ready to implement after the listed changes"; also comments on this triage).
+- Reviewer D: `2026-11-26-design-review-round-2-d.md` (commentary and sign-off, 4 catch-items R2-C1–C4; recommends no third round).
+- Klaus, 2026-11-26: "decision 3: ok. decision 5: ok … decision 10: ok. New: ok". Later the same day: "decisions 1, 2, 4, 6, 7, 8, 9: ok". Every decision of §1 is taken.
+
+### Changes to this triage
+
+| Item | Change | Source |
+|---|---|---|
+| D3 | Accepted by Klaus, including that the first cluster deployment uses Stripe test mode and test-store drafts (R19 reworded); no weekly run, no scheduled recorder | C §3; Klaus |
+| D5 | HMAC over the **order id**, not the order number; `status_token_hash` dropped. ADR-0037, accepted | C §3, D R2-C3; Klaus |
+| D10 | **SES e-mail forwarding** instead of an SQS queue; no `provider_message_id`. ADR-0038, accepted | C §3; Klaus |
+| New | The preview gate is its own switch; live mode starts gated; Klaus's first orders are recorded for Printful only. ADR-0039, accepted (amends ADR-0028) | C F5; Klaus |
+| D2 | Consequences written down: no foreign key from order items to print files (checked in code), Litestream replicates both files, the print-file purge runs only in live mode against `live.db`, `provider_files` keyed by store | C §3, D R2-C1 |
+| §2, test mode | The draft stays in the test store for inspection (deleted after 7 days), the payment is **not** auto-refunded, `fulfilment_state = test_draft_ok`, the order is complete. "No confirm method" means in **test** mode; the mock confirms | D R2-C4, C §3 |
+| §3, reship | **No admin reship action.** Klaus reships in Printful's dashboard; the reverse sweep's alarm offers "link to order N" | C §3 |
+
+### Review C: adopted
+
+| Finding | Change | Where |
+|---|---|---|
+| C-F1 | Payment, fail-safes and the hold or submit job in **one transaction**; `failsafe_checked_at`; invariant I11; restarts in the random sequences | 07 §2.1, 05 §4, 06 §8, 12 §1 |
+| C-F2 | Refuse to start only on a wrong answer; no answer → start with Printful unverified | 06 §3, 11 §2.1 |
+| C-F3 | **Completion** (`completed_at`) ends polling and starts retention; `return_to_sender`/`failure` shown per parcel | 07 §2.7, 06 §5 |
+| C-F4 | `/health/worker` checked by the uptime monitor as the second alert channel; timeouts on every call | 11 §4, 07 §4 |
+| C-F5 | Go-live behind the gate; recording aligned (Printful only); the export built before step 10 | 12 §4, 14 §7.3, 13 §1, ADR-0039 |
+| C-F6 | Line items paged; `metadata.order_item_id`; tax lines checked | 05 §3–4 |
+| C-F7 | Webhook endpoints at the latest version; the version doesn't matter | 05 §4, ADR-0030 |
+| C-F8 | In mock mode the shop passes `/__mock-pages/*` to the mock (same origin) | 14 §9 |
+| C-F9 | `MAX_INPUT_MEGAPIXELS` from the memory test | 04 §5, 12 §1 |
+| C-F10 | DPI table corrected; one work refused at 12 × 16 | 04 §2, 01 A2, ADR-0033 |
+| C-F11, D R2-C2 | Capture script: test-store token only, `--out` required and refused inside this repository; `captures/` git-ignored | `scripts/capture/` |
+| C-F12 | Five items added to the verify list | 13 §4 |
+| C-F13 | Never-paid orders deleted after 7 days, numbers freed | 07 §6, ADR-0032 |
+| C-F14 | No Stripe payloads stored; no customer data in alerts; short ship-to in e-mails; e-mail and address only on the quote | 07 §3, 09, 10 §4 |
+| C-F15 | "Confirm anyway" on the attempt; `breaker_reset_at`; a full refund resolves all holds; the reverse sweep applies I1; a permanent item error refunds the whole cart with a clear e-mail | 07 §2.5, 06 §7–8, 09 |
+| C-F16 | ZIP table source, exceptions as tests, unknown prefixes accepted, rejections counted | 05 §2, ADR-0036 |
+| C-F17 | One shop name on every packing slip | 06 §3, ADR-0035 |
+| C-F18 | `title_override`; originals only for opened or enabled works; on-demand admin thumbnails | 04 §4, 07 §3 |
+| C-F19 | `print_files.deleted_at`; shipment estimates as two dates, shipment and delivery status, provider and attempt | 07 §3 |
+| C-F20 | Knative egress and the deploy token as an environment secret: for Cluster | 11 §1 |
+| C §4 (R17, R19, `06 §4`) | R17 reworded; R19 reworded; "confirm in mock and live" | 01, 06 |
+| C §6 | `dispute_state` kept: I2 and the customer status read it; the hold carries the action | — |

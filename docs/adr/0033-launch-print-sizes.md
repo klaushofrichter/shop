@@ -16,3 +16,6 @@ Launch SKUs (docs/design/04 §2): postcard 4 × 6; art prints 6 × 8, 8 × 10, 1
 
 - Replaces the initial SKU set named in ADR-0022 (the mechanism of ADR-0022 stands).
 - Landscape is verified with one draft in the test store before the item mapper is written.
+
+## Notes
+- 2026-11-26 (review C F10): one wide work (3619 × 2096 px) reaches only about 175 DPI in a 3:4 crop at 12 × 16, below the floor; the admin refuses that offer, as designed. The ranges are corrected in docs/design/04 §2 (12 × 16: 175–252; 8 × 10: 262–378).

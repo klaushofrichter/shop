@@ -1,8 +1,8 @@
-# ADR-0030: Stripe webhook endpoints created by Klaus in the Dashboard, with the pinned API version
+# ADR-0030: Stripe webhook endpoints created by Klaus in the Dashboard
 
-- Status: Proposed
-- Date: 2026-11-25
-- Decided by: (pending, Klaus)
+- Status: Accepted
+- Date: 2026-11-25, revised 2026-11-26 after review round 2
+- Decided by: Klaus, 2026-11-26, on round-2 decision 8: "decisions 1, 2, 4, 6, 7, 8, 9: ok"
 
 ## Context
 
@@ -12,17 +12,17 @@ Two facts from the captures and review 1 (F12): the account's default API versio
 
 ## Options considered
 
-1. **Klaus creates each endpoint in the Stripe Dashboard** (Developers → Webhooks → Add endpoint): the URL, API version `2026-11-18.endive`, the event list below; he copies the signing secret into the node's `.env`. Two minutes per mode, no extra key.
+1. **Klaus creates each endpoint in the Stripe Dashboard** (Developers → Webhooks → Add endpoint): the URL, the latest API version, the event list below; he copies the signing secret into the node's `.env`. Two minutes per mode, no extra key.
 2. A setup script with a temporary full secret key: automatable, but a broad key exists for a while.
 3. Give the restricted key webhook-endpoint permissions: a standing broader key for a one-time task.
 
 ## Decision
 
-Option 1 proposed:
-- **Test endpoint** when the test deployment is reachable (step 10): URL of the test deployment's `/webhooks/stripe` (exempt from the preview gate), secret → `STRIPE_TEST_WEBHOOK_SECRET`.
+Option 1:
+- **Test endpoint** when the shop runs in test mode on the cluster (step 10): `https://shop.klaushofrichter.net/webhooks/stripe` (exempt from the preview gate), secret → `STRIPE_TEST_WEBHOOK_SECRET`. **Disabled at go-live** (ADR-0029), so test events never reach the live process.
 - **Live endpoint** at go-live: `https://shop.klaushofrichter.net/webhooks/stripe`, secret → `STRIPE_LIVE_WEBHOOK_SECRET`.
 - Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.closed`, `radar.early_fraud_warning.created`.
-- The shop uses only `event.id`, `type` and `data.object.id` from a payload and re-fetches the rest with the pinned version, so a wrong endpoint version can't corrupt data; the admin's System page shows the last event received per type, so a missing or misconfigured endpoint is visible.
+- The Dashboard can create an endpoint only at the latest API version (a specific older version needs the API; review C F7). That is fine: the shop uses only `event.id`, `type` and `data.object.id` from a payload and re-fetches the rest with its pinned version, so the endpoint's version can't corrupt data; the System page shows the version of the last event next to the pinned one; the admin's System page shows the last event received per type, so a missing or misconfigured endpoint is visible.
 
 ## Consequences
 

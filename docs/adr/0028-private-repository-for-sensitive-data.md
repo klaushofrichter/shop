@@ -20,3 +20,6 @@
 - The capture script writes to a checkout of the private repository; the scrubber is a separate step whose output is what enters the public repository.
 - Creating the repository and its settings is done by Klaus or Cluster (cloud sessions can't change repository settings).
 - Raw captures are never made from the live Stripe account.
+
+## Notes
+- 2026-11-26 (Klaus, via ADR-0039): Klaus's own first live orders are recorded **for Printful only** (the shop's stored webhook bodies and an adapter request trace), exported to this private repository; nothing from live Stripe. The capture script uses the test-store token only, refuses an output directory inside the public repository, and `captures/` is in `.gitignore` (reviews C F11, D R2-C2).

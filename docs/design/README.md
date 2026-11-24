@@ -4,7 +4,7 @@ Design of `shop.klaushofrichter.net`: prints and merchandise of the works shown 
 Klaus's galleries (art.klaushofrichter.net at launch), paid with Stripe, printed and
 shipped by Printful.
 
-- Status: **revised for review round 2**, 2026-11-25, before implementation. Round 1: two independent reviews, merged in [reviews/2026-11-25-triage.md](../reviews/2026-11-25-triage.md). Reviewer brief: [REVIEW-BRIEF.md](REVIEW-BRIEF.md).
+- Status: **frozen for implementation**, 2026-11-26. Round 1: two reviews, [triage](../reviews/2026-11-25-triage.md). Round 2: four reviews, [triage](../reviews/2026-11-26-triage-round-2.md), folded in. No third round; later changes are ADRs.
 - Owner: Klaus Hofrichter (decides). Author: the Shop session.
 - Decisions: [docs/adr](../adr/README.md). Evidence: [docs/research](../research/).
 
@@ -50,9 +50,6 @@ only where only he can.
 - "Work" is an image from a content source, keyed `(source, id)`.
 - This repository is public: threshold values, account ids, host details and raw recordings are elsewhere (ADR-0028).
 
-## Review checklist (round 2)
+## Reviews
 
-The questions in [13 §3](13-plan-and-open-questions.md#3-questions-for-review-round-2), and in particular:
-1. Walk every invariant of [07 §2.6](07-orders-data-jobs.md#26-invariants) against every failure of [06 §7](06-fulfilment.md#7-failure-handling), the fail-safes of [06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders) and the webhook table of [05 §4](05-quote-checkout-payment.md#4-payment-webhooks).
-2. Check that every round-1 finding marked "adopted" in the triage is actually in the documents.
-3. Look for new problems the revision introduced (cart, sources, modes, e-mails, holds).
+Round 1 and round 2 are done (see Status). The round-2 brief is kept for the record in [REVIEW-BRIEF.md](REVIEW-BRIEF.md).

@@ -26,15 +26,15 @@ orientations: the work's orientation decides, the variant is the same.
 | SKU id | Name shown | Printful product → variant | Print area | DPI | Effective DPI of the measured originals |
 |---|---|---|---|---|---|
 | `postcard-4x6` | Postcard 4 × 6 in | 433 → 11513 | 6.14 × 4.13 in (bleed) | 300 | ≥ 300 for all |
-| `print-6x8` | Art print 6 × 8 in | 1 → 48489 | 6 × 8 | 300 | 361–504 |
-| `print-8x10` | Art print 8 × 10 in | 1 → 4463 | 8 × 10 | 300 | 286–378 |
-| `print-12x16` | Art print 12 × 16 in | 1 → 1349 | 12 × 16 | 300 | **181–252** |
-| `framed-8x10-black` | Framed print 8 × 10 in, black frame | 2 → 4651 | 8 × 10 | 300 | 286–378 |
-| `framed-12x16-black` | Framed print 12 × 16 in, black frame | 2 → 1350 | 12 × 16 | 300 | 181–252 |
+| `print-6x8` | Art print 6 × 8 in | 1 → 48489 | 6 × 8 | 300 | 349–504 |
+| `print-8x10` | Art print 8 × 10 in | 1 → 4463 | 8 × 10 | 300 | 262–378 |
+| `print-12x16` | Art print 12 × 16 in | 1 → 1349 | 12 × 16 | 300 | **175–252** |
+| `framed-8x10-black` | Framed print 8 × 10 in, black frame | 2 → 4651 | 8 × 10 | 300 | 262–378 |
+| `framed-12x16-black` | Framed print 12 × 16 in, black frame | 2 → 1350 | 12 × 16 | 300 | 175–252 |
 | `mug-11oz` | Mug 11 oz | 19 → 1320 | 9 × 3.5 wrap | 300 | ≥ 300 |
 | `tshirt-white-s` … `-xl` | T-shirt, white, S–XL | 71 → 4011–4014 | front 12 × 16 | 150 | ≥ 150 |
 
-- **`minDpi` for paper: 180** (raised from 150, review 1 F22): every measured original passes at 12 × 16 (lowest: a cropped painting photo at 181). 16 × 20 and larger are deferred; at 144–189 DPI they would fall below 180 for several works.
+- **`minDpi` for paper: 180** (raised from 150, review 1 F22): every measured original passes at 12 × 16 **except one wide work** (3619 × 2096 px, about 175 DPI in a 3:4 crop; review C F10), whose 12 × 16 offers the admin refuses as designed. Wide works also lose about a quarter of the picture in a 3:4 or 4:5 crop; the admin shows how much is cut. 16 × 20 and larger are deferred; at 144–189 DPI they would fall below 180 for several works.
 - Effective DPI is computed per offer from the crop; the admin shows it and refuses offers below `minDpi`.
 - Print areas, DPI, placements and variant availability are read from Printful at startup and daily (`/v2/catalog-products/{id}/mockup-styles`, `/v2/catalog-variants/{id}`); a mismatch with the config disables the SKU and alerts.
 - Wholesale prices (North America, from the catalog, refreshed daily) feed the admin's margin view and the pre-payment cost check ([05 §2](05-quote-checkout-payment.md#2-quote)). Retail prices are Klaus's; the defaults in `config/skus.json` are placeholders.
@@ -78,17 +78,22 @@ keeps none of it).
 [{ "id": "art", "default": true, "adapter": "art-manifest",
    "publicUrl": "https://art.klaushofrichter.net", "clusterUrl": "http://art.art.svc.cluster.local",
    "creator": "Klaus Hofrichter", "packingSlipStoreName": "Klaus Hofrichter Art",
-   "printsAllowedDefault": false }]
+   "printsAllowedDefault": false,
+   "printsAllowedWorks": ["<work id>", "…"] }]
 ```
 
-`printsAllowedDefault` applies until the source publishes a per-work flag.
+Consent per work, in this order: the source's own per-work flag (a feed, once it exists);
+otherwise **`printsAllowedWorks`**, a per-work allow-list in this file filled from the
+source owner's decision (for art: Klaus's; review B F5, ADR-0035); otherwise
+`printsAllowedDefault`. A second gallery by another artist needs that artist's decision
+in its own list; the seller is still Klaus (A3).
 
 ### 4.3 The art adapter
 
 - **Today**: parses `<script type="application/json" id="manifest">` from art's home page (fetched in-cluster every 10 minutes, conditional GET). Original URL: `/assets/<room>/<file>?v=<v>` (ADR-0025). `kind` from the room (art's "Colors" room = paintings, the others = photographs) until art supplies it.
 - **Contract test**: the adapter runs in CI against a recorded copy of art's manifest; a daily job alerts on a schema mismatch with the live manifest.
 - **Proposed for art** (art's repository and decision): a versioned feed, e.g. `/feed/works.v1.json`, with exactly the `Work` fields and a per-work `printsAllowed` flag. The adapter switches to it when it exists; the shop then needs no knowledge of art's page markup.
-- Later sources (christina-art, instagetter) are one adapter each. Insta-style sources bring small square images (612–1440 px): only postcards, mugs and t-shirts pass the DPI floor; titles come from the admin; opt-in per image.
+- Later sources (christina-art, instagetter) are one adapter each. Insta-style sources bring small square images (612–1440 px): only postcards, mugs and t-shirts pass the DPI floor; titles come from the admin (`works.title_override`); opt-in per image. For a large source, originals are fetched and hashed and display images rendered **only for works Klaus opens or enables**; the admin's list uses an admin-only thumbnail route that fetches and resizes on demand (review C F18).
 
 ### 4.4 Routes
 
@@ -98,7 +103,7 @@ lists that source's work ids with at least one sellable offer.
 
 ### 4.5 Changes at the source
 
-- When a source's `version` changes (art's `v` also changes when only derivatives are rebuilt), the shop fetches the original and hashes it; **only a changed SHA-256** re-renders print files, display images and mockups (review 2 F4). Otherwise only `source_version` is updated.
+- When a source's `version` changes (art's `v` also changes when only derivatives are rebuilt), the shop fetches the original (of opened or enabled works) and hashes it; **only a changed SHA-256** re-renders print files, display images and mockups (review 2 F4). Otherwise only `source_version` is updated.
 - A work that disappears from the source is hidden (offers kept); open orders are unaffected (order items hold copies).
 
 ## 5. Print files
@@ -124,14 +129,14 @@ offer stays unsellable and Klaus is alerted. Library entries can't be deleted th
 API; with `visible: false` they don't clutter the library view.
 
 ### 5.4 Serving to Printful
-`https://shop.klaushofrichter.net/files/<sha256>.jpg`: immutable (`Cache-Control: public,
+`<PUBLIC_URL>/files/<sha256>.jpg`: immutable (`Cache-Control: public,
 max-age=31536000, immutable`), no listing, `X-Robots-Tag: noindex`. Printful fetches it
 when the order is created and again for reprints, so files referenced by an order are
 kept at least 12 months after delivery. The URL is unguessable; the same pixels are
 public on art anyway (ADR-0025).
 
 ### 5.5 Uploaded masters
-JPEG or PNG only, ≤ 100 MB, ≤ 20,000 px per side, decoded with `limitInputPixels`,
+JPEG or PNG only, ≤ 100 MB, at most `MAX_INPUT_MEGAPIXELS` (one value from the memory test, about 50 MP, used for uploads and source originals alike and as `limitInputPixels`; review C F9),
 re-encoded like every served image.
 
 ## 6. Display images

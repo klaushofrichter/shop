@@ -21,3 +21,6 @@ Option 1: Amazon SES, sending from an address on `shop.klaushofrichter.net` (e.g
 ## Consequences
 
 - DKIM/SPF records at Squarespace (Klaus).
+
+## Notes
+- 2026-11-26: bounces and complaints are forwarded by SES to the shop's mailbox (ADR-0038).
