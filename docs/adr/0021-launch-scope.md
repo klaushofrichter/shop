@@ -1,6 +1,6 @@
 # ADR-0021: What ships at launch and what waits
 
-- Status: Accepted
+- Status: Accepted; customer e-mails amended by ADR-0027 (2026-11-25)
 - Date: 2026-11-24
 - Decided by: Klaus, 2026-11-24: the minimum requirements in his message ("…a handful of pre-defined SKUs…", "…may send tracking information and status update to the customer as well (this is optional for now)")
 

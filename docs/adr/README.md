@@ -26,7 +26,7 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0005](0005-printful-api-v2.md) | Printful API v2, behind a thin adapter | Accepted (2026-11-24) |
 | [0006](0006-originals-access.md) | Print files come from art's originals through an internal endpoint | Superseded by 0025 |
 | [0007](0007-checkout-and-shipping-quote.md) | Stripe hosted Checkout, shipping quoted on the shop's own page | Accepted (2026-11-24) |
-| [0008](0008-cart.md) | Several products of one picture per order | Accepted (2026-11-24) |
+| [0008](0008-cart.md) | Several products of one picture per order | Superseded by 0026 |
 | [0009](0009-art-to-shop-handoff.md) | From art to the shop: a link with the work's uid | Accepted (2026-11-24) |
 | [0010](0010-order-failure-and-refunds.md) | Order failures after payment: retry, then Klaus, then refund | Accepted (2026-11-24) |
 | [0011](0011-currency-and-shipping-region.md) | Currency USD, shipping region to decide | Accepted (2026-11-24) |
@@ -39,8 +39,11 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0018](0018-order-ledger-and-reconciliation.md) | Order ledger, idempotent submit and hourly reconciliation | Accepted (2026-11-24) |
 | [0019](0019-print-files-before-sale.md) | Print files exist and validate before a product is sold; their URLs never change | Accepted (2026-11-24) |
 | [0020](0020-approval-hold-above-amount.md) | Fail-safes against large or unusual orders | Accepted (2026-11-24) |
-| [0021](0021-launch-scope.md) | What ships at launch and what waits | Accepted (2026-11-24) |
+| [0021](0021-launch-scope.md) | What ships at launch and what waits | Accepted (2026-11-24); amended by 0027 |
 | [0022](0022-predefined-skus-in-config.md) | A handful of predefined SKUs, defined in a config file | Accepted (2026-11-24) |
 | [0023](0023-address-once-via-stripe-customer.md) | The address is entered once, on the shop's page, and passed to Stripe as a Customer | Accepted (2026-11-24) |
 | [0024](0024-mock-printful-and-stripe.md) | Mock Printful and mock Stripe as an independent service, verified against the real ones | Accepted (2026-11-24) |
 | [0025](0025-originals-from-arts-public-url.md) | Fetch originals from art's existing public URL (supersedes ADR-0006) | Accepted (2026-11-24) |
+| [0026](0026-cart-with-any-pictures.md) | A cart with products of any picture (supersedes ADR-0008) | Accepted (2026-11-25) |
+| [0027](0027-customer-emails-at-launch.md) | Customer e-mails at launch (amends ADR-0021) | Accepted (2026-11-25) |
+| [0028](0028-private-repository-for-sensitive-data.md) | Sensitive test data in a private repository without CI | Accepted (2026-11-25) |
