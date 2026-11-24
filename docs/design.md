@@ -47,7 +47,7 @@ Sources: Printful's v1 and v2 API docs and help center, Stripe's docs and pricin
 
 ### Open-source projects
 
-See [§12](#12-open-source-projects). Summary: none is a good base to adapt; we build a small service and borrow patterns. → [ADR-0003](adr/0003-build-not-adapt.md)
+See [§12](#12-open-source-projects) and the deeper study in [research/oss-learnings.md](research/oss-learnings.md) (patterns, Prodigi/Gelato, feature tiers). Summary: none is a good base to adapt; we build a small service and borrow patterns. → [ADR-0003](adr/0003-build-not-adapt.md), [ADR-0017](adr/0017-fulfilment-provider-interface.md), [ADR-0021](adr/0021-launch-scope.md)
 
 ### art (measured 2026-11-24, with Cluster)
 
@@ -118,6 +118,8 @@ quoted ──► checkout_open ──► paid ──► files_ready ──► su
 | needs_attention | Something after payment failed | Email Klaus; admin: fix and retry, or refund |
 | refunded | Full or partial Stripe refund issued | — |
 
+- **Ledger and reconciliation** follow the patterns in [research/oss-learnings.md](research/oss-learnings.md): transitions recorded with their cause, an inbound-event ledger, claim before submit, `@external_id` lookup, v1 for cancel, shipments per parcel, hourly reconciliation. → [ADR-0018](adr/0018-order-ledger-and-reconciliation.md)
+- **Approval hold**: paid orders above an amount wait for Klaus's approval. → [ADR-0020](adr/0020-approval-hold-above-amount.md)
 - **Jobs.** Each transition after `paid` is a job in the jobs table, retried with backoff (1 min, 5 min, 30 min, 2 h). Every step is idempotent: print files keyed by (uid, variant, version); Printful orders by `external_id`; emails by (order, kind).
 - **Polling.** Webhooks can be lost; a job polls Printful for every open order every 30 minutes and Stripe for sessions still open past their expiry.
 - **Cost guard.** Before confirming, the shop compares Printful's estimated cost with what the customer paid. If the margin is below a floor the admin sets (e.g. negative), the order goes to `needs_attention` instead of being confirmed.
@@ -134,7 +136,7 @@ quoted ──► checkout_open ──► paid ──► files_ready ──► su
   → [ADR-0006](adr/0006-originals-access.md)
 - Fallback/override: the admin can upload a print file for a picture (e.g. a better scan, or a pre-cropped file for one product).
 - The shop renders one print file per (picture, Printful variant): crop or fit to the print area's aspect ratio as set in the admin, resize to the print area's pixels, sRGB JPG. Files are cached on the shop's volume.
-- Printful fetches files by URL. The shop serves them at `https://shop.klaushofrichter.net/files/<random-id>.jpg?exp=…&sig=…`, a signed URL valid for 7 days. The file is not listed anywhere, but a fetch of the signed URL gets the full-resolution file, so the signature and expiry are what protect it. Optionally the shop registers the file in Printful's file library once per (picture, variant) and reuses its id.
+- Printful fetches files by URL, also later for reprints, and caches by URL. The shop serves them at immutable, content-addressed, unguessable URLs `https://shop.klaushofrichter.net/files/<sha256>.jpg` that never expire; a new crop or source gives a new URL. A product is offered only after its print file was rendered and validated (exact pixels, 8-bit sRGB, under 200 MB, DPI floor). → [ADR-0019](adr/0019-print-files-before-sale.md)
 - **Resolution check.** The admin shows each picture's effective DPI per product and refuses to offer a product below a threshold (proposed: 150 DPI for paper, 100 for apparel and mugs). The originals' pixel size is not yet known; a camera JPEG of 4000×3000 px gives 200 DPI at 20×15 in, so the largest framed sizes may need to be excluded per picture.
 
 ## 8. Admin

@@ -35,3 +35,8 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0014](0014-data-store-and-backup.md) | SQLite with Litestream to S3, plus Velero | Proposed |
 | [0015](0015-email-provider.md) | Email for order and shipping notices | Proposed |
 | [0016](0016-follow-cluster-repository-rules.md) | Follow the cluster's repository and deployment rules | Accepted (2026-11-24) |
+| [0017](0017-fulfilment-provider-interface.md) | A fulfilment-provider interface; Printful first, Prodigi to evaluate for framed prints | Proposed |
+| [0018](0018-order-ledger-and-reconciliation.md) | Order ledger, idempotent submit and hourly reconciliation | Proposed |
+| [0019](0019-print-files-before-sale.md) | Print files exist and validate before a product is sold; their URLs never change | Proposed |
+| [0020](0020-approval-hold-above-amount.md) | Hold orders above an amount for Klaus's approval | Proposed |
+| [0021](0021-launch-scope.md) | What ships at launch and what waits | Proposed |
