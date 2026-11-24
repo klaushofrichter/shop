@@ -65,21 +65,22 @@ jobs:
           # The image runs as uid 1000 on its own, without --user.
           [ "$(docker exec site id -u)" = 1000 ] || { echo "::error::the image does not run as uid 1000"; exit 1; }
 
-      # Drop Google's apt source before --with-deps: one bad index there once
-      # failed every e2e run for hours (art, 2026-09-09). Chrome stays for Lighthouse.
-      - name: Install the browsers
-        run: |
-          sudo rm -f /etc/apt/sources.list.d/google-chrome.list \
-                     /etc/apt/sources.list.d/google-chrome.sources
-          npx playwright install --with-deps chromium webkit firefox
-
+      # The browsers run in Playwright's own image, which carries all three
+      # and their system libraries. `playwright install --with-deps` instead
+      # downloads ~140 MB of libraries from the runner's Ubuntu mirror, which
+      # on 2026-11-24 ran at ~100 kB/s and hit the 25-minute limit (PR #2).
+      # The tag follows the installed @playwright/test, so a Dependabot bump
+      # can never leave the image and the test runner on different versions.
       # failOnFlakyTests fails this step if any test passed only on its retry.
       - name: Walk the site in four browsers
-        env:
-          BASE_URL: http://localhost:8080
-          EXPECT_VERSION: 2099.01.01.1
-        run: npx playwright test
+        run: |
+          set -euo pipefail
+          PW=$(node -p "require('@playwright/test/package.json').version")
+          docker run --rm --network host --ipc=host -v "$PWD:/work" -w /work \
+            -e CI=true -e BASE_URL=http://localhost:8080 -e EXPECT_VERSION=2099.01.01.1 \
+            "mcr.microsoft.com/playwright:v${PW}-resolute" npx playwright test
 
+      # Lighthouse uses the runner's preinstalled Google Chrome.
       - name: Lighthouse (Google PageSpeed) on a phone
         run: scripts/lighthouse-gate.sh http://localhost:8080/
 

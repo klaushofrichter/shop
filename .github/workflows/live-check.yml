@@ -33,11 +33,6 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
-      - name: Install the browsers
-        run: |
-          sudo rm -f /etc/apt/sources.list.d/google-chrome.list \
-                     /etc/apt/sources.list.d/google-chrome.sources
-          npx playwright install --with-deps chromium webkit firefox
       - name: The release just cut is the one served
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,8 +40,15 @@ jobs:
           set -euo pipefail
           latest=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName -q '.[0].tagName')
           echo "EXPECT_VERSION=${latest#v}" >> "$GITHUB_ENV"
+      # Playwright's own image (browsers and libraries included), tagged to
+      # match the installed @playwright/test; see production-checks.yml.
       - name: Walk the live site in four browsers (read-only tests)
-        run: npx playwright test --grep @live
+        run: |
+          set -euo pipefail
+          PW=$(node -p "require('@playwright/test/package.json').version")
+          docker run --rm --ipc=host -v "$PWD:/work" -w /work \
+            -e CI=true -e BASE_URL -e EXPECT_VERSION \
+            "mcr.microsoft.com/playwright:v${PW}-resolute" npx playwright test --grep @live
       - name: Lighthouse (Google PageSpeed) on the live site
         run: scripts/lighthouse-gate.sh "$BASE_URL/"
       - name: Keep the reports when something failed
