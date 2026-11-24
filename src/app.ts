@@ -5,12 +5,17 @@ import { rateLimit } from 'express-rate-limit';
 import { homePage, notFoundPage } from './pages';
 import { appVersion } from './version';
 import type { WorkerHealth } from './worker-health';
+import { authRouter, type AuthDeps } from './admin/auth';
+import { adminRouter, type AdminDeps } from './admin/router';
 
 export interface AppDeps {
   /** `/health/worker`; absent → 503 (no runner in this process). */
   workerHealth?: () => WorkerHealth;
   /** DATA_DIR: content-addressed images are served from its `img/` folder. */
   dataDir?: string;
+  /** Google sign-in and the admin (docs/design/08). */
+  auth?: AuthDeps;
+  admin?: AdminDeps;
 }
 
 /** Content-addressed names only: 64 hex characters and a known extension. */
@@ -103,6 +108,9 @@ export function createApp(deps: AppDeps = {}): Express {
       });
     });
   }
+
+  if (deps.auth) app.use(authRouter(deps.auth));
+  if (deps.admin) app.use('/admin', adminRouter(deps.admin));
 
   app.use('/static', express.static(PUBLIC_DIR, { maxAge: '1h', index: false }));
 

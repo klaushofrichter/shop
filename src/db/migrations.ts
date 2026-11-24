@@ -76,6 +76,13 @@ CREATE TABLE sku_checks (
   checked_at TEXT NOT NULL
 );
 `,
+  // 4: a small preview of each print file for the admin (what will be printed),
+  // the share of the picture the crop cuts, and render failures.
+  `
+ALTER TABLE print_files ADD COLUMN preview_path TEXT;
+ALTER TABLE offers ADD COLUMN cut_pct INTEGER;
+ALTER TABLE offers ADD COLUMN render_error TEXT;
+`,
 ];
 
 export const MODE_MIGRATIONS: string[] = [

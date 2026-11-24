@@ -52,10 +52,15 @@ jobs:
       - run: npm ci
 
       - name: Build and start the image
+        env:
+          E2E_COOKIE_SECRET: e2e-only-cookie-secret-not-a-real-one-0001
         run: |
           set -euo pipefail
           docker build --build-arg APP_VERSION=2099.01.01.1 -t shop:e2e .
-          docker run -d --name site --network host -e PORT=8080 shop:e2e
+          # A test-only cookie secret and an example.com admin: the admin e2e mints
+          # a real signed session cookie with them (no test login route exists).
+          docker run -d --name site --network host -e PORT=8080 \
+            -e COOKIE_SECRET="$E2E_COOKIE_SECRET" -e ALLOWED_EMAILS=e2e@example.com shop:e2e
           for i in $(seq 1 30); do
             curl -sf http://localhost:8080/health >/dev/null && break
             echo "waiting for the image (${i}/30)"; sleep 1
@@ -73,11 +78,13 @@ jobs:
       # can never leave the image and the test runner on different versions.
       # failOnFlakyTests fails this step if any test passed only on its retry.
       - name: Walk the site in four browsers
+        env:
+          E2E_COOKIE_SECRET: e2e-only-cookie-secret-not-a-real-one-0001
         run: |
           set -euo pipefail
           PW=$(node -p "require('@playwright/test/package.json').version")
           docker run --rm --network host --ipc=host -v "$PWD:/work" -w /work \
-            -e CI=true -e BASE_URL=http://localhost:8080 -e EXPECT_VERSION=2099.01.01.1 \
+            -e CI=true -e BASE_URL=http://localhost:8080 -e EXPECT_VERSION=2099.01.01.1 -e E2E_COOKIE_SECRET \
             "mcr.microsoft.com/playwright:v${PW}-resolute" npx playwright test
 
       # Lighthouse uses the runner's preinstalled Google Chrome.

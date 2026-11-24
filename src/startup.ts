@@ -14,6 +14,7 @@ import { systemClock, type Clock } from './clock';
 import { describeConfig, loadConfig, type Config } from './config';
 import { openDatabases, type Databases } from './db';
 import { registerCatalogJobs, scheduleSourceRefresh } from './catalog/jobs';
+import { registerOfferJobs } from './catalog/offers';
 import { FileStore } from './images/store';
 import { JobRunner } from './jobs';
 import { createSources } from './sources';
@@ -21,6 +22,7 @@ import { verifyIdentity } from './providers/checks';
 import { ProviderStatus, registerProviderJobs, scheduleProviderJobs } from './providers/jobs';
 import { PrintfulClient } from './providers/printful';
 import { workerHealth } from './worker-health';
+import { googleSignIn } from './admin/auth';
 
 export interface Shop {
   config: Config;
@@ -60,11 +62,43 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
     limits: { maxInputPixels: config.maxInputPixels },
     log,
   });
+  registerOfferJobs(runner, {
+    catalog: dbs.catalog,
+    orders: dbs.orders,
+    clock,
+    sources: contentSources,
+    skus,
+    store,
+    limits: { maxInputPixels: config.maxInputPixels },
+    registerFiles: !!config.printful.token,
+    log,
+  });
   if (config.sourcesRefresh) scheduleSourceRefresh(dbs.orders, clock, sources.map((s) => s.id));
   const startedAtMs = clock.now();
   const app = createApp({
     workerHealth: () => workerHealth(dbs.orders, clock, { checkReconciliation: false, checkAlerts: false, startedAtMs }),
     dataDir: config.dataDir,
+    auth: {
+      google:
+        config.admin.googleClientId && config.admin.googleClientSecret && config.admin.googleRedirectUri
+          ? googleSignIn(config.admin.googleClientId, config.admin.googleClientSecret, config.admin.googleRedirectUri)
+          : undefined,
+      cookieSecret: config.admin.cookieSecret,
+      allowedEmails: config.admin.allowedEmails,
+      clock,
+      log,
+    },
+    admin: {
+      catalog: dbs.catalog,
+      orders: dbs.orders,
+      clock,
+      mode: config.mode,
+      cookieSecret: config.admin.cookieSecret,
+      allowedEmails: config.admin.allowedEmails,
+      publicUrl: config.publicUrl,
+      skus,
+      storeLabel: config.mode,
+    },
   });
   console.log(JSON.stringify({ level: 'info', msg: 'configuration', detail: describeConfig(config), skus: skus.skus.length, sources: sources.map((s) => s.id) }));
   const provider = config.printful.token ? new PrintfulClient({ baseUrl: config.printful.baseUrl, token: config.printful.token }) : undefined;
