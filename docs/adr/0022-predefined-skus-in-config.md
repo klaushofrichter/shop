@@ -21,3 +21,7 @@ Option 1. The admin decides which SKUs each picture offers and at what price (AD
 
 - A new SKU needs a developer (or agent) change; acceptable at this scale.
 - Each SKU maps to exactly one provider variant, which keeps print files and orders simple.
+
+## Notes
+
+- 2026-11-25: the initial set is replaced by ADR-0033 (sizes up to 12 × 16, both orientations).

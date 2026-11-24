@@ -1,173 +1,144 @@
 # 6. Fulfilment
 
+Revised for review round 2 (2026-11-25): file registration in the interface, data
+minimisation (ADR-0031), the invariants of [07 §2.6](07-orders-data-jobs.md#26-invariants)
+in the submission algorithm, every v2 status and event, failures and fail-safes as
+holds, threshold values out of the public documents.
+
 ## 1. Principles
 
-- The shop talks to fulfilment providers only through an interface (R13, ADR-0017). Printful is the only implementation at launch.
-- Webhooks are **hints**: the shop verifies them, then re-fetches the order from the provider and acts on what the API says (ADR-0018).
-- Every call that creates something is **idempotent** by our order id.
-- Confirming an order **costs Klaus money**. Confirmation happens only in live mode, after the cost guard, and at most once.
+- Providers only through an interface (ADR-0017); Printful is the only implementation.
+- Webhooks are hints: verify, store, enqueue, answer 200, then re-fetch and act on the API's answer.
+- Every create is idempotent by our ids; confirming costs Klaus money and happens at most once per attempt, only in live mode (or in test mode against the **test store**, never confirmed), after the cost guard.
+- Send the provider only what it needs to produce and ship (ADR-0031).
 
 ## 2. Provider interface
 
 ```ts
 interface FulfilmentProvider {
   readonly id: 'printful';
-
-  /** Startup and daily: the print area, DPI and availability of each configured variant. */
-  describeVariant(variantId: number): Promise<VariantSpec>;          // { placement, technique, widthPx, heightPx, dpi, available }
-
-  /** Quote page. */
-  shippingRates(to: Address, items: ItemRef[]): Promise<ShippingRate[]>; // { methodId, name, amountCents, minDays, maxDays, minDate?, maxDate? }
-
-  /** Admin: preview images. */
+  describeVariant(variantId: number): Promise<VariantSpec>;            // placement, technique, px, dpi, available, orientations
+  shippingRates(to: Address, items: ItemRef[]): Promise<ShippingRate[]>;
+  registerFile(url: string): Promise<{ providerFileId: string; status: FileStatus }>;  // review 2 F2
+  getFileStatus(providerFileId: string): Promise<{ status: FileStatus; reason?: string }>;
   createMockup(req: MockupRequest): Promise<{ taskId: string }>;
-  getMockup(taskId: string): Promise<MockupResult>;                  // pending | done(urls) | failed(reason)
-
-  /** Order submission, see §4. All keyed by our order's external id. */
+  getMockup(taskId: string): Promise<MockupResult>;
   findOrder(externalId: string): Promise<ProviderOrder | null>;
-  createDraft(order: DraftOrder): Promise<ProviderOrder>;            // DraftOrder carries externalId, recipient, items with file URLs, shipping method
-  getOrder(providerOrderId: string): Promise<ProviderOrder>;         // status, costs { calculating | done, totalCents, … }, shipments[]
+  createDraft(order: DraftOrder): Promise<ProviderOrder>;
+  getOrder(providerOrderId: string): Promise<ProviderOrder>;          // status, costs, shipments
   confirm(providerOrderId: string): Promise<ProviderOrder>;
   cancel(providerOrderId: string): Promise<'canceled' | 'not_cancellable'>;
-
-  /** Webhooks. */
+  listRecentOrders(limit: number): Promise<ProviderOrderSummary[]>;  // reverse reconciliation
   verifyWebhook(rawBody: Buffer, headers: Headers): boolean;
-  parseWebhook(rawBody: Buffer): ProviderEvent;                       // { eventId, type, providerOrderId?, externalId?, occurredAt }
+  parseWebhook(rawBody: Buffer): ProviderEvent;                        // eventId, type, providerOrderId?, externalId?, occurredAt, storeId
 }
+type FileStatus = 'waiting' | 'ok' | 'failed';
 ```
 
-`ProviderOrder.status` is normalised to: `draft | pending | on_hold | in_production |
-partially_shipped | fulfilled | canceled | failed`. Each adapter maps its own
-statuses; errors are thrown as `NotCreated` (safe to retry), `Unknown` (look up
-before retrying), `Permanent(reason)` (won't succeed by retrying: invalid address,
-discontinued variant, rejected file) or `RateLimited(retryAfter)`.
-
-A SKU names its provider; an order whose items belong to two providers would be
-split into one provider order per provider. With one provider this never happens;
-the schema has `provider_orders` as a separate table so it can.
+Normalised order status: `draft | pending | inreview | on_hold | in_production |
+partially_shipped | fulfilled | canceled | failed`. Costs status: `calculating | done |
+failed` (review 1 F10). Errors: `NotCreated` (retry), `Unknown` (look up first),
+`Permanent(reason)`, `RateLimited(retryAfter)`, `AlreadyExists` (duplicate `external_id`).
 
 ## 3. Printful adapter
 
-- Base `https://api.printful.com`, `Authorization: Bearer $PRINTFUL_TOKEN` (store-level, so no `X-PF-Store-Id`), 15 s timeout, JSON.
-- Reads `X-Ratelimit-Remaining`/`-Reset` on every response; when remaining < 10 the runner pauses Printful jobs until reset. `429` → `RateLimited(Retry-After)`.
-- Mapping of an order item:
+- Base `https://api.printful.com`, `Authorization: Bearer <token of the mode's store>` (ADR-0029: the test store's token in test mode), 15 s timeout. Reads `X-Ratelimit-Remaining`/`-Reset` (v2: leaky bucket, `120;w=60`).
+- At startup: `GET /v2/oauth-scopes` must include `orders`, `file_library`, `webhooks` (and read scopes); `GET /v2/stores` must return exactly the expected store for the mode; otherwise the process refuses to start.
+- **Recipient (ADR-0031)**: `name`, `address1`, `address2`, `city`, `state_code`, `zip`, `country_code`. **No `email`, no `phone`**: tracking and status reach the shop through Printful's webhooks and API, so Printful and the carriers don't need them. If a carrier ever requires a phone (e.g. a future express or international option), the checkout asks for it with an explicit consent line.
+- **Order item**:
 
   ```json
-  {
-    "source": "catalog",
-    "catalog_variant_id": 4651,
-    "external_id": "<order_item id>",
-    "quantity": 1,
-    "retail_price": "59.00",
-    "name": "Framed print 8 × 10 in — Undertow",
-    "orientation": "vertical",
-    "placements": [
-      { "placement": "default", "technique": "digital",
-        "layers": [ { "type": "file", "url": "https://shop.klaushofrichter.net/files/<sha256>.jpg" } ] }
-    ]
-  }
+  { "source": "catalog", "catalog_variant_id": 1350, "external_id": "<order_item id>",
+    "quantity": 1, "retail_price": "59.00", "name": "Framed print 12 × 16 in — <title>",
+    "orientation": "horizontal",
+    "placements": [ { "placement": "default", "technique": "digital",
+      "layers": [ { "type": "file", "url": "https://shop.klaushofrichter.net/files/<sha256>.jpg" } ] } ] }
   ```
 
-  The print file is already exactly the print area's size, so no `position` is sent (Printful fills the area).
-- Order body: `external_id`, `shipping` (the method the customer paid for, e.g. `STANDARD`, sent explicitly), `recipient` (from the order), `order_items`, `retail_costs { currency: "USD", shipping, tax }` (what the customer paid, shown on Printful's side), `customization.packing_slip { store_name: "Klaus Hofrichter Art", message, email, custom_order_id: <order number> }`.
-- `external_id`: our order id, `[A-Za-z0-9_-]`, at most 32 characters; Printful never releases a used id, so a resubmission after a cancel uses `<id>-2`, `-3`… (stored on `provider_orders`).
-- Lookup by our id: `GET /v2/orders/@<external_id>` (documented in the v2 spec: "Order External ID (string prepended with @ symbol)").
-- Cancel: v2 `DELETE /v2/orders/{id}` only deletes drafts, failed or cancelled orders; cancelling a submitted order uses **v1** `DELETE https://api.printful.com/orders/{id}`. Captured 2026-11-24 on a draft: the store-level token works on v1, the order becomes `canceled` and stays visible. (On a confirmed order it can't be observed without a real order.)
-- Error mapping from captured responses: duplicate `external_id` → 400 "External ID validation error…" → treat as "exists", look up `@external_id`; unknown variant → 404 → `Permanent`; invalid address → 400 "Recipient: …" → `Permanent` with the message; after a `PATCH`, costs return to `calculating`.
+  Layers take a **URL** (the v2 layer schema has no file id). The file-library registration is a pre-flight check that Printful can fetch and read the file; the order still references the URL. `orientation` (`horizontal | vertical | any`) is set from the offer for products that allow both (framed posters; verified for unframed posters with one test-store draft, [13 §4](13-plan-and-open-questions.md#4-items-to-verify)).
+- **Order body**: `external_id = <order id>-<attempt>`, `shipping` (the method paid for, explicit), `recipient`, `order_items`, `retail_costs { currency, shipping, tax }`, `customization.packing_slip { store_name, custom_order_id: <order number> }` with the store name from the source configuration ([04 §4](04-catalog-and-print-files.md#4-content-sources)), never an e-mail or phone.
+- Lookup `GET /v2/orders/@<external_id>`; cancel via **v1** `DELETE /orders/{id}` (captured on a draft: becomes `canceled`, stays visible).
+- Error mapping (captured): duplicate `external_id` → 400 "External ID validation error…" → `AlreadyExists` → look up; unknown variant → 404 → `Permanent`; address → 400 "Recipient: …" → `Permanent` with the message; `PATCH` resets costs to `calculating`.
+- **Webhook verification**: `x-pf-webhook-signature` = hex HMAC-SHA256 of the raw body with the hex-decoded `secret_key`; `x-pf-webhook-public-key` must match the configured one; the body's `store_id` must be the mode's store; `occurred_at` within 24 h. Event id = SHA-256 of `type|occurred_at|order id|shipment id`, truncated to 32 hex (review 1 F10).
 
 ## 4. Submission
 
-Job `order.submit(order_id)`, run when an order becomes `paid` and retried by the
-job runner. Steps, each re-entrant:
+Job `order.submit(order_id)`, enqueued when payment is `paid` and the fail-safe check
+passed (I2). Each step is re-entrant.
 
-1. **Claim**: insert `provider_orders(order_id, provider, external_id, state='submitting')`; the unique index on `(order_id, provider)` means a second worker finds the row and continues from its state instead of creating anything.
-2. **Look up** `@external_id`. Found → record its id and status; skip to step 4 (or step 6 if already confirmed).
-3. **Create draft**. On `Unknown` failure (timeout, 5xx, 409) → back to step 2 on retry; on `NotCreated` → retry; on `Permanent` → §7.
-4. **Wait for costs**: poll `getOrder` until `costs.calculation_status = done` (Printful prices drafts asynchronously and refuses confirmation while calculating); up to 10 polls over ~60 s inside the job, then reschedule the job.
-5. **Cost guard**: `provider cost total` (items + shipping + tax Printful charges Klaus) must be ≤ (amount paid for items and shipping) − (Stripe fee estimate) − `MARGIN_FLOOR_CENTS` (default 0). Fails → §7 "cost guard".
-6. **Confirm** — only if `FULFILMENT_CONFIRM=true` (live). In test mode the order stops as a Printful draft and the shop marks it `submitted (test)`; a nightly job deletes test drafts older than 7 days.
-7. Transition `paid → submitted` (cause `job`, ref Printful order id). Store Printful's costs on `provider_orders` for the admin's margin view.
-
-At < 10 orders a week the job runs within seconds of payment; a customer sees
-"In production" within a minute or two in the normal case.
+1. **Preconditions** (I2), in one transaction: `payment_state = paid`, no open hold, `refund_requested_at` null, `dispute_state = none`. Otherwise stop.
+2. **Claim** attempt N: insert `provider_orders(order_id, provider, attempt N, external_id, state = submitting)`; set `fulfilment_state = submitting`. N = 1, or N+1 only if attempt N is proven `canceled`/`gone` (I5).
+3. **Look up** `@external_id`. Found → adopt (record id and status) and continue from its state.
+4. **Create draft**. `Unknown` → next run starts at 3; `AlreadyExists` → 3; `NotCreated` → retry; `Permanent` → §7.
+5. **Wait for costs**: poll until `calculation_status` is `done` (~2–3 s captured), up to 60 s per run; `failed` → an `attention` hold (alert, no refund until I4 holds).
+6. **Cost guard**: `provider total (items + shipping + tax Printful charges Klaus) ≤ items + shipping paid − Stripe fee estimate − MARGIN_FLOOR_CENTS`. The customer's tax never counts as revenue. Fails → `attention` hold.
+7. **Confirm**, only in live mode: in one transaction check I3 (no refund requested, no open hold) and write `confirm_requested_at`, `state = confirming`; then call confirm. Success → `confirmed`, `fulfilment_state = submitted`. `Unknown` → stays `confirming`; the next run reads the order (§5) before anything else. In test mode the draft in the test store is **never confirmed**; the job records `test: stopped at draft` as an event and the nightly purge deletes test drafts after 7 days.
 
 ## 5. Status and tracking
 
-`POST /webhooks/printful`:
+`POST /webhooks/printful`: verify (§3) → `inbound_events` → enqueue → 200. Registered
+once per store by `scripts/printful-webhook.ts` (`POST /v2/webhooks`, replaces the token's
+config; `expires_at: null`; the returned `secret_key` and `public_key` go to the node's
+`.env`; the System page shows the configuration and its expiry).
 
-1. Verify: header `x-pf-webhook-signature` = hex HMAC-SHA256 of the **raw body** with the **hex-decoded** `secret_key` returned when the webhook was registered; constant-time compare. If `PRINTFUL_WEBHOOK_PUBLIC_KEY` is set, `x-pf-webhook-public-key` must equal it. Invalid or missing → 401, ignored (per Printful's own docs, v2 spec "Webhook v2" section).
-2. Event id = SHA-256 of `type|created|order id|shipment id` (Printful events carry no id), truncated to 32 hex; insert into `inbound_events`; duplicate → 200.
-3. Enqueue `printful.event`, answer 200.
-
-Registered once by `scripts/printful-webhook.ts` (`POST /v2/webhooks`, replaces any
-existing config for this token): `default_url = https://shop.klaushofrichter.net/webhooks/printful`, events:
-
-| Event | Effect (after re-fetching the order) |
+| Event | Effect (after re-fetching the order and its shipments) |
 |---|---|
-| `order_created`, `order_updated` | Sync status. |
-| `order_failed` | §7. |
-| `order_canceled` | → `canceled` path, §7. |
-| `order_put_hold`, `order_put_hold_approval`, `order_remove_hold` | `on_hold` ↔ back; a hold older than 24 h alerts Klaus. |
-| `order_refunded` | Printful refunded Klaus (e.g. after a reported defect); annotate. |
-| `shipment_sent` | Upsert a `shipments` row: `carrier`, `service`, `tracking_number`, `tracking_url`, `shipped_at`, `estimated_delivery`, items; → `shipped` or `partially_shipped`; enqueue the shipping email if enabled. |
-| `shipment_delivered` | `delivered_at`; when all shipments are delivered → `delivered`. |
-| `shipment_returned`, `shipment_canceled`, `shipment_out_of_stock`, `shipment_put_hold` | Annotate; alert Klaus (returned parcels need a decision: reship or refund). |
-| `catalog_stock_updated`, `catalog_price_changed` | Refresh SKU availability/prices ([04 §7](04-catalog-and-print-files.md#7-availability)). |
-| `mockup_task_finished` | Wake the mockup job. |
+| `order_created`, `order_updated` | sync `fulfilment_state` |
+| `order_failed` | `failed` → `attention` hold, alert at once (the reason is free text: shown, not parsed) |
+| `order_canceled` | `canceled` → `attention` hold with action refund (I4) |
+| `order_put_hold`, `order_put_hold_approval` | `on_hold` → `provider` hold, alert at once, deadline from config |
+| `order_remove_hold` | hold `cleared`, back to the provider's state |
+| `order_refunded` | Printful refunded Klaus (e.g. a defect): event + alert |
+| `shipment_sent` | upsert `shipments` from `GET /v2/orders/{id}/shipments` (carrier, service, tracking number and URL, estimated delivery come from there, not from the webhook body); `partially_shipped`/`shipped`; enqueue the per-parcel e-mail |
+| `shipment_delivered` | `delivered_at`; all delivered → `delivered` |
+| `shipment_put_hold`, `shipment_put_hold_approval`, `shipment_remove_hold`, `shipment_out_of_stock`, `shipment_canceled`, `shipment_returned` | event + alert; a returned parcel needs Klaus (reship or refund) |
+| `approval_sheet_status_changed` | event + alert (Printful asks for an approval) |
 
-The v2 `Shipment` object carries `carrier`, `service`, `tracking_number`,
-`tracking_url`, `tracking_events`, `shipped_at`, `delivered_at`, `estimated_delivery`,
-`is_reshipment` and `shipment_items` (confirmed in the v2 spec). A reshipment (reprint)
-is just another shipment row.
-
-Polling backs the webhooks up: reconciliation re-fetches every open order hourly
-([07 §5](07-orders-data-jobs.md#5-reconciliation)).
+Not subscribed (review 1 F29): `catalog_stock_updated`, `catalog_price_changed`,
+`mockup_task_finished`; the daily catalog refresh and polling cover them.
 
 ## 6. Cancellation
 
-- Before confirmation (draft): delete the draft (v2 `DELETE`).
-- After confirmation, before production (`pending`, `on_hold`): v1 cancel; Printful refunds Klaus's wallet.
-- In production or later: not cancellable. The shop refuses a "cancel" from the admin and offers "refund anyway" (Klaus's explicit choice: the item still ships).
-- Customers can't cancel by themselves at launch (contact link; R9 accepts this rare manual case).
+- Draft → v2 `DELETE` (gone). Confirmed, not in production → v1 `DELETE` (`canceled`). In production or later → not cancellable: the admin offers "refund anyway" (Klaus's explicit choice).
+- Every cancel is followed by a read; only a read showing `canceled` or not found counts (I5).
+- A refund from anywhere triggers a cancel attempt (I7).
 
 ## 7. Failure handling
 
-Goal (Q1, R9): every paid order ends shipped or refunded **without Klaus**, except
-where only he can act (his Printful billing, a returned parcel, a dispute).
+Goal (Q1, R9): every paid order ends shipped or refunded without Klaus, except where only
+he can act. Every exception is a **hold** with a deadline; a deadline refunds only when
+I4 allows, otherwise it alerts.
 
 | Failure | Detected by | Automatic handling | Klaus |
 |---|---|---|---|
-| Printful API down, 5xx, timeout, 429 | submit job | Retry with backoff: 1, 2, 5, 10, 30 min, then every hour, up to **24 h** from payment. Look up `@external_id` before every create. | Alert only if still failing after 24 h. |
-| Permanent create error (invalid address, variant discontinued, file rejected) | submit job (`Permanent`) | Delete the draft, **full refund**, customer email (if enabled) and status page "Refunded — we couldn't produce this order". | FYI alert. |
-| Cost guard fails (Printful costs more than paid) | submit step 5 | Keep the draft, `needs_attention`, wait **24 h** for Klaus to "confirm anyway" in the admin; then cancel and **refund automatically**. | Decide within 24 h, or let it refund. |
-| Printful `order_failed` / on hold for **billing** (Klaus's card or wallet) | webhook, poll | `on_hold`; alert Klaus at once (only he can fix billing); after **72 h** on hold: cancel and refund. | Fix billing. Prevention: auto-recharge on his Printful wallet. |
-| Other holds (Printful review, approval) | webhook, poll | Wait; Printful usually resolves; after 72 h alert. | Rarely. |
-| Printful cancels the order | `order_canceled` | Full refund unless already refunded; customer email. | FYI. |
-| Webhook lost | hourly reconciliation | Re-fetch and apply. | — |
-| Shop down during webhooks | provider retries (Stripe 3 days; Printful 1–1024 min), reconciliation | Apply on recovery. | — |
-| Crash between Printful create and our write | step 2 lookup on retry | Adopt the existing Printful order. | — |
-| Returned parcel (bad address, refused) | `shipment_returned` | Annotate; Printful keeps returns 30 days. | Decide: reship (new order, paid by Klaus or customer) or refund. Rare. |
-| Damaged or misprinted item | customer contact | — | Report to Printful (photo, within 30 days); Printful reprints free → arrives as a new shipment. |
-| Dispute / chargeback | Stripe webhook | Annotate, alert with the tracking evidence ready in the admin. | Submit evidence in Stripe. |
-
-All windows (24 h, 72 h) are configuration (ADR-0010 sets them; proposed values shown).
-Klaus's "involvement" is limited to the right column; none of it is in the happy path.
+| Printful down, 5xx, timeout, 429 | submit job | Retry with backoff up to the retry window; look up before every create | alert after the window |
+| `Permanent` at draft creation (address, variant, file) | submit job | Draft deleted (if any), full refund, customer e-mail | FYI |
+| Costs `failed` | submit job | `attention` hold | decide, or the deadline refunds (I4: draft only) |
+| Cost guard fails | submit job | `attention` hold, draft kept | "confirm anyway" or let it refund |
+| Confirm answer lost | submit job | stays `confirming`; read before anything else | — |
+| Provider hold (any reason, billing included) | webhook, poll | `provider` hold; alert at once | fix billing; deadline: alert (a confirmed order can't be auto-refunded unless I4) |
+| `order_failed` after confirmation | webhook, poll | `attention` hold; alert | decide |
+| Printful cancels | webhook | refund if I4 holds; customer e-mail | FYI |
+| Refund made in the Stripe Dashboard | `charge.refunded` | I7: cancel if possible, else alert | — |
+| Early fraud warning, dispute | Stripe webhook | `fraud` hold / cancel (§05 §4) | evidence for a dispute |
+| Webhook lost, shop down | reconciliation | re-fetch and apply | — |
+| Crash after create, before our write | lookup at step 3 | adopt | — |
+| Returned parcel | webhook | event | reship or refund |
+| Damaged or misprinted item | customer contact | — | report to Printful (photo, 30 days); reprint arrives as a new shipment |
 
 ## 8. Fail-safes against large or unusual orders
 
-ADR-0020 (Klaus: "a fail save and protection against large orders … not misuse"). Normal
-orders pass untouched; unusual ones never reach Printful without Klaus, and fail safe to
-a refund.
+ADR-0020. Normal orders pass untouched; unusual ones never reach Printful without Klaus,
+and fail safe. **The threshold values are deployment configuration in kube-setup
+(private), not in this public repository** (review 1 F27); the code requires them in live
+mode and uses obviously artificial values in tests.
 
-| Layer | Rule (defaults, configurable) | Effect |
+| Layer | Rule | Effect |
 |---|---|---|
-| Hard limits | quantity per item ≤ 10 (postcards ≤ 25), ≤ 20 items, total ≤ $500 | Checkout refused; contact address offered. Checked at `POST /cart`, `/cart/address` and `/checkout`. |
-| Approval hold | total ≥ $250; or the same email or card fingerprint paid another order in the last 24 h; or Stripe Radar risk level `elevated`/`highest` | After payment the order goes to `awaiting_approval` instead of submission; alert to Klaus with the reasons. Admin: **Approve** → submit; **Refund** → refund. **No action in 72 h → automatic full refund.** |
-| Circuit breaker | > 10 paid orders in 24 h, or > $600 provider cost of submitted orders in 24 h | Breaker trips (stored in the database, survives restarts); alert; every newly paid order is held as above. Admin: **Reset breaker** releases the held orders to normal processing. Quotes and payments keep working. |
-| Always | per-IP rate limits, Stripe Radar, cost guard (§4 step 5) | as described there |
+| Hard limits | per-SKU `maxQuantity` (config), items per order, order total | Checkout refused with the contact address. Checked when the cart changes, at the quote and at checkout. |
+| Approval hold | **all** of these are evaluated and stored (review 1 F8): the order total at or above `APPROVAL_OVER_CENTS`; the same e-mail or card fingerprint has paid more than `REPEAT_OVER_CENTS` in total, or at least `REPEAT_ORDERS` orders, in the last 24 h (cumulative, review 1 F7); Radar risk `elevated` or `highest`; the circuit breaker is tripped | `approval` hold with all reasons. Admin **Approve** (recorded: who, when; the check is not re-run) or **Refund**. Deadline: refund (the order is never confirmed, so I4 holds). |
+| Circuit breaker | more than `BREAKER_ORDERS_24H` paid orders, or more than `BREAKER_COST_CENTS_24H` provider cost, in 24 h | Breaker trips (stored in `settings`); alert; new paid orders get an `approval` hold with reason `breaker`. **Reset** releases only holds whose sole reason is `breaker`; holds with other reasons stay for a decision. |
+| Always | rate limits, Radar, the pre-payment cost check, the cost guard | as described |
 
-The check runs once, in the job that follows `paid`, in this order: breaker tripped?
-→ hold. Hold conditions? → hold. Otherwise submit. Radar's risk level is read from the
-charge of the PaymentIntent (`outcome.risk_level`). The card fingerprint is
-`payment_method_details.card.fingerprint` (stored on the order, not the card number).
-
+Radar's risk level and the card fingerprint come from `expand: payment_intent.latest_charge`;
+for some methods they are absent, which is **not** a hold reason.

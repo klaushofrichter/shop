@@ -2,8 +2,7 @@
 
 Recorded by `scripts/capture/capture-apis.mjs` (commit 4171148), run by Cluster on the
 node with Klaus's permission: Stripe **test** key, Printful reads and **drafts** only.
-Data: branch `capture/2026-11-24`, commit b6e43e0, `captures/2026-11-24/` (22 scenario
-files). Three drafts were created and deleted (rechecked: 404); nothing was confirmed.
+Raw data: moved to the private repository (ADR-0028). Three drafts were created and deleted (rechecked: 404); nothing was confirmed.
 The Stripe account id was replaced by `acct_REDACTED` before committing.
 
 ## Printful
@@ -14,7 +13,7 @@ The Stripe account id was replaced by `acct_REDACTED` before committing.
 | A draft of framed 8×10 + 2 postcards + t-shirt M to Austin TX cost **$56.36**: shipping $16.34, **tax $4.28** | same | Printful charges Klaus sales tax on wholesale (no resale certificate yet), as the tax research said. Shipping is not cheap for mixed carts (two facilities). |
 | `PATCH` on a draft returns it with costs back to `calculating` | lifecycle | After any change, wait for costs again. |
 | `GET /v2/orders/@<external_id>` works; v1 `GET /orders/@<external_id>` too | lifecycle | Confirms the lookup the submit algorithm relies on. |
-| Duplicate `external_id` → **400** `"External ID validation error. external_id must be unique per store, … is already used by store …"` | lifecycle | The adapter maps this message to "already exists" and looks the order up instead of failing. |
+| Duplicate `external_id` → **400** `"External ID validation error. external_id must be unique per store, … is already used by store <id>"` | lifecycle | The adapter maps this message to "already exists" and looks the order up instead of failing. |
 | `DELETE /v2/orders/{id}` on a draft → **204**, then `GET` → 404 | lifecycle | As documented. |
 | v1 `DELETE /orders/{id}` on a draft → **200**, status **`canceled`**; the order **stays** (GET 200, status canceled); a v2 DELETE afterwards → 204 | draft-v1-cancel | v1 DELETE cancels rather than deletes. The store-level token works on v1. Cancelling a confirmed order this way is still unverifiable without a real order. |
 | Invalid address (state/ZIP mismatch, bad state) → **400** at draft creation: `"Recipient: Shipping address state and ZIP code don't match…; Recipient: Invalid state code"` | draft-errors | Printful validates the address **when the order is created**, i.e. after payment in our flow. Shipping rates don't catch it (they need only country/state/ZIP). → validate before payment (see below). |
@@ -41,12 +40,12 @@ The Stripe account id was replaced by `acct_REDACTED` before committing.
 | Unknown session / refund for unknown PaymentIntent → 404 | errors | Error shapes for the mock. |
 | No 403 anywhere | all | The restricted test key has every permission used, Customers write included. |
 
-## Second capture (2026-11-24, branch `capture/2026-11-24b`, commit 065f68c; no drafts)
+## Second capture (2026-11-24, no drafts)
 
 | Observation | Consequence |
 |---|---|
 | **Order estimation** rejects a state/ZIP mismatch and an invalid state immediately (**400**, same messages as order creation), but **accepts** a nonexistent street and a missing `address1` (task `completed`, no `failure_reasons`). | The estimate at quote time catches state/ZIP errors before payment. **Printful does not validate street addresses at all**, so the shop's form requires the street line, and a genuinely wrong street surfaces only as a returned parcel (06 §7 `shipment_returned`). Street-level validation would need an address service; not worth it at this volume (open question for the review). |
-| **File library**: `POST /v2/files` → `status: waiting`; within ~5–10 s `ok` (with `width`, `height`, `size`, `mime_type`, `filename`; `dpi` null) or **`failed`** for an unreachable URL and for a non-image. Registering the same URL again returns the same file id (de-duplicated by URL). | The offer-enable job registers the print file and waits for `ok`; `failed` blocks the offer with an alert. Content-addressed URLs make de-duplication harmless. Three capture entries remain in Klaus's file library (ids 1121270646, 1121274918, 1121275005). |
+| **File library**: `POST /v2/files` → `status: waiting`; within ~5–10 s `ok` (with `width`, `height`, `size`, `mime_type`, `filename`; `dpi` null) or **`failed`** for an unreachable URL and for a non-image. Registering the same URL again returns the same file id (de-duplicated by URL). | The offer-enable job registers the print file and waits for `ok`; `failed` blocks the offer with an alert. Content-addressed URLs make de-duplication harmless. |
 | **File library entries can't be deleted through the API** (checked by Cluster 2026-11-24 when Klaus asked to remove the three capture entries): v2 `DELETE /v2/files/{id}` → 404 "Not found" while `GET` → 200; v1 `DELETE /files/{id}` → 404. Removal is possible only in Printful's dashboard. | The shop never plans to clean up entries it registers: the library only grows. At this scale (~25 pictures × up to 11 SKUs, plus re-renders after crop changes) that is a few hundred entries over years; Printful de-duplicates by URL, so re-registering an unchanged file adds nothing. The mock has no file delete either. |
 | **Stripe with the pinned version `2026-11-18.endive`**: `shipping_cost { amount_subtotal, amount_tax, amount_total, shipping_rate }` and `total_details.amount_shipping` are populated (both were absent under the account default 2017-04-06). | The shop reads shipping from `shipping_cost.amount_total`, tax from `total_details.amount_tax`. The mock uses the pinned version's shapes, seeded from this capture. |
 

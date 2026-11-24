@@ -15,7 +15,8 @@ Guidance for agents working in this repository.
 - Klaus's alone: secrets and keys, prices, tax, legal texts, exposure and DNS, anything that costs money, going live, switching Stripe from test to live.
 - Never print, log or commit a secret. Keys live in `.env` on the cluster node; this repo has `.env.example` with names only.
 - Stripe: development and end-to-end runs use test-mode keys. The live key is not used until Klaus says go.
-- Printful: draft orders only until go-live; confirming an order charges Klaus.
+- Printful: test mode uses the separate test store and never confirms; confirming an order in the live store charges Klaus and happens only in live mode.
+- This repository is public: no account or object ids, host paths, threshold values, raw API recordings or incident notes (ADR-0028); those go to the private repository or kube-setup.
 - Cluster changes (namespace, manifests, runner, Ingress, Secrets, repo settings, branch protection) go through the Cluster session.
 
 ## Conventions

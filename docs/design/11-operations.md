@@ -1,100 +1,105 @@
 # 11. Operations
 
+Revised for review round 2 (2026-11-25): one `SHOP_MODE` with a database and a Printful
+store per mode (ADR-0029), a hardened deploy runner, threshold values and host details
+out of this public document (ADR-0028), metrics deferred.
+
 ## 1. Deployment
 
 Per the cluster's rules (ADR-0016); the workflows exist since PR #2.
 
-- `main` → image `ghcr.io/klaushofrichter/shop:main` (never deployed).
-- Promotion PR `main` → `production` (Cluster merges) → `deploy-production.yml` on the in-cluster runner: version `YYYY.MM.DD.N`, image by digest, kube-setup manifest `manifests/shop/shop-deployment.yaml` updated and pushed before `kubectl apply`, rollout polled, smoke test (`/health` serves the new version, HEAD 200, home page compressed), GitHub release with "Verified at release". Then `live-check.yml` runs the @live e2e tests and Lighthouse against the live site.
-- **Cluster's part** (one request when implementation starts): namespaces `shop` and `shop-runner`; runner with RBAC on the one Deployment; the Deployment (`replicas: 1`, `Recreate`, the non-root `securityContext`, readiness and liveness on `/health`, memory request 256 Mi / **limit 512 Mi**, CPU 0.5: an OOM kill in the middle of a webhook is worse than headroom; the largest SKU (16×20 at 300 DPI, 4800 × 6000 px ≈ 115 MB as raw RGBA) renders with libvips streaming, `sharp.concurrency(1)` and the cache off, and the print-file test measures peak RSS so a larger SKU can't silently exceed the limit); a 5 Gi Retain PVC; Litestream sidecar; Ingress + Certificate for `shop.klaushofrichter.net` with HTTP→HTTPS; the NetworkPolicy below; the Secrets below; version-exporter entry; UptimeRobot `HEAD /health`; namespaces in `export.sh`/`bootstrap.sh`; Velero coverage; and creating and protecting the `production` branch right before the first deploy (Klaus approved the protection 2026-11-24: required `test`, `codeql`, `e2e`, strict, no force push or deletion, owner override).
-- **art's part** (art's repo, its owner session): the "Prints & merchandise" link driven by `GET shop…/api/offers`. Nothing else: the shop reads originals from art's existing public URLs (ADR-0025).
+- `main` → image `ghcr.io/klaushofrichter/shop:main` (built on GitHub's runners, never deployed).
+- Promotion PR `main` → `production` (Cluster merges) → `deploy-production.yml`: the image is built and pushed on a GitHub-hosted runner; only the **deploy job** runs on the in-cluster runner: version `YYYY.MM.DD.N`, image by digest, the kube-setup manifest updated and pushed before `kubectl apply`, rollout polled, smoke test (`/health` serves the new version, HEAD 200, home page compressed), GitHub release with "Verified at release". Then `live-check.yml` (@live e2e and Lighthouse).
+- **The in-cluster runner** (Cluster, 2026-11-25: on a public repository a fork PR can request the self-hosted label): **no Docker-in-Docker** (the deploy job needs only `kubectl`, `git`, `sed`), an egress NetworkPolicy allowing only the Kubernetes API and GitHub, RBAC get/watch/patch on the one Deployment, and the repository set to **require approval for all outside contributors'** workflow runs. Klaus approves the setting; Cluster applies it.
+- **Cluster's part** (one request after this design is accepted):
+  - namespaces `shop` and `shop-runner`; the runner as above;
+  - the Deployment: `replicas: 1`, `Recreate`, the non-root `securityContext`, readiness and liveness on `/health`, memory request 256 Mi and **limit 512 Mi** (rendering a 12 × 16 print file, 3600 × 4800 px, with `sharp.concurrency(1)` and the cache off; a test asserts peak memory below 384 MiB), CPU 0.5;
+  - a 5 Gi Retain PVC; the Litestream sidecar; Ingress and Certificate for `shop.klaushofrichter.net`;
+  - the NetworkPolicy below; the Secrets below; the version-exporter entry; UptimeRobot `HEAD /health`; `export.sh`/`bootstrap.sh`; Velero;
+  - a ConfigMap with the fail-safe thresholds (kube-setup is private);
+  - creating and protecting `production` right before the first deploy (protection approved by Klaus 2026-11-24).
+- **art's part** (art's repository): the "Prints & merchandise" link driven by `/api/offers?source=art`; later, if art wants, the works feed with `printsAllowed` ([04 §4.3](04-catalog-and-print-files.md#43-the-art-adapter)).
 
-**Secrets.** The node's `.env` is not copied as a whole: it also holds deploy credentials
-(`SHOP_GITHUB_PAT`, `GITHUB_KUBE_SETUP_PAT`) that must never reach the app pod, and
-`STRIPE_LIVE_TOKEN`, which the app gets only at go-live. A repo script
-`scripts/create-secrets.sh` (pattern: cams-admin's), run on the node by Cluster or Klaus,
-builds each Secret from named keys only and never prints a value:
+**Secrets** are built by `scripts/create-secrets.sh` from named keys in the node's
+`.env`, never the whole file, and never printed. Deploy credentials never reach the app
+pod; the live Stripe key and live Printful token only at go-live.
 
 | Secret | Keys (app variable ← `.env` key) |
 |---|---|
-| `shop-env` (namespace `shop`) | `PRINTFUL_TOKEN`; `STRIPE_SECRET_KEY` ← `STRIPE_TEST_TOKEN` in test mode, ← `STRIPE_LIVE_TOKEN` only with `--live` (Klaus's go); `STRIPE_WEBHOOK_SECRET` (of that mode); `PRINTFUL_WEBHOOK_SECRET`; `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ALLOWED_EMAILS`, `COOKIE_SECRET`; email credentials once chosen |
-| `shop-litestream` (namespace `shop`) | the backup bucket's access key and secret |
-| `runner-pat` (namespace `shop-runner`) | `SHOP_GITHUB_PAT` (runner registration) |
-| Actions secret `KUBE_SETUP_DEPLOY_TOKEN` (repo) | `GITHUB_KUBE_SETUP_PAT`, set by Klaus |
+| `shop-env` | `PRINTFUL_TOKEN` ← `PRINTFUL_TOKEN_TEST` (test) or `PRINTFUL_TOKEN` (live); `STRIPE_SECRET_KEY` ← `STRIPE_TEST_TOKEN` (test) or `STRIPE_LIVE_TOKEN` (live); `STRIPE_WEBHOOK_SECRET` and `PRINTFUL_WEBHOOK_SECRET` of that mode; `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ALLOWED_EMAILS`, `COOKIE_SECRET`; SES credentials; `PREVIEW_KEY` (non-live) |
+| `shop-litestream` | the backup bucket's access key and secret |
+| runner registration | the runner's GitHub token |
+| repository Actions secret | the kube-setup deploy token (Klaus) |
 
-With `--mock` the script puts **only mock keys** in `shop-env` (no real Stripe key, no real Printful token): the configuration for every test deployment until Klaus allows more. The script refuses `--live` unless `STRIPE_MODE=live` is also passed, prints only key
-names and the Stripe key's prefix (`rk_test_`/`rk_live_`), and exits non-zero on a
-missing key.
+`--mock` puts only mock keys in `shop-env`. `--live` is refused unless `SHOP_MODE=live`
+is passed too. The script prints key names and the Stripe key's prefix only.
 
-**NetworkPolicy** (pattern: cams-admin, games), namespace `shop`, default deny both ways:
-- ingress: from Traefik (namespace `kube-system`, Traefik pods) on the app port; from the cluster's metrics scraper on `/metrics`, if used;
-- egress: DNS (kube-dns, UDP/TCP 53); **TCP 443 to `0.0.0.0/0` except `10.42.0.0/16`, `10.43.0.0/16` and `192.168.1.0/24`** (Printful, Stripe, S3, email: their CDN addresses change, so no allow-list by hostname); art's pods in namespace `art` on art's port (manifest and originals);
-- art's namespace allows ingress from namespace `shop` to that port.
+**NetworkPolicy**, namespace `shop`, default deny: ingress from Traefik on the app port;
+egress DNS, **TCP 443 to public addresses only** (the cluster's pod and service ranges
+and the LAN excluded; Printful, Stripe, S3 and SES addresses change, so no host
+allow-list), and art's pods on art's port.
 
 ## 2. Configuration
 
-Environment variables (Kubernetes Secret `shop-env` for secrets, ConfigMap for the rest). The process validates all of them at startup and logs which are present (names only); a missing required one stops the start in live mode.
+### 2.1 Mode (ADR-0029)
 
-| Variable | Secret | Purpose |
-|---|---|---|
-| `PUBLIC_URL` | | `https://shop.klaushofrichter.net` |
-| `DATA_DIR` | | `/var/lib/shop` (database, files, mockups) |
-| `ART_URL`, `ART_CLUSTER_URL` | | `https://art.klaushofrichter.net/` (links), `http://art.art.svc.cluster.local/` (manifest and originals, in-cluster) |
-| `PRINTFUL_BASE_URL`, `STRIPE_API_BASE` | | real API hosts, or the mock service in mock mode ([14 §3](14-mock-services.md#3-selecting-mocks-in-the-shop)) |
-| `SHADOW_PRINTFUL`, `SHADOW_STRIPE` | | off by default; `readonly` / `test` turn on shadow comparison ([14 §7.3](14-mock-services.md#7-verification-against-the-real-services)) |
-| `PRINTFUL_TOKEN` | yes | Printful store-level token |
-| `PRINTFUL_WEBHOOK_SECRET`, `PRINTFUL_WEBHOOK_PUBLIC_KEY` | yes / no | from webhook registration |
-| `FULFILMENT_CONFIRM` | | `false` (drafts only) until go-live |
-| `STRIPE_MODE` | | `test` until go-live |
-| `STRIPE_SECRET_KEY` | yes | the restricted key of the current mode (built from `STRIPE_TEST_TOKEN` or, at go-live, `STRIPE_LIVE_TOKEN`; see Secrets above) |
-| `STRIPE_WEBHOOK_SECRET` | yes | that mode's endpoint secret |
-| `TAX_ENABLED` | | ADR-0012 |
-| `SHIP_COUNTRIES` | | `US` (ADR-0011) |
-| `MARGIN_FLOOR_CENTS`, `SHIPPING_MARKUP_CENTS` | | cost guard, markup |
-| `RETRY_WINDOW_HOURS`, `HOLD_REFUND_HOURS`, `ATTENTION_REFUND_HOURS` | | 24, 72, 24 (ADR-0010) |
-| `LIMIT_ITEM_QTY`, `LIMIT_ITEMS`, `LIMIT_ORDER_CENTS` | | 10 (postcards 25 in the SKU config), 20, 50000 (ADR-0020) |
-| `APPROVAL_OVER_CENTS`, `APPROVAL_REFUND_HOURS` | | 25000, 72 |
-| `BREAKER_ORDERS_24H`, `BREAKER_COST_CENTS_24H` | | 10, 60000 |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ALLOWED_EMAILS`, `COOKIE_SECRET` | yes (all but the URI) | admin sign-in |
-| `EMAIL_ENABLED`, `EMAIL_FROM`, provider credentials | creds yes | ADR-0015 |
-| `ALERT_EMAIL` | | where alerts go |
+`SHOP_MODE = mock | test | live` decides everything that must agree (review 1 F25):
 
-**Live-mode guard**: the process refuses to start if `STRIPE_MODE=live` and
-`FULFILMENT_CONFIRM=false`, or the reverse, since a mixed mode would either take money
-without producing or produce without taking money. Going live = Klaus sets both and
-the Cluster session applies the change. The admin shows a permanent TEST banner
-otherwise, and test orders are marked `mode=test`.
+| | mock | test | live |
+|---|---|---|---|
+| Printful | the mock service | the **test store** (its own token) | the live store |
+| Stripe | the mock service | Stripe test mode | Stripe live mode |
+| Confirm at Printful | the mock's confirm | **never** (drafts only) | yes |
+| Database file | `mock.db` | `test.db` | `live.db` |
+| Customer e-mail | allow-list | allow-list | everyone |
+| Preview gate, banner, `noindex`, empty `/api/offers` | yes | yes | no |
+| Keys allowed | mock keys only | `rk_test_` and the test store's token | `rk_live_` and the live store's token |
 
-The node's `.env` (`~/Development/shop/.env`, mode 600) is the source; names today:
-`PRINTFUL_TOKEN`, `STRIPE_LIVE_TOKEN`, `STRIPE_TEST_TOKEN`, `GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `COOKIE_SECRET`, `ALLOWED_EMAILS`
-(plus the deploy tokens `SHOP_GITHUB_PAT`, `GITHUB_KUBE_SETUP_PAT`). Still needed:
-the webhook secrets (from registration), the S3
-credentials (new bucket and IAM user, Klaus), the email provider's.
+At startup the process checks: the key prefixes match the mode; the Printful token's
+store is the mode's store (`GET /v2/stores`) with the needed scopes; mock keys only
+with mock URLs and real keys only with real hosts. Any mismatch stops the start. Going
+live is one change, `SHOP_MODE=live` plus the live Secret, made by Cluster on Klaus's
+word.
+
+### 2.2 Variables
+
+| Variable | Purpose |
+|---|---|
+| `SHOP_MODE` | above |
+| `PUBLIC_URL`, `DATA_DIR` | the shop's address; database, files, images |
+| `SOURCES_CONFIG` | path to `config/sources.json` (overridable in tests) |
+| `PRINTFUL_BASE_URL`, `STRIPE_API_BASE` | set only in mock mode |
+| secrets of §1 | |
+| `SHIP_COUNTRIES` | `US` (ADR-0011) |
+| `MARGIN_FLOOR_CENTS`, `SHIPPING_MARKUP_CENTS`, `PROVIDER_TAX_ALLOWANCE_PCT` | cost checks ([05 §2](05-quote-checkout-payment.md#2-quote), [06 §4](06-fulfilment.md#4-submission)) |
+| retry window and hold deadlines per hold kind | ADR-0010 |
+| fail-safe thresholds (`APPROVAL_OVER_CENTS`, `REPEAT_*`, `BREAKER_*`, order limits) | **values in kube-setup's ConfigMap**, not in this repository; required in live mode; tests use artificial values |
+| `DELAY_NOTICE_HOURS`, `EMAIL_ENABLED`, `EMAIL_FROM`, `ALERT_EMAIL` | e-mail |
+
+The process validates everything at startup and logs only which variables are present.
 
 ## 3. Backup and restore
 
-- **Litestream** sidecar: continuous WAL replication of `shop.db` to `s3://<new bucket>/shop/` (bucket and IAM user created by Klaus; never cams-admin's); snapshot daily, retention 30 days.
-- **Velero**: daily file-system backup of the PVC (print files, mockups, a `VACUUM INTO` copy of the database written nightly by the `purge` job).
-- **Restore test** in CI (as cams-admin): Litestream against MinIO in Docker, restore, compare. And once on the cluster before going live.
-- Print files and mockups can be regenerated from art's originals; the database cannot (it is also partly reconstructible from Stripe and Printful, which both hold every paid order with our id).
-- Alarm: replication lag > 2 h ([07 §5](07-orders-data-jobs.md#5-reconciliation)); the cluster's backup dead-man alert extended to the new bucket (Cluster).
+- Litestream replicates the mode's database file continuously to a new S3 bucket (Klaus creates it; never another service's), daily snapshot, 30 days.
+- Velero backs up the PVC daily (print files, images, mockups, a nightly `VACUUM INTO` copy).
+- Restore test in CI (Litestream against MinIO in Docker) and once on the cluster before go-live.
+- Files can be regenerated from the sources; the database can't. After a restore the reverse reconciliation **alerts** on paid sessions or provider orders without a local row ([07 §5](07-orders-data-jobs.md#5-reconciliation)); Klaus decides per alarm. It does not rebuild rows.
 
 ## 4. Observability
 
-- Logs: JSON lines (pino) to stdout, collected by the cluster's log pipeline; order id on every order-related line; no PII beyond the order id, no secrets, no request bodies.
-- `/health`: `{status, version}` (unauthenticated, no dependencies checked so it never flaps on Printful).
-- `/metrics` (Prometheus text, cluster-internal only): `shop_orders{state}`, `shop_jobs{kind,state}`, `shop_alarms`, `shop_webhook_failures_total{provider}`, `shop_litestream_lag_seconds`, `shop_printful_ratelimit_remaining`. *(Verify with Cluster how the cluster scrapes and alerts; the vault names Grafana Cloud.)*
-- Admin System page ([08 §3](08-admin.md#3-pages)) for a human view.
+- Logs: JSON lines to stdout; the order id on order-related lines; no personal data, no secrets, no request bodies, **no query strings**. A test asserts the failure log printed in CI holds no personal data.
+- `/health`: `{status, version}`, no dependency checks.
+- Alerts by e-mail ([09 §2](09-notifications.md#2-alerts-to-klaus)). Metrics deferred: if wanted later, the cluster's Grafana Alloy scrapes annotated pods and ships allow-listed metric names (Cluster, 2026-11-25).
+- The admin's System page for a human view.
 
-## 5. Runbooks (in `docs/runbooks/`, written during implementation)
+## 5. Runbooks (written during implementation, operational details in the private repository)
 
-| Situation | Steps (outline) |
+| Situation | Outline |
 |---|---|
-| Rotate the Printful token | New token in Printful → `.env` → Cluster updates the Secret → restart → re-register the webhook (the config is per token) → update `PRINTFUL_WEBHOOK_SECRET`. |
-| Rotate Stripe keys | New restricted key → `.env` → Secret → restart. Webhook secrets unchanged. |
-| Go live | Checklist in [12 §4](12-testing.md#4-test-mode-and-go-live). |
-| Restore the database | Stop the Deployment (scale 0) → `litestream restore` to the PVC → start → reconciliation catches up from Stripe and Printful. |
-| Printful outage | Nothing: quotes fail gracefully, paid orders wait in `paid` and are retried for 24 h. |
-| Stripe outage | Nothing: Pay fails gracefully. |
-| Disable the shop quickly | Set all pictures disabled in the admin (art hides links in ≤ 10 min), or scale to 0 (art's links then hit an error page: also hide them via `/api/offers` being unreachable → art shows no link). |
+| Rotate a Printful token | new token → `.env` → Secret → restart → re-register that store's webhook → new webhook secret |
+| Rotate Stripe keys | new restricted key → `.env` → Secret → restart |
+| Stripe webhook endpoints | created by Klaus in the Dashboard per mode with the pinned API version (ADR-0030) |
+| Go live | checklist in [12 §4](12-testing.md#4-go-live-checklist-klaus-decides-each-box) |
+| Restore the database | scale to 0 → `litestream restore` → start → reverse reconciliation alarms → Klaus decides |
+| Printful or Stripe outage | nothing: quotes and Pay fail gracefully; paid orders wait and retry |
+| Disable the shop quickly | disable works in the admin (art hides links within 10 minutes), or scale to 0 |

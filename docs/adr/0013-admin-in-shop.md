@@ -20,3 +20,7 @@ Option 1, with its own OAuth client (redirect `https://shop.klaushofrichter.net/
 ## Consequences
 
 - The shop's public pages and admin share a process; admin routes get CSRF protection, `Cache-Control: no-store`, and an audit trail in `order_events`.
+
+## Notes
+
+- 2026-11-25: order history is in `order_events`, admin actions additionally in `admin_audit` (docs/design/07 §3); sign-in adds PKCE and a nonce.

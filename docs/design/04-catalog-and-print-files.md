@@ -1,131 +1,157 @@
-# 4. Catalog, SKUs and print files
+# 4. Catalog, content sources and print files
+
+Revised for review round 2 (2026-11-25): content sources with a contract (ADR-0035),
+launch sizes up to 12 × 16 in both orientations (ADR-0033), display images rendered by
+the shop, provider file registration, re-rendering only when the original changes.
 
 ## 1. Terms
 
 | Term | Meaning |
 |---|---|
-| **Picture** | A painting from art's manifest, key `uid`. |
-| **SKU** | A sellable product type, independent of the picture: "Framed print 8 × 10 in, black frame". Defined in configuration (ADR-0022). Maps to exactly one provider variant. |
-| **Offer** | A (picture, SKU) pair that Klaus enabled, with its price, crop settings, print file and mockup. What the customer can buy. |
-| **Print file** | The image Printful prints, rendered by the shop for one offer at the exact pixel size of the SKU's print area. |
-| **Mockup** | A preview image of the product with the picture on it, made by Printful's mockup generator. |
+| **Source** | A gallery the shop takes works from (art at launch; later e.g. christina-art or instagetter). |
+| **Work** | One image from a source, key `(source_id, work_id)`. Painting or photograph (`kind`). |
+| **SKU** | A sellable product type, independent of the work: "Framed print 12 × 16 in, black frame". In `config/skus.json` (ADR-0022); one provider variant each. |
+| **Offer** | A (work, SKU) Klaus enabled: price, crop, orientation, print file, mockup. |
+| **Print file** | The image the provider prints, rendered by the shop at the exact pixel size of the print area. |
+| **Display image** | The image the shop shows on its pages, rendered by the shop from the original. |
+| **Mockup** | A preview of the product with the work, from Printful's mockup generator. |
 
-## 2. SKUs
+## 2. SKUs at launch (ADR-0033)
 
-A handful of predefined SKUs (R3), in `config/skus.json`, validated at startup
-(the process refuses to start on an invalid file). Adding a SKU = adding an entry
-+ a deploy; no schema change. Initial set (wholesale = Printful v2 North-America
-price measured 2026-11-24 where available, else v1 list price; shipping extra):
+Klaus (2026-11-25): offer smaller sizes at launch, in landscape and portrait. Printful has
+no 9 × 12; its **6 × 8 and 12 × 16 are exactly 3:4**, the shape of the iPhone photos
+(4032 × 3024), and 8 × 10 (4:5) suits the paintings. Every size is sold in both
+orientations: the work's orientation decides, the variant is the same.
 
-| SKU id | Name shown | Provider product → variant | Placement, technique | Print area | File px (exact) | DPI | Wholesale |
-|---|---|---|---|---|---|---|---|
-| `postcard-4x6` | Postcard 4 × 6 in | Printful 433 → 11513 | default, digital | 6.14 × 4.13 in (with bleed) | 1842 × 1240 | 300 | $1.53 |
-| `print-8x10` | Art print 8 × 10 in | Printful 1 → 4463 | default, digital | 8 × 10 in | 2400 × 3000 | 300 | ~$7.03 |
-| `print-16x20` | Art print 16 × 20 in | Printful 1 → 3877 | default, digital | 16 × 20 in | 4800 × 6000 | 300 | ~$12.13 |
-| `framed-8x10-black` | Framed print 8 × 10 in, black frame | Printful 2 → 4651 | default, digital | 8 × 10 in | 2400 × 3000 | 300 | $20.76 |
-| `framed-16x20-black` | Framed print 16 × 20 in, black frame | Printful 2 → 4399 | default, digital | 16 × 20 in | 4800 × 6000 | 300 | $42.61 |
-| `mug-11oz` | Mug 11 oz | Printful 19 → 1320 | default, sublimation | 9 × 3.5 in wrap | 2700 × 1050 | 300 | $6.95 |
-| `tshirt-white-s` … `-xl` | T-shirt, white, S / M / L / XL | Printful 71 (Bella+Canvas 3001) → 4011 / 4012 / 4013 / 4014 | front, dtg | 12 × 16 in | 1800 × 2400 | 150 | $11.95 |
+| SKU id | Name shown | Printful product → variant | Print area | DPI | Effective DPI of the measured originals |
+|---|---|---|---|---|---|
+| `postcard-4x6` | Postcard 4 × 6 in | 433 → 11513 | 6.14 × 4.13 in (bleed) | 300 | ≥ 300 for all |
+| `print-6x8` | Art print 6 × 8 in | 1 → 48489 | 6 × 8 | 300 | 361–504 |
+| `print-8x10` | Art print 8 × 10 in | 1 → 4463 | 8 × 10 | 300 | 286–378 |
+| `print-12x16` | Art print 12 × 16 in | 1 → 1349 | 12 × 16 | 300 | **181–252** |
+| `framed-8x10-black` | Framed print 8 × 10 in, black frame | 2 → 4651 | 8 × 10 | 300 | 286–378 |
+| `framed-12x16-black` | Framed print 12 × 16 in, black frame | 2 → 1350 | 12 × 16 | 300 | 181–252 |
+| `mug-11oz` | Mug 11 oz | 19 → 1320 | 9 × 3.5 wrap | 300 | ≥ 300 |
+| `tshirt-white-s` … `-xl` | T-shirt, white, S–XL | 71 → 4011–4014 | front 12 × 16 | 150 | ≥ 150 |
 
-Notes:
-- The 8×10 and 16×20 sizes have the 4:5 ratio of most of the paintings (many are 10 × 8 in), so they print the whole painting.
-- Pixel sizes, DPI and placement names are **read from Printful at startup** (`/v2/catalog-products/{id}/mockup-styles` and `/v2/catalog-variants/{id}`) and compared with the config; a mismatch or an unavailable variant disables that SKU and alerts Klaus. The table is the expected state, not hard-coded truth.
-- Postcard orientation follows the picture (Printful accepts 6.14 × 4.13 or 4.13 × 6.14). Prints and framed prints are ordered portrait or landscape to match the picture: Printful's variant is the size; orientation comes from the file (`orientation` field on the order item, *(verify)* with a draft order).
-- Frame colour: black at launch; white and red oak are other variants at the same price (one config entry each).
-
-SKU entry shape:
-
-```json
-{
-  "id": "framed-8x10-black",
-  "name": "Framed print 8 × 10 in, black frame",
-  "kind": "framed",
-  "provider": "printful",
-  "providerProductId": 2,
-  "providerVariantId": 4651,
-  "placement": "default",
-  "technique": "digital",
-  "printArea": { "widthIn": 8, "heightIn": 10, "dpi": 300 },
-  "orientation": "match-picture",
-  "fit": "fill",
-  "minDpi": 150,
-  "defaultPriceCents": 5900,
-  "mockupStyleId": null,
-  "shippingClass": "large",
-  "maxQuantity": 5
-}
-```
+- **`minDpi` for paper: 180** (raised from 150, review 1 F22): every measured original passes at 12 × 16 (lowest: a cropped painting photo at 181). 16 × 20 and larger are deferred; at 144–189 DPI they would fall below 180 for several works.
+- Effective DPI is computed per offer from the crop; the admin shows it and refuses offers below `minDpi`.
+- Print areas, DPI, placements and variant availability are read from Printful at startup and daily (`/v2/catalog-products/{id}/mockup-styles`, `/v2/catalog-variants/{id}`); a mismatch with the config disables the SKU and alerts.
+- Wholesale prices (North America, from the catalog, refreshed daily) feed the admin's margin view and the pre-payment cost check ([05 §2](05-quote-checkout-payment.md#2-quote)). Retail prices are Klaus's; the defaults in `config/skus.json` are placeholders.
+- Frame colour: black at launch; white and red oak are one config entry each.
 
 ## 3. Offers and prices
 
-- An offer exists when Klaus enables a SKU for a picture in the admin ([08](08-admin.md)). Enabling is refused if the picture's original is too small for the SKU's `minDpi` (§5.3).
-- **Price** = the SKU's `defaultPriceCents`, or a per-offer override. USD, tax-exclusive (ADR-0012 decides whether Stripe adds tax).
-- The admin shows, per offer: wholesale (Printful, refreshed daily), typical US shipping, Stripe fee (2.9% + 30¢), and the margin. Prices are Klaus's decision; the defaults in `config/skus.json` are placeholders until he sets them.
-- **Price changes** at Printful (`catalog_price_changed` webhook, daily refresh) never change what a customer is charged on an open quote; they show up in the admin margin view, and an alert goes to Klaus if a margin turns negative.
+- An offer exists when Klaus enables a SKU for a work in the admin. It is **sellable** only when all hold: the work's `prints_allowed` (from the source) and `enabled` (Klaus); the offer `enabled`; a print file rendered and validated; its `provider_files` row `ok`.
+- Nothing is enabled by default (review 1 F20). What art's works the shop sells is art's decision (Klaus, 2026-11-25), expressed through `prints_allowed`.
+- Price = SKU default or the offer's override; USD, tax-exclusive.
 
-## 4. Pictures (from art)
+## 4. Content sources
 
-- The shop reads art's manifest from `https://art.klaushofrichter.net/` (`<script type="application/json" id="manifest">`), every 10 minutes, conditional GET (ETag), and on demand from the admin. In-cluster it may use `http://art.art.svc.cluster.local/` instead.
-- Kept per picture: `uid`, `slug`, `title`, `date`, `artist`, `medium`, `dimensions`, `v` (content hash), `widths`, the original's `status` (for the "original available" line).
-- Public images shown in the shop come from art's public derivatives (`/img/...` URLs as art serves them). The shop does not re-host them.
-- If a picture disappears from the manifest, its offers are hidden (not deleted); open orders are unaffected because order items hold copies.
-- If `v` (content hash) changes, the shop re-renders that picture's print files and mockups (a job), and alerts Klaus to re-check crops.
+### 4.1 Interface (ADR-0035)
+
+```ts
+interface ContentSource {
+  readonly id: string;                         // 'art'
+  listWorks(): Promise<Work[]>;                // validated, allow-listed
+  fetchOriginal(work: Work): Promise<Readable>;
+}
+interface Work {
+  sourceId: string; workId: string;
+  title: string; creator?: string; year?: string;
+  kind: 'painting' | 'photograph' | 'other';
+  canonicalUrl: string;                        // the work's page at the source
+  original: { url: string; widthPx?: number; heightPx?: number; version: string };
+  printsAllowed: boolean;
+}
+```
+
+Only the adapter knows a source's format. Nothing else from a source is stored (art's
+manifest also carries prices and sale status of originals and an About block; the shop
+keeps none of it).
+
+### 4.2 Configuration
+
+`config/sources.json` (public: no secrets), overridable per environment:
+
+```json
+[{ "id": "art", "default": true, "adapter": "art-manifest",
+   "publicUrl": "https://art.klaushofrichter.net", "clusterUrl": "http://art.art.svc.cluster.local",
+   "creator": "Klaus Hofrichter", "packingSlipStoreName": "Klaus Hofrichter Art",
+   "printsAllowedDefault": false }]
+```
+
+`printsAllowedDefault` applies until the source publishes a per-work flag.
+
+### 4.3 The art adapter
+
+- **Today**: parses `<script type="application/json" id="manifest">` from art's home page (fetched in-cluster every 10 minutes, conditional GET). Original URL: `/assets/<room>/<file>?v=<v>` (ADR-0025). `kind` from the room (art's "Colors" room = paintings, the others = photographs) until art supplies it.
+- **Contract test**: the adapter runs in CI against a recorded copy of art's manifest; a daily job alerts on a schema mismatch with the live manifest.
+- **Proposed for art** (art's repository and decision): a versioned feed, e.g. `/feed/works.v1.json`, with exactly the `Work` fields and a per-work `printsAllowed` flag. The adapter switches to it when it exists; the shop then needs no knowledge of art's page markup.
+- Later sources (christina-art, instagetter) are one adapter each. Insta-style sources bring small square images (612–1440 px): only postcards, mugs and t-shirts pass the DPI floor; titles come from the admin; opt-in per image.
+
+### 4.4 Routes
+
+`/p/<source>/<work>` is the canonical picture page; `/p/<work>` stays as the alias for the
+default source, so art's link (ADR-0009) doesn't change. `GET /api/offers?source=art`
+lists that source's work ids with at least one sellable offer.
+
+### 4.5 Changes at the source
+
+- When a source's `version` changes (art's `v` also changes when only derivatives are rebuilt), the shop fetches the original and hashes it; **only a changed SHA-256** re-renders print files, display images and mockups (review 2 F4). Otherwise only `source_version` is updated.
+- A work that disappears from the source is hidden (offers kept); open orders are unaffected (order items hold copies).
 
 ## 5. Print files
 
 ### 5.1 Source
+The original comes from the source adapter (art: its public URL, read in-cluster). It is
+streamed to a temporary file and deleted after rendering. Override: an uploaded print
+master per work (size and type limits, below).
 
-The original is read from art's existing public URL (ADR-0025), which art already
-serves for its download link: `/assets/<room>/<file>?v=<v>`, built from the manifest
-(room id, the work's `file` and `v`), fetched in-cluster as
-`http://art.art.svc.cluster.local/assets/…`. No token, no change to art. The original is
-streamed to a temporary file, used, and deleted; the shop does not keep originals.
+### 5.2 Rendering (`sharp`)
+1. Decode with `limitInputPixels` (decompression bombs), apply EXIF orientation, convert to **sRGB** from the embedded profile (34 of 35 originals are Display P3; none → sRGB).
+2. Crop to the print area's aspect ratio in the offer's orientation: centred by default, or one of nine anchor positions chosen in the admin (review 1 F29: no draggable box at launch). Mug: the work twice, left and right of the handle; t-shirt: fit inside the area, PNG with transparency.
+3. Resize (Lanczos3) to the exact pixel size; JPEG quality 92, 4:4:4, sRGB ICC embedded, **all other metadata stripped**.
+4. Validate: exact size, 8-bit, sRGB, < 200 MB, effective DPI ≥ `minDpi`. Hash (SHA-256), store atomically at `files/<sha256>.jpg`.
 
-Override: Klaus can upload a print master for a picture (or for one offer) in the
-admin, e.g. a better scan or a pre-cropped file. An uploaded master is stored on
-the shop's volume and used instead of art's original.
+Render key: (source, work, original SHA-256, SKU, orientation, crop, renderer version).
 
-### 5.2 Rendering
-
-One print file per offer, rendered by a job with `sharp`:
-
-1. Decode the original; apply EXIF orientation; convert to **sRGB** using the embedded ICC profile. Measured: 34 of the 35 originals carry **Display P3** (iPhone); one has no profile and is treated as sRGB. P3 is wider than sRGB, so saturated colours are mapped into sRGB (relative colorimetric); the admin preview shows the converted file.
-2. Crop to the print area's aspect ratio. The crop is the offer's **crop box** (set in the admin, stored as fractions of the original), defaulting to:
-   - `fill` (prints, framed prints, postcards): the largest centred box with the target ratio;
-   - `fit` (mug, t-shirt): no crop; the whole picture is scaled to fit inside the area, the rest filled with white (mug) or left transparent (t-shirt, PNG with alpha, DTG allows it).
-   - Mug layout: the picture appears twice, centred left and right of the handle, each fitting the 3.5 in height.
-3. Resize (Lanczos3) to the exact pixel size of §2.
-4. Encode: JPEG quality 92, 4:4:4 chroma, sRGB ICC embedded, EXIF stripped (no GPS or camera data). T-shirt: PNG.
-5. Validate (§5.3), hash (SHA-256 of the bytes), store at `/var/lib/shop/files/<sha256>.jpg|png` with an atomic write (random temp name + rename, cluster rule).
-
-The render key is (uid, picture `v`, SKU id, crop box, renderer version). The same
-key always gives the same file and URL.
-
-### 5.3 Validation
-
-A print file is accepted only if:
-- exact pixel size for the SKU; 8-bit; sRGB; no CMYK or grayscale profile; no alpha for paper and sublimation;
-- under 200 MB (Pressline found a 213 MB file silently ignored by Printful);
-- **effective DPI** ≥ the SKU's `minDpi`, where effective DPI = (crop width in source pixels) ÷ (print width in inches). Below 200 DPI on paper the admin shows a warning; below `minDpi` the offer can't be enabled.
-
-Measured 2026-11-24 (Cluster, read-only on art's volume): 35 originals, all iPhone JPEGs; the largest are 4032 × 3024 (12 MP, 23 of them), the `colors/` paintings are cropped photos between 2890 × 2452 and 3920 × 2981. **No original reaches 300 DPI at 16 × 20** (4800 × 6000). Effective DPI for a 20 × 16 landscape crop (5:4): 4032 × 3024 → 3780 × 3024 → **189 DPI**; the smallest `colors/` original 2890 × 2452 → 2890 × 2312 → **144 DPI**, below the 150 floor, so 16 × 20 can't be enabled for it. 8 × 10 is ≥ 289 DPI for every original. The admin computes this per offer; the 16 × 20 SKUs stay in the set but are offered only where the DPI allows.
+### 5.3 Registration at the provider (review 2 F2)
+Job `printfile.register`: `POST /v2/files` with the file's URL, `role: printfile`,
+**`visible: false`** (not shown in Printful's file library; review 1 F22), then poll until
+`ok` or `failed` (~10 s captured). `ok` → the offer can become sellable; `failed` → the
+offer stays unsellable and Klaus is alerted. Library entries can't be deleted through the
+API; with `visible: false` they don't clutter the library view.
 
 ### 5.4 Serving to Printful
+`https://shop.klaushofrichter.net/files/<sha256>.jpg`: immutable (`Cache-Control: public,
+max-age=31536000, immutable`), no listing, `X-Robots-Tag: noindex`. Printful fetches it
+when the order is created and again for reprints, so files referenced by an order are
+kept at least 12 months after delivery. The URL is unguessable; the same pixels are
+public on art anyway (ADR-0025).
 
-- URL: `https://shop.klaushofrichter.net/files/<sha256>.jpg`. Immutable (`Cache-Control: public, max-age=31536000, immutable`), no directory listing, 404 for unknown hashes, `X-Robots-Tag: noindex`.
-- Printful fetches it when the order is created and again for reprints (ADR-0019), so files are kept as long as any order references them, plus 1 year.
-- The URL is unguessable (256-bit hash) but not secret once shared with Printful. Anyone holding it has a full-resolution reproduction. Accepted risk (ADR-0019); the URLs appear only in Printful requests and the admin.
-- **Registered in Printful's file library** when the offer is enabled (`POST /v2/files` with the URL, then poll; captured: `waiting` → `ok` or `failed` within ~10 s, de-duplicated by URL). The offer becomes sellable only when Printful reports `ok`; `failed` blocks it with an alert. Library entries can't be deleted through the API (only in Printful's dashboard), so the library grows by one entry per rendered file: a few hundred over years at this scale, accepted; because Printful accepts a draft order with an unreachable file URL and would fail it only later (captured 2026-11-24). Orders then reference the file.
+### 5.5 Uploaded masters
+JPEG or PNG only, ≤ 100 MB, ≤ 20,000 px per side, decoded with `limitInputPixels`,
+re-encoded like every served image.
 
-## 6. Previews (mockups)
+## 6. Display images
 
-- For each offer, a job creates a Printful mockup task (`POST /v2/mockup-tasks`) with the print file URL, the SKU's placement and `mockupStyleId`, `format: jpg`, `mockup_width_px: 1000`.
-- The job polls `GET /v2/mockup-tasks?id=…` (or receives `mockup_task_finished`), downloads the mockup, stores it at `/var/lib/shop/mockups/<sha256>.jpg`, and serves it publicly at `/mockups/<sha256>.jpg` (cacheable; Printful's own URLs are temporary).
-- **Rate limit**: Printful allows 2–10 mockup tasks per minute per store. The job runner paces mockup tasks at one per 30 seconds and backs off on 429. 25 pictures × 10 SKUs = 250 tasks ≈ 2 hours, once.
-- Mockups are made when an offer is enabled or its print file changes, never per visitor.
-- If a mockup is missing or failed, the picture page shows a plain preview of the crop (the print file scaled down, framed by CSS) so the offer still sells. Mockups are a nicety, not a gate (R5 "where possible").
+The shop renders its own display images (ADR-0035, review 1 F21): widths 640, 1024,
+1536 as WebP and JPEG, re-encoded with **no metadata**, served from `/img/<sha256>.<ext>`
+(immutable). Pages don't depend on art's URL scheme or uptime, the CSP stays
+`img-src 'self'`, and Lighthouse has no third-party origin. One test asserts that no
+image type the shop serves carries metadata.
 
-## 7. Availability
+## 7. Previews (mockups)
 
-- Daily, and on `catalog_stock_updated`, the shop checks each SKU's variant availability for the enabled shipping regions (`/v2/catalog-variants/{id}/availability`). An unavailable SKU is hidden everywhere and Klaus is told once.
-- An item that becomes unavailable between quote and payment is caught at `POST /checkout` (re-validation); after payment it surfaces as a Printful order failure ([06 §7](06-fulfilment.md#7-failure-handling)).
+For each sellable offer, a `mockup.create` job (`POST /v2/mockup-tasks` with the print
+file URL, the SKU's placement and `orientation`, `format: jpg`, `mockup_width_px: 1000`),
+polled until `completed` (~20 s captured), stored as `/mockups/<sha256>.jpg`. Paced at one
+task per 30 s (Printful allows 2–10 per minute). A missing mockup falls back to the
+display image in a CSS frame. Mockups are made once per offer and print file, never per
+visitor.
+
+## 8. Availability
+
+Daily: each SKU's variant availability for the enabled shipping region; an unavailable
+SKU is hidden and Klaus is told once.

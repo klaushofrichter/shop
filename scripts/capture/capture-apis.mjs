@@ -2,7 +2,7 @@
 // Capture how the real Printful and Stripe APIs behave, for the mock services
 // (docs/design/14-mock-services.md §7.2). Run on the cluster node, where the keys are:
 //
-//   node scripts/capture/capture-apis.mjs --env ~/Development/shop/.env --out captures/2026-11-24
+//   node scripts/capture/capture-apis.mjs --env <path to the shop .env on the node> --out captures/2026-11-24
 //
 // Klaus allowed (2026-11-24): the Stripe TEST key, and careful Printful DRAFT orders,
 // "but never actually order something". So, enforced below, not just by convention:

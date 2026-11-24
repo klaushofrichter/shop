@@ -21,3 +21,7 @@ Option 1: USD, shipping to the United States only at launch. Widen when tax regi
 ## Consequences
 
 - The allowed countries are an admin setting; Stripe Checkout restricts to the quoted country.
+
+## Notes
+
+- 2026-11-25: Checkout no longer restricts `allowed_countries` (ADR-0023); the shop's address form offers only the enabled countries.
