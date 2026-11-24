@@ -12,6 +12,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 ## Status (2026-11-24)
 
 - PR #1 (design, research, ADRs) and PR #2 (repo baseline, skeleton, CI) merged to `main`. CI: `test`, `codeql`, `e2e` (browsers in Playwright's image; the apt install timed out on a slow mirror).
+- Real API behaviour captured twice on 2026-11-24 (Stripe test key; Printful reads and 3 drafts, all deleted; nothing ordered): `docs/research/api-capture-findings.md`, branches `capture/2026-11-24`, `capture/2026-11-24b`. Three capture files remain in Printful's file library.
 - **Design set** for the review by Fable 5.2 on 2026-11-25: `docs/design/` (13 documents), research in `docs/research/` including `process-alternatives.md` (build vs Shopify/Quick Stores). Branch `docs/design-set`, PR #3.
 - Klaus's minimum requirements (2026-11-24): one picture → one or more products → address → quote (with Printful previews) → Stripe → Printful → tracking; customer emails optional; a handful of predefined SKUs; thin provider abstraction; fully automated, < 10 orders a week.
 - ADRs 0001–0024 all Accepted (2026-11-24: 0010, 0011, 0012 sales tax via Stripe Tax, 0015 Amazon SES, 0020 fail-safes, 0023, 0024 mock services). None Proposed.
@@ -20,9 +21,11 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 ## Next
 
-1. Design review (2026-11-25), then fold its findings into `docs/design/` and the ADRs.
-2. Implementation in the order of `docs/design/13-plan-and-open-questions.md` §1.
-3. Klaus: decisions in that document's §2; S3 bucket + IAM user; prices; legal texts.
+1. **Design review** by a separate agent: brief in `docs/design/REVIEW-BRIEF.md`; it writes `docs/reviews/2026-11-25-design-review.md` in its own PR. Fold the findings into `docs/design/` and record changed decisions as ADRs.
+2. ADR-0025 (originals are public on art: fetch from there, or make them private) — Klaus.
+3. Build in the order of `docs/design/13-plan-and-open-questions.md` §1: database/jobs/config, then the **mock services** with replay verification against `capture/2026-11-24` and `capture/2026-11-24b`, then the shop.
+4. Stage-1 test deploy of the skeleton waits for Klaus's go in Cluster's session (exposure).
+5. Klaus, before go-live: prices; seller's permit + Stripe Tax registration + Printful resale certificate; SES domain records; S3 bucket; legal texts.
 
 ## Keys
 
