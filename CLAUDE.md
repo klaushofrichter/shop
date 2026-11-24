@@ -6,7 +6,7 @@ Guidance for agents working in this repository.
 
 - `docs/handover.md`: current state, who decides what, next steps. Keep it current.
 - `docs/adr/`: every decision is an ADR (ADR-0001). Only Klaus moves one from Proposed to Accepted.
-- `docs/design.md`: the design; `docs/research/oss-learnings.md`: patterns to follow.
+- `docs/design/`: the design set (start at its README); `docs/research/`: findings behind it.
 - The cluster's rules (ADR-0016): the vault "General 2026" (read-only), sources of truth in kube-setup's `docs/repository-baseline.md` and `docs/cluster-deployment-requirements.md`.
 
 ## Standing decisions

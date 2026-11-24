@@ -10,7 +10,7 @@ The shop is built by agents across sessions (Shop - Cloud, Cluster) with Klaus d
 
 ## Decision
 
-Every decision is recorded as an ADR in `docs/adr/`, in the format of [template.md](template.md), committed through the normal PR flow. Open questions for Klaus are written as Proposed ADRs; his answer moves them to Accepted or Rejected. `docs/design.md` describes the current design and links to the ADRs behind it.
+Every decision is recorded as an ADR in `docs/adr/`, in the format of [template.md](template.md), committed through the normal PR flow. Open questions for Klaus are written as Proposed ADRs; his answer moves them to Accepted or Rejected. `docs/design/` describes the current design and links to the ADRs behind it.
 
 ## Consequences
 

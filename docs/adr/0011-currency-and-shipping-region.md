@@ -1,8 +1,8 @@
 # ADR-0011: Currency USD, shipping region to decide
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-24: "other: as recommended"
 
 ## Context
 
@@ -16,7 +16,7 @@ art prices originals in USD. Printful ships worldwide from several fulfilment ce
 
 ## Decision
 
-Pending. Recommendation: start with option 1 and widen when tax registration for the next region is settled.
+Option 1: USD, shipping to the United States only at launch. Widen when tax registration for the next region is settled (each widening is a new ADR).
 
 ## Consequences
 

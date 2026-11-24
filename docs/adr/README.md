@@ -25,18 +25,22 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0004](0004-stack-and-runtime.md) | Stack and runtime: Node 26, server-rendered, plain Deployment | Accepted (2026-11-24) |
 | [0005](0005-printful-api-v2.md) | Printful API v2, behind a thin adapter | Accepted (2026-11-24) |
 | [0006](0006-originals-access.md) | Print files come from art's originals through an internal endpoint | Accepted (2026-11-24) |
-| [0007](0007-checkout-and-shipping-quote.md) | Stripe hosted Checkout, shipping quoted on the shop's own page | Proposed |
-| [0008](0008-cart.md) | A small cart, several items per order | Proposed |
+| [0007](0007-checkout-and-shipping-quote.md) | Stripe hosted Checkout, shipping quoted on the shop's own page | Accepted (2026-11-24) |
+| [0008](0008-cart.md) | Several products of one picture per order | Accepted (2026-11-24) |
 | [0009](0009-art-to-shop-handoff.md) | From art to the shop: a link with the work's uid | Accepted (2026-11-24) |
-| [0010](0010-order-failure-and-refunds.md) | Order failures after payment: retry, then Klaus, then refund | Proposed |
-| [0011](0011-currency-and-shipping-region.md) | Currency USD, shipping region to decide | Proposed |
-| [0012](0012-sales-tax-and-vat.md) | Sales tax and VAT | Proposed |
+| [0010](0010-order-failure-and-refunds.md) | Order failures after payment: retry, then Klaus, then refund | Accepted (2026-11-24) |
+| [0011](0011-currency-and-shipping-region.md) | Currency USD, shipping region to decide | Accepted (2026-11-24) |
+| [0012](0012-sales-tax-and-vat.md) | Sales tax and VAT | Accepted (2026-11-24) |
 | [0013](0013-admin-in-shop.md) | Admin inside the shop, Google sign-in, allow-list | Accepted (2026-11-24) |
 | [0014](0014-data-store-and-backup.md) | SQLite with Litestream to S3, plus Velero | Accepted (2026-11-24) |
-| [0015](0015-email-provider.md) | Email for order and shipping notices | Proposed |
+| [0015](0015-email-provider.md) | Email for order and shipping notices | Accepted (2026-11-24) |
 | [0016](0016-follow-cluster-repository-rules.md) | Follow the cluster's repository and deployment rules | Accepted (2026-11-24) |
-| [0017](0017-fulfilment-provider-interface.md) | A fulfilment-provider interface; Printful first, Prodigi to evaluate for framed prints | Proposed |
+| [0017](0017-fulfilment-provider-interface.md) | A fulfilment-provider interface; Printful first, Prodigi to evaluate for framed prints | Accepted (2026-11-24) |
 | [0018](0018-order-ledger-and-reconciliation.md) | Order ledger, idempotent submit and hourly reconciliation | Accepted (2026-11-24) |
 | [0019](0019-print-files-before-sale.md) | Print files exist and validate before a product is sold; their URLs never change | Accepted (2026-11-24) |
-| [0020](0020-approval-hold-above-amount.md) | Hold orders above an amount for Klaus's approval | Proposed |
-| [0021](0021-launch-scope.md) | What ships at launch and what waits | Proposed |
+| [0020](0020-approval-hold-above-amount.md) | Fail-safes against large or unusual orders | Accepted (2026-11-24) |
+| [0021](0021-launch-scope.md) | What ships at launch and what waits | Accepted (2026-11-24) |
+| [0022](0022-predefined-skus-in-config.md) | A handful of predefined SKUs, defined in a config file | Accepted (2026-11-24) |
+| [0023](0023-address-once-via-stripe-customer.md) | The address is entered once, on the shop's page, and passed to Stripe as a Customer | Accepted (2026-11-24) |
+| [0024](0024-mock-printful-and-stripe.md) | Mock Printful and mock Stripe as an independent service, verified against the real ones | Accepted (2026-11-24) |
+| [0025](0025-originals-from-arts-public-url.md) | Fetch originals from art's existing public URL (supersedes ADR-0006 if accepted) | Proposed |

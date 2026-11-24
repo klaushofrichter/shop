@@ -1,8 +1,8 @@
 # ADR-0015: Email for order and shipping notices
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-24: "re: mails: we can configure Amazon SES"
 
 ## Context
 
@@ -16,7 +16,7 @@ Customers need an order confirmation and shipping notices with tracking; Klaus n
 
 ## Decision
 
-Pending Klaus. Recommendation: SES from `orders@shop.klaushofrichter.net` or similar.
+Option 1: Amazon SES, sending from an address on `shop.klaushofrichter.net` (e.g. `orders@`), with SPF and DKIM records at Squarespace (Klaus) and production access (out of the SES sandbox) requested before go-live. Used for alerts to Klaus from the start and for customer emails when `EMAIL_ENABLED` is on.
 
 ## Consequences
 

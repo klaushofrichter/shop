@@ -11,25 +11,27 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 ## Status (2026-11-24)
 
-- Done: research (Printful, Stripe, open-source projects), [design.md](design.md), ADRs 0001–0021 and research/oss-learnings.md on branch `docs/design` (PR #1 to `main`). No service code.
-- Accepted: ADR-0001 (keep ADRs), ADR-0005 (Printful API v2), ADR-0016 (follow the cluster rules), and group 1 on 2026-11-24: 0002, 0003, 0004, 0006, 0009, 0013, 0014, 0018, 0019.
-- Still Proposed: group 2 (before checkout works: 0007, 0008, 0010, 0017, 0020, 0021) and group 3 (before going live: 0011, 0012, 0015). Plan: decide group 2 one at a time while the skeleton is built; group 3 once the shop works end to end in Stripe test mode.
-- Cluster agreed: separate service; originals via an internal art endpoint with a mandatory token and `/internal` blocked on art's public route; SQLite + Litestream to a new bucket + Velero.
+- PR #1 (design, research, ADRs) and PR #2 (repo baseline, skeleton, CI) merged to `main`. CI: `test`, `codeql`, `e2e` (browsers in Playwright's image; the apt install timed out on a slow mirror).
+- Real API behaviour captured twice on 2026-11-24 (Stripe test key; Printful reads and 3 drafts, all deleted; nothing ordered): `docs/research/api-capture-findings.md`, branches `capture/2026-11-24`, `capture/2026-11-24b`. Three capture files remain in Printful's file library.
+- **Design set** for the review by Fable 5.2 on 2026-11-25: `docs/design/` (13 documents), research in `docs/research/` including `process-alternatives.md` (build vs Shopify/Quick Stores). Branch `docs/design-set`, PR #3.
+- Klaus's minimum requirements (2026-11-24): one picture → one or more products → address → quote (with Printful previews) → Stripe → Printful → tracking; customer emails optional; a handful of predefined SKUs; thin provider abstraction; fully automated, < 10 orders a week.
+- ADRs 0001–0024 all Accepted (2026-11-24: 0010, 0011, 0012 sales tax via Stripe Tax, 0015 Amazon SES, 0020 fail-safes, 0023, 0024 mock services). None Proposed.
+- `production` branch protection approved by Klaus (2026-11-24): required `test`, `codeql`, `e2e`; strict; no force push or deletion; owner override. The branch does **not** exist yet: Cluster creates it from `main` and protects it right before the first real deploy (creating it triggers `deploy-production`). **Never create `production` from this session**; include it in the deploy request.
+- Klaus allowed a test deploy (2026-11-24) on condition that **no transaction with a real service and no Printful order** happens: deploy the skeleton now; later the shop only in mock mode (no real keys in the pod) until he says otherwise.
 
 ## Next
 
-1. ~~Merge PR #1 (docs)~~ (merged 2026-11-24).
-2. Repo baseline and skeleton service (design.md §13 step 1–2): PR `chore/repo-baseline`. After its CI is green, ask Cluster for `production` branch protection (required: test, codeql, e2e; needs Klaus's OK).
-3. Klaus: ~~Printful private token~~ (created 2026-11-24, in the node's `.env`; probed read-only with `scripts/printful-probe.sh` run by Cluster), Stripe restricted key and webhook secret (test mode first), Google OAuth client, S3 bucket + IAM user, email provider. Values go into `~/Development/shop/.env` on the node, never into chat or git.
-
-## Exposure
-
-- 2026-11-24: Klaus configured DNS. `shop.klaushofrichter.net` resolves to the cluster's public IP (same as art). Nothing serves it yet: no Ingress, Certificate or service. Those come with the first deploy, made by Cluster.
+1. **Design review** by a separate agent: brief in `docs/design/REVIEW-BRIEF.md`; it writes `docs/reviews/2026-11-25-design-review.md` in its own PR. Fold the findings into `docs/design/` and record changed decisions as ADRs.
+2. ADR-0025 (originals are public on art: fetch from there, or make them private) — Klaus.
+3. Build in the order of `docs/design/13-plan-and-open-questions.md` §1: database/jobs/config, then the **mock services** with replay verification against `capture/2026-11-24` and `capture/2026-11-24b`, then the shop.
+4. Stage-1 test deploy of the skeleton waits for Klaus's go in Cluster's session (exposure).
+5. Klaus, before go-live: prices; seller's permit + Stripe Tax registration + Printful resale certificate; SES domain records; S3 bucket; legal texts.
 
 ## Keys
 
 - `PRINTFUL_TOKEN`: store-level, created 2026-11-24.
-- `STRIPE_TOKEN`: a restricted key in **live** mode (`rk_live_`, checked by prefix only, 2026-11-24). Not used for development; a test-mode restricted key is needed (asked of Klaus).
+- `STRIPE_TEST_TOKEN` (`rk_test_`) and `STRIPE_LIVE_TOKEN` (`rk_live_`), checked by prefix only (2026-11-24). Only the test key is used until go-live. Permissions: docs/design/05 §8 (includes Customers write).
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (rotated 2026-11-24 after an exposure in Cluster's transcript; old one revoked), `GOOGLE_REDIRECT_URI`, `ALLOWED_EMAILS`, `COOKIE_SECRET`: checked by Cluster without printing.
 
 ## Environment notes
 

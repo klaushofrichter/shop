@@ -1,4 +1,6 @@
-# Shop design
+# Initial design and findings (superseded)
+
+> Superseded on 2026-11-24 by the design set in [docs/design/](../design/README.md). Kept for its research findings (§2) and history. Links below are relative to the former location `docs/design.md`.
 
 Status: draft for Klaus's review, 2026-11-24. No service code exists yet.
 Every decision here is an ADR in [docs/adr](adr/README.md). Proposed ones wait for Klaus's decision.

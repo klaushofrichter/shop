@@ -29,5 +29,5 @@ The shop follows those rules. Where this repo's own docs disagree with them, the
 
 ## Consequences
 
-- The delivery plan in design.md §13 is ordered to satisfy these from the first commit.
+- The delivery plan in docs/design/13-plan-and-open-questions.md is ordered to satisfy these from the first commit.
 - When the rules change in kube-setup, this ADR's list may go stale; the kube-setup docs win.

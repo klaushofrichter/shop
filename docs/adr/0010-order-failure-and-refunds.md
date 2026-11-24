@@ -1,8 +1,8 @@
 # ADR-0010: Order failures after payment: retry, then Klaus, then refund
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-24: "other: as recommended"
 
 ## Context
 
@@ -16,7 +16,7 @@ The risky case is: payment succeeded, Printful order failed (address rejected, p
 
 ## Decision
 
-Option 1 proposed; the 24 h / 72 h windows are Klaus's to set.
+Option 1, with the windows as proposed: retries for 24 h; automatic full refund after 72 h on a Printful billing hold and 24 h after a cost-guard stop; permanent failures refund at once. Updated 2026-11-24 after Klaus's requirement that the process be fully automated with no routine work for him (R9): every exception has a timer that ends in an automatic refund if he doesn't act, and permanent failures (invalid address, discontinued variant) refund at once. Details: docs/design/06-fulfilment.md §7.
 
 ## Consequences
 

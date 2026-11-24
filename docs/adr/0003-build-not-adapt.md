@@ -6,7 +6,7 @@
 
 ## Context
 
-Evaluated 2026-11-24 (details in design.md §12): Pressline (dworznik/pressline, MIT, Printful v2, Stripe Checkout, SvelteKit + Effect, one item per order, no cart), THREADFORM (no Printful integration at all), belialdigital (does not exist publicly), lbsudo/printful-nextjs-starter (archived 2023, unverified webhooks, leaked key pattern), medusa-printful (2022 experiment, Medusa v1, broken), kerkkoh/simple-clothing-store (PayPal, Printful v1, confirms the wrong order id), notrab/headless-dropshipping-starter (maintained, Printful v1, no license).
+Evaluated 2026-11-24 (details in docs/research/oss-learnings.md; the process alternatives in docs/research/process-alternatives.md): Pressline (dworznik/pressline, MIT, Printful v2, Stripe Checkout, SvelteKit + Effect, one item per order, no cart), THREADFORM (no Printful integration at all), belialdigital (does not exist publicly), lbsudo/printful-nextjs-starter (archived 2023, unverified webhooks, leaked key pattern), medusa-printful (2022 experiment, Medusa v1, broken), kerkkoh/simple-clothing-store (PayPal, Printful v1, confirms the wrong order id), notrab/headless-dropshipping-starter (maintained, Printful v1, no license).
 
 ## Options considered
 
