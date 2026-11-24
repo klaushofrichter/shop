@@ -107,9 +107,9 @@ export function createMockStripe(opts: MockStripeOptions) {
 <ul>${ses.lines.map((l) => `<li>${esc(l.name)} × ${l.quantity}: $${(l.unit * l.quantity / 100).toFixed(2)}</li>`).join('')}</ul>
 <p>Shipping: $${(ses.shipping.amount / 100).toFixed(2)}</p><p>Tax: $${(t.tax / 100).toFixed(2)}</p><p>Total: $${(t.total / 100).toFixed(2)}</p>
 ${ses.customText ? `<p>${esc(ses.customText)}</p>` : ''}
-<form method="post" action="${req.baseUrl}/checkout/${ses.id}/pay"><button>Pay</button></form>
-<form method="post" action="${req.baseUrl}/checkout/${ses.id}/decline"><button>Decline</button></form>
-<form method="post" action="${req.baseUrl}/checkout/${ses.id}/cancel"><button>Cancel</button></form>
+<form method="post" action="./${ses.id}/pay"><button>Pay</button></form>
+<form method="post" action="./${ses.id}/decline"><button>Decline</button></form>
+<form method="post" action="./${ses.id}/cancel"><button>Cancel</button></form>
 </main></body></html>`);
   });
   app.post('/checkout/:id/pay', async (req, res) => {

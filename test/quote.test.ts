@@ -75,7 +75,8 @@ describe('address → quote (03 §4–5)', () => {
       publicSite: {
         catalog, orders, clock, mode: 'test', skus: SKUS, sources: SOURCES, limits: loadConfig({}).limits, storeLabel: 'test',
         secret: 'x'.repeat(40), previewGate: false, allowedEmails: [],
-        quote: { settings, provider: new PrintfulClient({ baseUrl: base, token: 'mock_printful_1', timeoutMs: 2000 }), providerReady: () => true, log: (l) => logs.push(l) },
+        statusSecret: 'st'.repeat(20),
+      quote: { settings, provider: new PrintfulClient({ baseUrl: base, token: 'mock_printful_1', timeoutMs: 2000 }), providerReady: () => true, log: (l) => logs.push(l) },
       },
     });
     catalog.exec(`INSERT INTO works (source_id, work_id, title, canonical_url, original_url, prints_allowed, enabled, seen_at) VALUES ('art', 'w1', 'Undertow', 'u', 'u', 1, 1, 'now')`);
