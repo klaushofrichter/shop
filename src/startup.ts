@@ -24,6 +24,9 @@ import { PrintfulClient } from './providers/printful';
 import { workerHealth } from './worker-health';
 import { googleSignIn } from './admin/auth';
 import { randomBytes } from 'node:crypto';
+import { StripeClient } from './payments/stripe';
+import { registerStripeEventJob } from './orders/webhooks';
+import { RetryLater } from './jobs';
 
 export interface Shop {
   config: Config;
@@ -77,6 +80,15 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
   if (config.sourcesRefresh) scheduleSourceRefresh(dbs.orders, clock, sources.map((s) => s.id));
   const startedAtMs = clock.now();
   const provider = config.printful.token ? new PrintfulClient({ baseUrl: config.printful.baseUrl, token: config.printful.token }) : undefined;
+  const stripe = config.stripe.secretKey ? new StripeClient({ apiBase: config.stripe.apiBase, secretKey: config.stripe.secretKey }) : undefined;
+  // Status links (ADR-0037); mock mode without a secret gets a per-process one (links end with the process).
+  const statusSecret = config.statusTokenSecret ?? randomBytes(32).toString('hex');
+  const paymentDeps = stripe ? { orders: dbs.orders, clock, stripe, limits: config.limits, log } : undefined;
+  if (paymentDeps) registerStripeEventJob(runner, paymentDeps);
+  // Submission arrives with step 7, e-mails with step 8: their jobs wait until then.
+  for (const kind of ['order.submit', 'email.send']) {
+    runner.register(kind, { maxAttempts: 1_000_000, run: async () => { throw new RetryLater(6 * 60 * 60_000, `${kind} is not built yet`); } });
+  }
   // Set once ready() has checked Printful's identity.
   let providerStatus: ProviderStatus | undefined;
   const app = createApp({
@@ -103,6 +115,7 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
       skus,
       storeLabel: config.mode,
     },
+    webhooks: { orders: dbs.orders, clock, stripeWebhookSecret: config.stripe.webhookSecret, log },
     publicSite: {
       catalog: dbs.catalog,
       orders: dbs.orders,
@@ -118,6 +131,19 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
       previewKey: config.previewKey,
       adminSecret: config.admin.cookieSecret,
       allowedEmails: config.admin.allowedEmails,
+      statusSecret,
+      checkout: paymentDeps
+        ? {
+            ...paymentDeps,
+            catalog: dbs.catalog,
+            skus,
+            storeLabel: config.mode,
+            publicUrl: config.publicUrl,
+            statusSecret,
+            // Stripe Tax (ADR-0012): it taxes where Klaus is registered; the mock has its own tax table.
+            automaticTax: true,
+          }
+        : undefined,
       quote: {
         settings: config.quote,
         provider,

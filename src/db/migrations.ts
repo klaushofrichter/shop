@@ -223,4 +223,8 @@ CREATE TABLE settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_a
 CREATE TABLE reconciliation_runs (id INTEGER PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT, report_json TEXT, alarms INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE admin_audit (id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT, details_json TEXT);
 `,
+  // 2: the quote a checkout was started from, so "Pay" again reuses the same session (05 §3 step 1).
+  `
+ALTER TABLE orders ADD COLUMN checkout_quote_id TEXT;
+`,
 ];

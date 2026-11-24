@@ -20,6 +20,7 @@ function setup(opts: { mode?: Mode; gate?: boolean; key?: string; provider?: Ful
     publicSite: {
       catalog, orders, clock, mode: opts.mode ?? 'test', skus: SKUS, sources: SOURCES, limits: LIMITS, storeLabel: 'test',
       secret: SECRET, previewGate: opts.gate ?? false, previewKey: opts.key, adminSecret: SECRET, allowedEmails: ['admin@example.com'],
+      statusSecret: 'st'.repeat(20),
       quote: { settings: loadConfig({}).quote, provider: opts.provider, providerReady: () => true, log: () => {} },
     },
   });

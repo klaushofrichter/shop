@@ -16,6 +16,12 @@ import { ART_URL, esc, homePage, layout, notFoundPage } from '../pages';
 import { displayImages, getWork, sellableOffers, sellableWorkIds, type PublicOffer } from './catalog';
 import { countZipRejection, createQuote, normaliseAddress, type AddressErrors, type AddressInput, type QuoteDeps, type QuoteItem, type QuoteOption } from './quote';
 import { US_STATES } from './zip';
+import { startCheckout, type CheckoutDeps } from '../orders/checkout';
+import { ORDER_ID, statusTokenOk } from '../orders/ids';
+import { applyPayment } from '../orders/payment';
+import { customerStatus } from '../orders/status';
+import { clearCookie } from '../admin/session';
+import { enqueue } from '../jobs';
 import { CART_COOKIE, CART_TTL_MS, cartId, formToken, formTokenOk, keyMatches, newId, PREVIEW_COOKIE, previewOk, previewProof } from './session';
 
 export interface PublicDeps {
@@ -34,6 +40,10 @@ export interface PublicDeps {
   /** Admin sessions pass the gate. */
   adminSecret?: string;
   allowedEmails: string[];
+  /** Checkout and payment (05 §3); absent → "payment isn't open yet". */
+  checkout?: CheckoutDeps;
+  /** Signs the status links (ADR-0037). */
+  statusSecret: string;
   /** The quote (05 §2); without a provider the quote says shipping can't be calculated. */
   quote: Omit<QuoteDeps, 'catalog' | 'orders' | 'clock' | 'skus' | 'storeLabel'>;
 }
@@ -413,9 +423,127 @@ ${payForm}`,
     return `<form method="post" action="/cart/address"><input type="hidden" name="_csrf" value="${esc(formToken(req, res, d.secret))}">${hidden('name', a.name)}${hidden('email', email)}${hidden('line1', a.line1)}${hidden('line2', a.line2)}${hidden('city', a.city)}${hidden('state', a.state)}${hidden('zip', a.zip)}<button type="submit">Update the quote</button></form>`;
   }
 
-  // Payment arrives with step 6 (docs/design/05 §3).
-  r.post('/checkout', (req, res) => {
-    page(req, res, 'Payment · Shop', 'Payment.', `<h1>Payment isn't open yet</h1><p>This shop doesn't take payments yet. <a href="/cart">Back to the cart</a>.</p>`, 503);
+  // ---- checkout (05 §3) ----
+  const checkoutLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false });
+  r.post('/checkout', checkoutLimiter, async (req, res, next) => {
+    try {
+      const b = req.body as Record<string, string | undefined>;
+      if (!formTokenOk(req, d.secret, b._csrf)) return res.status(403).type('text').send('form expired; reload the page');
+      if (!d.checkout) {
+        return page(req, res, 'Payment · Shop', 'Payment.', `<h1>Payment isn't open yet</h1><p>This shop doesn't take payments yet. <a href="/cart">Back to the cart</a>.</p>`, 503);
+      }
+      const cart = cartId(req);
+      if (!cart) return res.redirect(303, '/cart');
+      const result = await startCheckout(d.checkout, cart, String(b.quote ?? ''), String(b.shipping ?? ''));
+      switch (result.kind) {
+        case 'redirect':
+          return res.redirect(303, result.url);
+        case 'no-quote':
+          return res.redirect(303, '/cart');
+        case 'requote':
+          return renderCart(req, res, cart, 'Something in your order changed. Please check the quote again.', 409);
+        case 'limits':
+          return renderCart(req, res, cart, 'This order is larger than we can take online; for more, please contact us.', 409);
+        case 'address':
+          return renderCart(req, res, cart, result.message, 422);
+        case 'unavailable':
+          return page(req, res, 'Payment · Shop', 'Payment.', `<h1>Payment is unavailable right now</h1><p>Nothing was charged. Please try again in a few minutes. <a href="/quote">Back to your order</a>.</p>`, 503);
+      }
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ---- order status (03 §7): the link's token becomes a cookie for this order only ----
+  const ORDER_COOKIE = 'shop_order';
+  const orderLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false });
+  r.get('/order/find', orderLimiter, (req, res) => findPage(req, res));
+  r.get('/order/:id', orderLimiter, async (req, res, next) => {
+    try {
+      const id = String(req.params.id);
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Robots-Tag', 'noindex');
+      if (!ORDER_ID.test(id)) return notFound(req, res);
+      const t = req.query.t;
+      if (t !== undefined) {
+        if (!statusTokenOk(d.statusSecret, id, t)) return notFound(req, res);
+        setCookie(res, ORDER_COOKIE, String(t), 365 * 24 * 60 * 60_000, `/order/${id}`);
+        return res.redirect(303, `/order/${id}`);
+      }
+      if (!statusTokenOk(d.statusSecret, id, readCookie(req, ORDER_COOKIE))) return notFound(req, res);
+      let o = d.orders.prepare('SELECT * FROM orders WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+      if (!o) return notFound(req, res);
+      // Back from Stripe before the webhook: the same transition, the conditional update decides (05 §5).
+      if (o.payment_state === 'checkout_open' && o.stripe_session_id && d.checkout) {
+        await applyPayment(d.checkout, String(o.stripe_session_id)).catch(() => undefined);
+        o = d.orders.prepare('SELECT * FROM orders WHERE id = ?').get(id) as Record<string, unknown>;
+      }
+      orderPage(req, res, o);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  function orderPage(req: Request, res: Response, o: Record<string, unknown>) {
+    const items = d.orders.prepare('SELECT * FROM order_items WHERE order_id = ? ORDER BY id').all(String(o.id)) as Array<Record<string, unknown>>;
+    const shipped = (d.orders.prepare('SELECT COUNT(*) n FROM shipments WHERE order_id = ?').get(String(o.id)) as { n: number }).n > 0;
+    const st = customerStatus({ payment_state: String(o.payment_state), fulfilment_state: String(o.fulfilment_state), refunded_cents: Number(o.refunded_cents), shippedSomething: shipped });
+    const created = new Date(String(o.created_at)).toISOString().slice(0, 10);
+    const lines = items.map((i) => `<tr><th scope="row">${esc(String(i.name))}</th><td>${i.quantity} × $${formatCents(Number(i.unit_cents))}</td></tr>`).join('');
+    const paid = o.paid_cents != null ? `<p>Paid: $${formatCents(Number(o.paid_cents))}${o.tax_cents ? ` (sales tax $${formatCents(Number(o.tax_cents))})` : ''}</p>` : '';
+    const partly = o.payment_state === 'partially_refunded' ? `<p>Partly refunded: $${formatCents(Number(o.refunded_cents))}</p>` : '';
+    const refresh = st.waiting && d.clock.now() - Date.parse(String(o.created_at)) < 2 * 60 * 60_000 ? '<meta http-equiv="refresh" content="5">' : '';
+    const html = layout({
+      title: `Order ${o.number} · Shop`,
+      description: 'Your order.',
+      testShop,
+      cartCount: cartCount(req),
+      body: `${refresh}<h1>Order ${esc(String(o.number))}</h1>
+<p class="status" role="status"><strong>${esc(st.text)}</strong></p>
+<p>Ordered on ${created}. Ships to ${esc(String(o.ship_name ?? ''))}, ${esc(String(o.ship_city ?? ''))}, ${esc(String(o.ship_state ?? ''))}.</p>
+<table class="lines"><tbody>${lines}</tbody></table>
+<p>Shipping: $${formatCents(Number(o.shipping_cents))}</p>
+${paid}${partly}
+<p>Keep this page's address: it is your link to the order. Lost it? <a href="/order/find">Find my order</a>.</p>`,
+    });
+    res.type('html').send(html);
+  }
+
+  // ---- find my order (03 §8): the link is e-mailed, never shown; the same answer either way ----
+  const findLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 5, standardHeaders: 'draft-8', legacyHeaders: false });
+  const perNumber = new Map<string, number[]>();
+  function findPage(req: Request, res: Response, sent = false, status = 200) {
+    res.setHeader('Cache-Control', 'no-store');
+    page(
+      req,
+      res,
+      'Find my order · Shop',
+      'Find your order.',
+      `<h1>Find my order</h1>
+${sent ? '<p role="status">If the order number and e-mail match an order, the link is on its way to that e-mail address.</p>' : ''}
+<form method="post" action="/order/find">
+<input type="hidden" name="_csrf" value="${esc(formToken(req, res, d.secret))}">
+<p><label for="f-number">Order number</label><br><input id="f-number" name="number" inputmode="numeric" maxlength="6" required></p>
+<p><label for="f-email">E-mail</label><br><input id="f-email" name="email" type="email" autocomplete="email" required></p>
+<button type="submit">E-mail me the link</button>
+</form>`,
+      status,
+    );
+  }
+  r.post('/order/find', findLimiter, (req, res) => {
+    const b = req.body as Record<string, string | undefined>;
+    if (!formTokenOk(req, d.secret, b._csrf)) return res.status(403).type('text').send('form expired; reload the page');
+    const number = String(b.number ?? '').trim();
+    const email = String(b.email ?? '').trim().toLowerCase();
+    // Per order number too: at most 3 requests an hour, whoever asks.
+    const now = d.clock.now();
+    const recent = (perNumber.get(number) ?? []).filter((t) => now - t < 60 * 60_000);
+    if (/^\d{5,6}$/.test(number) && recent.length < 3) {
+      perNumber.set(number, [...recent, now]);
+      const o = d.orders.prepare(`SELECT id FROM orders WHERE number = ? AND email = ? AND payment_state != 'checkout_open'`).get(number, email) as { id: string } | undefined;
+      if (o) enqueue(d.orders, d.clock, 'email.send', `${o.id}/link/${now}`, { orderId: o.id, kind: 'link', ref: String(now) });
+    }
+    findPage(req, res, true);
   });
 
   r.use((req, res) => notFound(req, res));
