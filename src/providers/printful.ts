@@ -10,6 +10,8 @@ import {
   type Address,
   type FulfilmentProvider,
   type ItemRef,
+  type MockupRequest,
+  type MockupTask,
   type ProviderFile,
   type ShippingRate,
   type StoreIdentity,
@@ -111,6 +113,43 @@ export class PrintfulClient implements FulfilmentProvider {
     return toFile((await this.call('GET', `/v2/files/${providerFileId}`)).data as Json);
   }
 
+  async createMockup(req: MockupRequest): Promise<MockupTask> {
+    const product: Json = {
+      source: 'catalog',
+      catalog_product_id: req.productId,
+      catalog_variant_ids: [req.variantId],
+      placements: [{ placement: req.placement, technique: req.technique, layers: [{ type: 'file', url: req.fileUrl }] }],
+    };
+    if (req.orientation) product.orientation = req.orientation;
+    // A lost answer means at worst one unused task at Printful: safe to repeat.
+    const res = await this.call('POST', '/v2/mockup-tasks', { format: 'jpg', mockup_width_px: 1000, products: [product] }, { idempotent: true });
+    return toMockupTask((res.data as Json[])[0]);
+  }
+
+  async getMockup(taskId: string): Promise<MockupTask> {
+    if (!/^\d{1,20}$/.test(taskId)) throw new ProviderError('permanent', 'malformed mockup task id');
+    const res = await this.call('GET', `/v2/mockup-tasks?id=${taskId}`);
+    const task = (res.data as Json[])[0];
+    if (!task) throw new ProviderError('permanent', `mockup task ${taskId} not found`);
+    return toMockupTask(task);
+  }
+
+  async downloadMockup(url: string, maxBytes: number): Promise<Buffer> {
+    if (!url.startsWith('https://') && !url.startsWith(this.base)) throw new ProviderError('permanent', 'mockup URL is not https');
+    let res: Response;
+    try {
+      res = await this.fetch(url, { signal: AbortSignal.timeout(this.timeoutMs), redirect: 'follow' });
+    } catch (e) {
+      throw new ProviderError('unavailable', `mockup download: no answer (${(e as Error).name})`);
+    }
+    if (!res.ok) throw new ProviderError(res.status >= 500 ? 'unavailable' : 'permanent', `mockup download answered ${res.status}`, res.status);
+    const type = res.headers.get('content-type') ?? '';
+    if (!type.startsWith('image/')) throw new ProviderError('permanent', `mockup download has type ${type || 'none'}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > maxBytes) throw new ProviderError('permanent', 'mockup larger than the limit');
+    return buf;
+  }
+
   /**
    * One request. `idempotent` marks a POST that is safe to repeat; any other
    * POST without an answer is `unknown`.
@@ -171,6 +210,16 @@ function errorMessage(json: Json | undefined): string | undefined {
 /** Paths in errors without ids that could be long or odd. */
 function route(path: string): string {
   return path.replace(/\?.*$/, '').replace(/\/\d+/g, '/{id}');
+}
+
+function toMockupTask(d: Json): MockupTask {
+  const status = d.status === 'completed' || d.status === 'failed' ? d.status : 'pending';
+  const urls = ((d.catalog_variant_mockups ?? []) as Array<{ mockups?: Array<{ mockup_url?: string }> }>)
+    .flatMap((v) => v.mockups ?? [])
+    .map((m) => m.mockup_url)
+    .filter((u): u is string => typeof u === 'string');
+  const failures = ((d.failure_reasons ?? []) as unknown[]).map((f) => (typeof f === 'string' ? f : JSON.stringify(f)));
+  return { id: String(d.id), status, urls, failures };
 }
 
 function toFile(d: Json): ProviderFile {

@@ -22,7 +22,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 - **Step 2 done** (PR #12): configuration and mode checks, SKU and source files, both database files with migrations, the `Clock`, the job runner and `/health/worker`.
 - **Step 3** (PR #13): the art adapter (contract test against a recorded manifest), works in `catalog.db`, original checks by SHA-256 and display images (`/img/*`); the Printful adapter (identity, catalog, shipping rates, file library) with startup verification (wrong answer stops the start, no answer doesn't), the daily SKU check, print-file registration and `/files/*`; mock Printful stage 1 (`mocks/printful/`) with request validation against the pinned v2 spec.
-- **Step 4 in progress** (PR #14): sign-in (state, PKCE, nonce; HMAC session; CSRF and same-origin; ALLOWED_EMAILS on every request; rate-limited), dashboard, works with enable/disable; the work page with one form per SKU (offer, price, nine anchors, DPI and cut before rendering, readiness); print files rendered by `offer.render` (exact size, sRGB, no metadata, mug twice, t-shirt PNG) and registered at Printful. Next: mockups.
+- **Step 4** (PRs #14, #15): sign-in, dashboard, works, the work page with offers, prices, anchors and readiness; print files rendered and registered at Printful; mockups (one task per 30 s, stored without metadata, the display image standing in until then).
 
 ## Next
 

@@ -51,6 +51,23 @@ export interface ProviderFile {
   height?: number;
 }
 
+export interface MockupRequest {
+  productId: number;
+  variantId: number;
+  placement: string;
+  technique: string;
+  /** Paper only: the variant's orientation. */
+  orientation?: 'vertical' | 'horizontal';
+  fileUrl: string;
+}
+
+export interface MockupTask {
+  id: string;
+  status: 'pending' | 'completed' | 'failed';
+  urls: string[];
+  failures: string[];
+}
+
 export interface StoreIdentity {
   stores: Array<{ id: string; name: string }>;
   scopes: string[];
@@ -63,6 +80,10 @@ export interface FulfilmentProvider {
   shippingRates(to: Address, items: ItemRef[]): Promise<ShippingRate[]>;
   registerFile(url: string): Promise<ProviderFile>;
   getFile(providerFileId: string): Promise<ProviderFile>;
+  createMockup(req: MockupRequest): Promise<MockupTask>;
+  getMockup(taskId: string): Promise<MockupTask>;
+  /** A finished mockup image (a temporary provider URL), at most `maxBytes`. */
+  downloadMockup(url: string, maxBytes: number): Promise<Buffer>;
 }
 
 /**

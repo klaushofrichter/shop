@@ -163,6 +163,7 @@ ${skuBad.length ? `<h2>Products switched off by the catalog check</h2><ul>${skuB
 <h2 id="${fid}">${esc(sku.name)}</h2>
 <p class="muted">${dpi}. ${wholesale ? `Printful ${formatCents(wholesale)} USD; ` : ''}${ready.sellable ? '<strong>Sellable</strong>' : `Not sellable: ${esc(ready.missing.join('; '))}`}.</p>
 ${pf?.preview_path ? `<img class="preview" src="${esc(pf.preview_path)}" alt="Print file preview: ${esc(sku.name)}" width="240" height="240" loading="lazy">` : ''}
+${o?.mockup_sha && o.print_file_sha ? `<img class="preview" src="/mockups/${esc(String(o.mockup_sha))}.jpg" alt="Mockup: ${esc(sku.name)}" width="240" height="240" loading="lazy">` : o?.print_file_sha ? '<span class="muted">Mockup pending; the picture stands in until then.</span>' : ''}
 <form method="post" action="/admin/works/${esc(source)}/${esc(work)}/offers/${esc(sku.id)}">
 <input type="hidden" name="_csrf" value="${esc(req.csrf!)}">
 <label><input type="checkbox" name="enabled"${o?.enabled ? ' checked' : ''}> Offer this product</label>

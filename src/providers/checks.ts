@@ -75,6 +75,13 @@ export function compareSku(sku: Sku, spec: VariantSpec): SkuCheck {
     : { skuId: sku.id, ok: true, wholesaleCents: spec.wholesaleCents };
 }
 
+/** Where the design goes on the product, and how it is printed. */
+export function placementFor(sku: Sku): { placement: string; technique: string } {
+  if (sku.kind === 'apparel') return { placement: 'front', technique: 'dtg' };
+  if (sku.kind === 'mug') return { placement: 'default', technique: 'sublimation' };
+  return { placement: 'default', technique: 'digital' };
+}
+
 /** The variant a SKU uses for an orientation. */
 export function variantFor(sku: Sku, orientation: 'portrait' | 'landscape'): number {
   const v = sku.variants[orientation] ?? sku.variants.any;
