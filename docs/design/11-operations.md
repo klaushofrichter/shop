@@ -6,8 +6,35 @@ Per the cluster's rules (ADR-0016); the workflows exist since PR #2.
 
 - `main` → image `ghcr.io/klaushofrichter/shop:main` (never deployed).
 - Promotion PR `main` → `production` (Cluster merges) → `deploy-production.yml` on the in-cluster runner: version `YYYY.MM.DD.N`, image by digest, kube-setup manifest `manifests/shop/shop-deployment.yaml` updated and pushed before `kubectl apply`, rollout polled, smoke test (`/health` serves the new version, HEAD 200, home page compressed), GitHub release with "Verified at release". Then `live-check.yml` runs the @live e2e tests and Lighthouse against the live site.
-- **Cluster's part** (one request when implementation starts): namespaces `shop` and `shop-runner`; runner with RBAC on the one Deployment; the Deployment (`replicas: 1`, `Recreate`, the non-root `securityContext`, readiness and liveness on `/health`, resources ~256 Mi / 0.5 CPU, `sharp` peaks ~400 Mi while rendering a 16×20 file); a 5 Gi Retain PVC; Litestream sidecar; Ingress + Certificate for `shop.klaushofrichter.net` with HTTP→HTTPS; NetworkPolicy; Secrets; version-exporter entry; UptimeRobot `HEAD /health`; namespaces in `export.sh`/`bootstrap.sh`; Velero coverage.
-- **art's part** (art's repo, its owner session): the "Prints & merchandise" link driven by `GET shop…/api/offers`; `GET /internal/originals/<uid>` with a bearer token; `/internal` blocked on art's public route (Traefik rule, kube-setup).
+- **Cluster's part** (one request when implementation starts): namespaces `shop` and `shop-runner`; runner with RBAC on the one Deployment; the Deployment (`replicas: 1`, `Recreate`, the non-root `securityContext`, readiness and liveness on `/health`, memory request 256 Mi / **limit 512 Mi**, CPU 0.5: an OOM kill in the middle of a webhook is worse than headroom; the largest SKU (16×20 at 300 DPI, 4800 × 6000 px ≈ 115 MB as raw RGBA) renders with libvips streaming, `sharp.concurrency(1)` and the cache off, and the print-file test measures peak RSS so a larger SKU can't silently exceed the limit); a 5 Gi Retain PVC; Litestream sidecar; Ingress + Certificate for `shop.klaushofrichter.net` with HTTP→HTTPS; the NetworkPolicy below; the Secrets below; version-exporter entry; UptimeRobot `HEAD /health`; namespaces in `export.sh`/`bootstrap.sh`; Velero coverage; and creating and protecting the `production` branch right before the first deploy (Klaus approved the protection 2026-11-24: required `test`, `codeql`, `e2e`, strict, no force push or deletion, owner override).
+- **art's part**, its own work item (art's repo with its owner session, plus a kube-setup change by Cluster):
+  - the "Prints & merchandise" link driven by `GET shop…/api/offers`;
+  - `GET /internal/originals/<uid>` streaming the original, bearer token `ART_INTERNAL_TOKEN` required;
+  - `/internal` blocked on art's public route (Traefik rule in kube-setup) **and** refused by art unless the request arrived via the cluster-local host;
+  - its own tests: from the internet `https://art.klaushofrichter.net/internal/originals/<uid>` → 404 or 403; in-cluster with the token → 200 and the original's bytes; in-cluster without or with a wrong token → 401; unknown uid → 404.
+
+**Secrets.** The node's `.env` is not copied as a whole: it also holds deploy credentials
+(`SHOP_GITHUB_PAT`, `GITHUB_KUBE_SETUP_PAT`) that must never reach the app pod, and
+`STRIPE_LIVE_TOKEN`, which the app gets only at go-live. A repo script
+`scripts/create-secrets.sh` (pattern: cams-admin's), run on the node by Cluster or Klaus,
+builds each Secret from named keys only and never prints a value:
+
+| Secret | Keys (app variable ← `.env` key) |
+|---|---|
+| `shop-env` (namespace `shop`) | `PRINTFUL_TOKEN`; `STRIPE_SECRET_KEY` ← `STRIPE_TEST_TOKEN` in test mode, ← `STRIPE_LIVE_TOKEN` only with `--live` (Klaus's go); `STRIPE_WEBHOOK_SECRET` (of that mode); `PRINTFUL_WEBHOOK_SECRET`; `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ALLOWED_EMAILS`, `COOKIE_SECRET`; `ART_INTERNAL_TOKEN`; email credentials once chosen |
+| `shop-litestream` (namespace `shop`) | the backup bucket's access key and secret |
+| `runner-pat` (namespace `shop-runner`) | `SHOP_GITHUB_PAT` (runner registration) |
+| Actions secret `KUBE_SETUP_DEPLOY_TOKEN` (repo) | `GITHUB_KUBE_SETUP_PAT`, set by Klaus |
+| `art-internal` (namespace `art`) | `ART_INTERNAL_TOKEN` (same value as in `shop-env`) |
+
+The script refuses `--live` unless `STRIPE_MODE=live` is also passed, prints only key
+names and the Stripe key's prefix (`rk_test_`/`rk_live_`), and exits non-zero on a
+missing key.
+
+**NetworkPolicy** (pattern: cams-admin, games), namespace `shop`, default deny both ways:
+- ingress: from Traefik (namespace `kube-system`, Traefik pods) on the app port; from the cluster's metrics scraper on `/metrics`, if used;
+- egress: DNS (kube-dns, UDP/TCP 53); **TCP 443 to `0.0.0.0/0` except `10.42.0.0/16`, `10.43.0.0/16` and `192.168.1.0/24`** (Printful, Stripe, S3, email: their CDN addresses change, so no allow-list by hostname); art's pods in namespace `art` on art's port (the originals endpoint);
+- art's namespace allows ingress from namespace `shop` to that port.
 
 ## 2. Configuration
 
@@ -23,8 +50,8 @@ Environment variables (Kubernetes Secret `shop-env` for secrets, ConfigMap for t
 | `PRINTFUL_WEBHOOK_SECRET`, `PRINTFUL_WEBHOOK_PUBLIC_KEY` | yes / no | from webhook registration |
 | `FULFILMENT_CONFIRM` | | `false` (drafts only) until go-live |
 | `STRIPE_MODE` | | `test` until go-live |
-| `STRIPE_TEST_TOKEN`, `STRIPE_LIVE_TOKEN` | yes | restricted keys |
-| `STRIPE_TEST_WEBHOOK_SECRET`, `STRIPE_LIVE_WEBHOOK_SECRET` | yes | endpoint secrets |
+| `STRIPE_SECRET_KEY` | yes | the restricted key of the current mode (built from `STRIPE_TEST_TOKEN` or, at go-live, `STRIPE_LIVE_TOKEN`; see Secrets above) |
+| `STRIPE_WEBHOOK_SECRET` | yes | that mode's endpoint secret |
 | `TAX_ENABLED` | | ADR-0012 |
 | `SHIP_COUNTRIES` | | `US` (ADR-0011) |
 | `MARGIN_FLOOR_CENTS`, `SHIPPING_MARKUP_CENTS` | | cost guard, markup |

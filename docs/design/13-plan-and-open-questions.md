@@ -15,7 +15,7 @@ before step 9.
 | 6 | Checkout (Stripe Customer + Session), Stripe webhooks, success/cancel pages, order status page | step 5 |
 | 7 | Submission, Printful webhooks, shipments, cost guard, failure handling, refunds, reconciliation, purge | step 6 |
 | 8 | Alerts to Klaus; customer emails behind a flag (ADR-0015) | step 7 |
-| 9 | Deploy to the cluster in **test mode** (Cluster: namespace, Secrets, PVC, Litestream, Ingress); art's internal endpoint and link (art's session); real test-mode run ([12 §3](12-testing.md#3-test-mode-against-the-real-services)) | steps 1–8, art, Cluster |
+| 9 | `scripts/create-secrets.sh`; deploy to the cluster in **test mode** (Cluster: namespaces, Secrets, PVC, Litestream, Ingress, NetworkPolicy, `production` branch); art's internal endpoint with its own tests, the Traefik block, and the link (art's session, Cluster); real test-mode run ([12 §3](12-testing.md#3-test-mode-against-the-real-services)) | steps 1–8, art, Cluster |
 | 10 | Go-live checklist ([12 §4](12-testing.md#4-test-mode-and-go-live)), Klaus's go | Klaus |
 
 Rough size: 3,000–4,000 lines of TypeScript including tests; steps 2–8 are a few

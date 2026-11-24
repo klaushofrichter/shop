@@ -80,7 +80,7 @@ Details: [03](03-customer-journey.md) (pages), [05](05-quote-checkout-payment.md
 - **Volume**: a Retain PVC (local-path, RWO) mounted at `/var/lib/shop` with `shop.db` and `files/` (print files, mockups).
 - **Litestream** as a native sidecar replicating `shop.db` to a new S3 bucket; Velero file-system backup of the PVC as a second line (ADR-0014).
 - **Ingress**: own Ingress + Certificate for `shop.klaushofrichter.net` (DNS done by Klaus 2026-11-24); compression in the app.
-- **Egress**: `api.printful.com`, `api.stripe.com`, the email provider, and art in-cluster (`art.art.svc.cluster.local`). A default-deny NetworkPolicy with these allows is recommended (the shop holds personal data).
+- **Egress**: `api.printful.com`, `api.stripe.com`, S3, the email provider (all HTTPS), and art in-cluster (`art.art.svc.cluster.local`). Enforced by a default-deny NetworkPolicy: HTTPS to public addresses only (not the cluster or LAN ranges), plus art's pods ([11 §1](11-operations.md#1-deployment)).
 - **Why one process is enough**: < 10 orders a week means a few hundred requests a day. The heaviest work (rendering a 6000×7500 px print file with `sharp`) takes seconds and happens when a picture is set up, not per visitor.
 
 ## 5. Key design choices

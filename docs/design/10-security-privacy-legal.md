@@ -29,7 +29,8 @@
 | Secrets leaking | Secrets only in Kubernetes Secrets created from the node's `.env` by Cluster or Klaus; never in git, logs or chat. The app logs no headers, no tokens, no full addresses. Startup checks log only *which* variables are present. |
 | Dependency vulnerabilities | `npm audit` gates in CI, Dependabot, CodeQL (cluster baseline). |
 | Container escape / privilege | Non-root (uid 1000), drop ALL capabilities, no privilege escalation, seccomp RuntimeDefault (cluster rule). |
-| Network | Default-deny NetworkPolicy: ingress from Traefik only; egress to DNS, Printful, Stripe, the email provider, art's service, S3. |
+| Network | Default-deny NetworkPolicy: ingress from Traefik only; egress DNS, TCP 443 to public addresses (cluster and LAN ranges excluded, since provider addresses change), and art's pods. |
+| Deploy credentials in the app | The app's Secret is built from named keys only; GitHub tokens and the live Stripe key (before go-live) never enter the pod ([11 §1](11-operations.md#1-deployment)). |
 
 ## 3. PCI
 

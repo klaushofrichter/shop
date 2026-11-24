@@ -127,8 +127,8 @@ Printful, not in this system).
 | Variable | Use |
 |---|---|
 | `STRIPE_MODE` | `test` (default) or `live` |
-| `STRIPE_TEST_TOKEN` / `STRIPE_LIVE_TOKEN` | restricted keys (`rk_test_`, `rk_live_`); the process uses the one matching `STRIPE_MODE` and refuses to start if the key's prefix doesn't match the mode |
-| `STRIPE_TEST_WEBHOOK_SECRET` / `STRIPE_LIVE_WEBHOOK_SECRET` | `whsec_…` from endpoint registration |
+| `STRIPE_SECRET_KEY` | the restricted key of the current mode; the pod only ever holds one. Built by `scripts/create-secrets.sh` from the node's `STRIPE_TEST_TOKEN`, or from `STRIPE_LIVE_TOKEN` at go-live ([11 §1](11-operations.md#1-deployment)). The process refuses to start if the key's prefix (`rk_test_`/`rk_live_`) doesn't match `STRIPE_MODE`. |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_…` of that mode's endpoint registration |
 
 Restricted key permissions (set by Klaus, identical in both modes): Checkout Sessions
 write, Customers write, Refunds write, PaymentIntents read, Charges read, Events read,
