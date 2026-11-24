@@ -1,8 +1,8 @@
 # ADR-0034: Separate payment, fulfilment and dispute state; holds with deadlines; invariants
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-25, revised 2026-11-26 after review round 2
-- Decided by: (pending, Klaus; round-2 decision 1)
+- Decided by: Klaus, 2026-11-26, on round-2 decision 1: "decisions 1, 2, 4, 6, 7, 8, 9: ok"
 
 ## Context
 

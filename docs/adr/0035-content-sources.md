@@ -1,8 +1,8 @@
 # ADR-0035: Works from content sources, keyed by source; the shop renders its own display images
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-25, revised 2026-11-26 after review round 2
-- Decided by: (pending, Klaus; round-2 decision 4). Klaus, 2026-11-25, on the second gallery: "A second gallery does not matter much at this time, examples could be our own repos christina-art and instagetter."
+- Decided by: Klaus, 2026-11-26, on round-2 decision 4: "decisions 1, 2, 4, 6, 7, 8, 9: ok". Klaus, 2026-11-25, on the second gallery: "A second gallery does not matter much at this time, examples could be our own repos christina-art and instagetter."
 
 ## Context
 

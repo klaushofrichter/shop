@@ -1,8 +1,8 @@
 # ADR-0036: Address and cost checks before payment, without Printful's estimation task
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-25, revised 2026-11-26 after review round 2
-- Decided by: (pending, Klaus; round-2 decision 8)
+- Decided by: Klaus, 2026-11-26, on round-2 decision 8: "decisions 1, 2, 4, 6, 7, 8, 9: ok"
 
 ## Context
 

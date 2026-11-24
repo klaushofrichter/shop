@@ -1,8 +1,8 @@
 # ADR-0030: Stripe webhook endpoints created by Klaus in the Dashboard
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-25, revised 2026-11-26 after review round 2
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-26, on round-2 decision 8: "decisions 1, 2, 4, 6, 7, 8, 9: ok"
 
 ## Context
 
@@ -18,7 +18,7 @@ Two facts from the captures and review 1 (F12): the account's default API versio
 
 ## Decision
 
-Option 1 proposed:
+Option 1:
 - **Test endpoint** when the shop runs in test mode on the cluster (step 10): `https://shop.klaushofrichter.net/webhooks/stripe` (exempt from the preview gate), secret → `STRIPE_TEST_WEBHOOK_SECRET`. **Disabled at go-live** (ADR-0029), so test events never reach the live process.
 - **Live endpoint** at go-live: `https://shop.klaushofrichter.net/webhooks/stripe`, secret → `STRIPE_LIVE_WEBHOOK_SECRET`.
 - Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`, `refund.updated`, `refund.failed`, `charge.dispute.created`, `charge.dispute.closed`, `radar.early_fraud_warning.created`.

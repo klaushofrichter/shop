@@ -1,6 +1,6 @@
 # ADR-0010: Order failures after payment: retry, then Klaus, then refund
 
-- Status: Accepted
+- Status: Accepted; amended 2026-11-26 (billing holds never refund by timer, ADR-0034)
 - Date: 2026-11-24
 - Decided by: Klaus, 2026-11-24: "other: as recommended"
 
@@ -27,4 +27,4 @@ Option 1, with the windows as proposed: retries for 24 h; automatic full refund 
 ## Notes
 
 - 2026-11-25: Printful cancellations refund automatically when ADR-0034's invariant I4 allows (a fresh read shows Printful can't charge); otherwise Klaus is alerted. Holds replace `needs_attention` (ADR-0034).
-- 2026-11-26, **proposed amendment** (round-2 reviews A and B, awaiting Klaus): on a Printful billing hold (any provider hold) the shop **never refunds by timer**; it alerts at once and daily. Printful would charge and ship once billing is fixed, so a timer refund could pay the customer back for an order that still arrives. An automatic refund after a Printful cancel or failure needs a successful delete or a `canceled` read (ADR-0034, I4). The 24 h retry window is `PROVIDER_RETRY_WINDOW_HOURS`; after it a hold whose deadline refunds only if I4 allows.
+- 2026-11-26, **amendment accepted** by Klaus (round-2 decision 6, "decisions 1, 2, 4, 6, 7, 8, 9: ok"; superseded in part by ADR-0034): on a Printful billing hold (any provider hold) the shop **never refunds by timer**; it alerts at once and daily. Printful would charge and ship once billing is fixed, so a timer refund could pay the customer back for an order that still arrives. An automatic refund after a Printful cancel or failure needs a successful delete or a `canceled` read (ADR-0034, I4). The 24 h retry window is `PROVIDER_RETRY_WINDOW_HOURS`; after it a hold whose deadline refunds only if I4 allows.

@@ -64,7 +64,7 @@
 
 - Reviewer C: `2026-11-26-design-review-round-2-c.md` (20 findings, "ready to implement after the listed changes"; also comments on this triage).
 - Reviewer D: `2026-11-26-design-review-round-2-d.md` (commentary and sign-off, 4 catch-items R2-C1–C4; recommends no third round).
-- Klaus, 2026-11-26: "decision 3: ok. decision 5: ok … decision 10: ok. New: ok". Decisions 1, 2, 4, 6–9 still await him.
+- Klaus, 2026-11-26: "decision 3: ok. decision 5: ok … decision 10: ok. New: ok". Later the same day: "decisions 1, 2, 4, 6, 7, 8, 9: ok". Every decision of §1 is taken.
 
 ### Changes to this triage
 

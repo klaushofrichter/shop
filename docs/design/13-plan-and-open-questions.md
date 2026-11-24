@@ -24,7 +24,7 @@ before step 10. Mock pieces are built with the step that needs them ([14 §10](1
 ## 2. Decisions
 
 All ADRs are Accepted except those listed as Proposed in the [ADR index](../adr/README.md)
-(round 2: 0029 mode part, 0030, 0034, 0035, 0036 await Klaus's decision, with the round-2 changes folded in).
+(all round-2 records accepted by Klaus on 2026-11-26).
 
 Klaus's, outside the ADRs:
 
@@ -40,7 +40,7 @@ Klaus's, outside the ADRs:
 | The private repository `shop-private` (with Cluster) and deletion of the public capture branches | before step 3 |
 | Which of art's works may be sold: the allow-list in `config/sources.json` (ADR-0035) | step 10 |
 | `STATUS_TOKEN_SECRET` in the shop's `.env` (Cluster can generate it unseen) | step 8 |
-| The shop's orders address for the packing slip and contact page | step 7 |
+| The shop's orders address for the packing slip and contact page (decided 2026-11-26 that it is a shop address; which one is Klaus's) | step 7 |
 | SES bounce and complaint forwarding to that mailbox | step 8 |
 | Legal texts | go-live |
 
