@@ -88,7 +88,11 @@ jobs:
             "mcr.microsoft.com/playwright:v${PW}-resolute" npx playwright test
 
       # Lighthouse uses the runner's preinstalled Google Chrome.
+      # The image runs in mock mode, which says noindex on purpose (a test
+      # shop must not be indexed); every other SEO audit still counts.
       - name: Lighthouse (Google PageSpeed) on a phone
+        env:
+          LH_SKIP_AUDITS: is-crawlable
         run: scripts/lighthouse-gate.sh http://localhost:8080/
 
       - name: Keep the reports when something failed

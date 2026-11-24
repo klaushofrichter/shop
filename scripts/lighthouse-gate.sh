@@ -43,6 +43,11 @@ CHROME_PATH="${CHROME_PATH:-$(command -v google-chrome || command -v chromium ||
 export CHROME_PATH
 
 RUNS="${LH_RUNS:-3}"
+# LH_SKIP_AUDITS (comma-separated audit ids) leaves audits out of the scores.
+# The shop's CI image runs in mock mode, which carries noindex on purpose
+# (docs/design/03 §9), so CI skips "is-crawlable"; the live check never does.
+SKIP=()
+[ -n "${LH_SKIP_AUDITS:-}" ] && SKIP=(--skip-audits="$LH_SKIP_AUDITS")
 failed=0
 k=0
 for URL in "$@"; do
@@ -54,6 +59,7 @@ for URL in "$@"; do
       --quiet \
       --chrome-flags="--headless=new --no-sandbox" \
       --only-categories=performance,accessibility,best-practices,seo \
+      "${SKIP[@]}" \
       --output=json --output=html --output-path="./$OUT-run$n"
   done
 

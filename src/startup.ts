@@ -23,6 +23,7 @@ import { ProviderStatus, registerMockupJob, registerProviderJobs, scheduleProvid
 import { PrintfulClient } from './providers/printful';
 import { workerHealth } from './worker-health';
 import { googleSignIn } from './admin/auth';
+import { randomBytes } from 'node:crypto';
 
 export interface Shop {
   config: Config;
@@ -98,6 +99,22 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
       publicUrl: config.publicUrl,
       skus,
       storeLabel: config.mode,
+    },
+    publicSite: {
+      catalog: dbs.catalog,
+      orders: dbs.orders,
+      clock,
+      mode: config.mode,
+      skus,
+      sources,
+      limits: config.limits,
+      storeLabel: config.mode,
+      // Visitor cookies are signed with COOKIE_SECRET; mock mode without one gets a per-process secret.
+      secret: config.admin.cookieSecret ?? randomBytes(32).toString('hex'),
+      previewGate: config.previewGate,
+      previewKey: config.previewKey,
+      adminSecret: config.admin.cookieSecret,
+      allowedEmails: config.admin.allowedEmails,
     },
   });
   console.log(JSON.stringify({ level: 'info', msg: 'configuration', detail: describeConfig(config), skus: skus.skus.length, sources: sources.map((s) => s.id) }));

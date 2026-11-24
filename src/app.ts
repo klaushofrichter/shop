@@ -7,6 +7,7 @@ import { appVersion } from './version';
 import type { WorkerHealth } from './worker-health';
 import { authRouter, type AuthDeps } from './admin/auth';
 import { adminRouter, type AdminDeps } from './admin/router';
+import { publicRouter, type PublicDeps } from './public/router';
 
 export interface AppDeps {
   /** `/health/worker`; absent → 503 (no runner in this process). */
@@ -16,6 +17,8 @@ export interface AppDeps {
   /** Google sign-in and the admin (docs/design/08). */
   auth?: AuthDeps;
   admin?: AdminDeps;
+  /** The public pages and the preview gate (docs/design/03). */
+  publicSite?: PublicDeps;
 }
 
 /** Content-addressed names only: 64 hex characters and a known extension. */
@@ -127,13 +130,16 @@ export function createApp(deps: AppDeps = {}): Express {
 
   app.use('/static', express.static(PUBLIC_DIR, { maxAge: '1h', index: false }));
 
-  app.get('/', (_req, res) => {
-    res.type('html').send(homePage());
-  });
-
-  app.use((_req, res) => {
-    res.status(404).type('html').send(notFoundPage());
-  });
+  if (deps.publicSite) {
+    app.use(publicRouter(deps.publicSite));
+  } else {
+    app.get('/', (_req, res) => {
+      res.type('html').send(homePage());
+    });
+    app.use((_req, res) => {
+      res.status(404).type('html').send(notFoundPage());
+    });
+  }
 
   return app;
 }
