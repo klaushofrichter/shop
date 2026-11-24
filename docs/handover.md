@@ -12,12 +12,13 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 ## Status (2026-11-24)
 
 - Done: research (Printful, Stripe, open-source projects), [design.md](design.md), ADRs 0001–0021 and research/oss-learnings.md on branch `docs/design` (PR #1 to `main`). No service code.
-- Accepted: ADR-0001 (keep ADRs), ADR-0005 (Printful API v2), ADR-0016 (follow the cluster rules). Everything else is Proposed, waiting for Klaus.
+- Accepted: ADR-0001 (keep ADRs), ADR-0005 (Printful API v2), ADR-0016 (follow the cluster rules), and group 1 on 2026-11-24: 0002, 0003, 0004, 0006, 0009, 0013, 0014, 0018, 0019.
+- Still Proposed: group 2 (before checkout works: 0007, 0008, 0010, 0017, 0020, 0021) and group 3 (before going live: 0011, 0012, 0015). Plan: decide group 2 one at a time while the skeleton is built; group 3 once the shop works end to end in Stripe test mode.
 - Cluster agreed: separate service; originals via an internal art endpoint with a mandatory token and `/internal` blocked on art's public route; SQLite + Litestream to a new bucket + Velero.
 
 ## Next
 
-1. Klaus's decisions on the Proposed ADRs (list in the PR description).
+1. Merge PR #1 (docs).
 2. Repo baseline and skeleton service (design.md §13 step 1–2).
 3. Klaus: ~~Printful private token~~ (created 2026-11-24, in the node's `.env`; probed read-only with `scripts/printful-probe.sh` run by Cluster), Stripe restricted key and webhook secret (test mode first), Google OAuth client, S3 bucket + IAM user, email provider. Values go into `~/Development/shop/.env` on the node, never into chat or git.
 

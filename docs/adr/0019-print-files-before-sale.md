@@ -1,8 +1,8 @@
 # ADR-0019: Print files exist and validate before a product is sold; their URLs never change
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-24 (accepted with group 1: "yes, accept group 1")
 
 ## Context
 

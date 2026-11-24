@@ -20,23 +20,23 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | ADR | Title | Status |
 |---|---|---|
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted (2026-11-24) |
-| [0002](0002-separate-shop-service.md) | Shop is a separate service, not part of art | Proposed |
-| [0003](0003-build-not-adapt.md) | Build the shop, borrow patterns from Pressline | Proposed |
-| [0004](0004-stack-and-runtime.md) | Stack and runtime: Node 26, server-rendered, plain Deployment | Proposed |
+| [0002](0002-separate-shop-service.md) | Shop is a separate service, not part of art | Accepted (2026-11-24) |
+| [0003](0003-build-not-adapt.md) | Build the shop, borrow patterns from Pressline | Accepted (2026-11-24) |
+| [0004](0004-stack-and-runtime.md) | Stack and runtime: Node 26, server-rendered, plain Deployment | Accepted (2026-11-24) |
 | [0005](0005-printful-api-v2.md) | Printful API v2, behind a thin adapter | Accepted (2026-11-24) |
-| [0006](0006-originals-access.md) | Print files come from art's originals through an internal endpoint | Proposed |
+| [0006](0006-originals-access.md) | Print files come from art's originals through an internal endpoint | Accepted (2026-11-24) |
 | [0007](0007-checkout-and-shipping-quote.md) | Stripe hosted Checkout, shipping quoted on the shop's own page | Proposed |
 | [0008](0008-cart.md) | A small cart, several items per order | Proposed |
-| [0009](0009-art-to-shop-handoff.md) | From art to the shop: a link with the work's uid | Proposed |
+| [0009](0009-art-to-shop-handoff.md) | From art to the shop: a link with the work's uid | Accepted (2026-11-24) |
 | [0010](0010-order-failure-and-refunds.md) | Order failures after payment: retry, then Klaus, then refund | Proposed |
 | [0011](0011-currency-and-shipping-region.md) | Currency USD, shipping region to decide | Proposed |
 | [0012](0012-sales-tax-and-vat.md) | Sales tax and VAT | Proposed |
-| [0013](0013-admin-in-shop.md) | Admin inside the shop, Google sign-in, allow-list | Proposed |
-| [0014](0014-data-store-and-backup.md) | SQLite with Litestream to S3, plus Velero | Proposed |
+| [0013](0013-admin-in-shop.md) | Admin inside the shop, Google sign-in, allow-list | Accepted (2026-11-24) |
+| [0014](0014-data-store-and-backup.md) | SQLite with Litestream to S3, plus Velero | Accepted (2026-11-24) |
 | [0015](0015-email-provider.md) | Email for order and shipping notices | Proposed |
 | [0016](0016-follow-cluster-repository-rules.md) | Follow the cluster's repository and deployment rules | Accepted (2026-11-24) |
 | [0017](0017-fulfilment-provider-interface.md) | A fulfilment-provider interface; Printful first, Prodigi to evaluate for framed prints | Proposed |
-| [0018](0018-order-ledger-and-reconciliation.md) | Order ledger, idempotent submit and hourly reconciliation | Proposed |
-| [0019](0019-print-files-before-sale.md) | Print files exist and validate before a product is sold; their URLs never change | Proposed |
+| [0018](0018-order-ledger-and-reconciliation.md) | Order ledger, idempotent submit and hourly reconciliation | Accepted (2026-11-24) |
+| [0019](0019-print-files-before-sale.md) | Print files exist and validate before a product is sold; their URLs never change | Accepted (2026-11-24) |
 | [0020](0020-approval-hold-above-amount.md) | Hold orders above an amount for Klaus's approval | Proposed |
 | [0021](0021-launch-scope.md) | What ships at launch and what waits | Proposed |
