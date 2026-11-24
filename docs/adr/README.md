@@ -23,7 +23,7 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0002](0002-separate-shop-service.md) | Shop is a separate service, not part of art | Proposed |
 | [0003](0003-build-not-adapt.md) | Build the shop, borrow patterns from Pressline | Proposed |
 | [0004](0004-stack-and-runtime.md) | Stack and runtime: Node 26, server-rendered, plain Deployment | Proposed |
-| [0005](0005-printful-api-v2.md) | Printful API v2, behind a thin adapter | Proposed |
+| [0005](0005-printful-api-v2.md) | Printful API v2, behind a thin adapter | Accepted (2026-11-24) |
 | [0006](0006-originals-access.md) | Print files come from art's originals through an internal endpoint | Proposed |
 | [0007](0007-checkout-and-shipping-quote.md) | Stripe hosted Checkout, shipping quoted on the shop's own page | Proposed |
 | [0008](0008-cart.md) | A small cart, several items per order | Proposed |

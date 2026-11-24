@@ -12,7 +12,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 ## Status (2026-11-24)
 
 - Done: research (Printful, Stripe, open-source projects), [design.md](design.md), ADRs 0001–0021 and research/oss-learnings.md on branch `docs/design` (PR #1 to `main`). No service code.
-- Accepted: ADR-0001 (keep ADRs), ADR-0016 (follow the cluster rules). Everything else is Proposed, waiting for Klaus.
+- Accepted: ADR-0001 (keep ADRs), ADR-0005 (Printful API v2), ADR-0016 (follow the cluster rules). Everything else is Proposed, waiting for Klaus.
 - Cluster agreed: separate service; originals via an internal art endpoint with a mandatory token and `/internal` blocked on art's public route; SQLite + Litestream to a new bucket + Velero.
 
 ## Next

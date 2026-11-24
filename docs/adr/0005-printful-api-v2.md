@@ -1,8 +1,8 @@
 # ADR-0005: Printful API v2, behind a thin adapter
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-24 ("ok, accept ADR-0005, use v2")
 
 ## Context
 
@@ -16,7 +16,7 @@ Printful API v2 is still labelled beta (since 2023-09); v1 works with no announc
 
 ## Decision
 
-Option 1, with a store-level private token whose scopes are limited to orders, file library and webhooks (and catalog reads).
+Option 1, with a store-level private token whose scopes are limited to orders, file library and webhooks (and catalog reads). Known v1 call: cancelling a submitted order (`DELETE /orders/{id}`), because v2's DELETE only removes drafts.
 
 ## Consequences
 
