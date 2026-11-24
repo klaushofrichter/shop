@@ -11,7 +11,7 @@ Repository `klaushofrichter/shop`, branch `main`:
 1. `docs/reviews/2026-11-25-triage.md`: what round 1 found, what was decided and what was adopted. Read it first.
 2. `docs/design/README.md`, then documents 01–14. Document 07 §2 (state model and invariants) is the heart of round 2.
 3. `docs/adr/`. **Accepted** records are Klaus's decisions: challenge only with a concrete reason (a failure, a cost, a broken requirement). ADR-0029 (mode switch part), 0030, 0034, 0035 and 0036 are **Proposed** and open to challenge.
-4. Evidence: `docs/research/` (`api-capture-findings.md`: what the real APIs did; `process-alternatives.md`; `sales-tax.md`; `oss-learnings.md`). The raw recordings are being moved to a private repository (ADR-0028); please do not review or quote the `capture/*` branches.
+4. Evidence: `docs/research/` (`api-capture-findings.md`: what the real APIs did; `process-alternatives.md`; `sales-tax.md`; `oss-learnings.md`). The raw recordings are in a private repository (ADR-0028).
 5. The code that exists: a skeleton (`src/`), CI (`.github/workflows/`), `scripts/capture/capture-apis.mjs`.
 
 Context: one artist, fewer than 10 orders a week, fully automated (R9), a single-node k3s
