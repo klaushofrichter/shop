@@ -24,7 +24,7 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0003](0003-build-not-adapt.md) | Build the shop, borrow patterns from Pressline | Accepted (2026-11-24) |
 | [0004](0004-stack-and-runtime.md) | Stack and runtime: Node 26, server-rendered, plain Deployment | Accepted (2026-11-24) |
 | [0005](0005-printful-api-v2.md) | Printful API v2, behind a thin adapter | Accepted (2026-11-24) |
-| [0006](0006-originals-access.md) | Print files come from art's originals through an internal endpoint | Accepted (2026-11-24) |
+| [0006](0006-originals-access.md) | Print files come from art's originals through an internal endpoint | Superseded by 0025 |
 | [0007](0007-checkout-and-shipping-quote.md) | Stripe hosted Checkout, shipping quoted on the shop's own page | Accepted (2026-11-24) |
 | [0008](0008-cart.md) | Several products of one picture per order | Accepted (2026-11-24) |
 | [0009](0009-art-to-shop-handoff.md) | From art to the shop: a link with the work's uid | Accepted (2026-11-24) |
@@ -43,4 +43,4 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0022](0022-predefined-skus-in-config.md) | A handful of predefined SKUs, defined in a config file | Accepted (2026-11-24) |
 | [0023](0023-address-once-via-stripe-customer.md) | The address is entered once, on the shop's page, and passed to Stripe as a Customer | Accepted (2026-11-24) |
 | [0024](0024-mock-printful-and-stripe.md) | Mock Printful and mock Stripe as an independent service, verified against the real ones | Accepted (2026-11-24) |
-| [0025](0025-originals-from-arts-public-url.md) | Fetch originals from art's existing public URL (supersedes ADR-0006 if accepted) | Proposed |
+| [0025](0025-originals-from-arts-public-url.md) | Fetch originals from art's existing public URL (supersedes ADR-0006) | Accepted (2026-11-24) |

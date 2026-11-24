@@ -75,11 +75,11 @@ SKU entry shape:
 
 ### 5.1 Source
 
-The original is fetched from art **in-cluster**:
-`GET http://art.art.svc.cluster.local/internal/originals/<uid>` with
-`Authorization: Bearer <ART_INTERNAL_TOKEN>` (ADR-0006). art must also refuse
-`/internal/*` on its public route. The original is streamed to a temporary file,
-used, and deleted; the shop does not keep originals.
+The original is read from art's existing public URL (ADR-0025), which art already
+serves for its download link: `/assets/<room>/<file>?v=<v>`, built from the manifest
+(room id, the work's `file` and `v`), fetched in-cluster as
+`http://art.art.svc.cluster.local/assets/…`. No token, no change to art. The original is
+streamed to a temporary file, used, and deleted; the shop does not keep originals.
 
 Override: Klaus can upload a print master for a picture (or for one offer) in the
 admin, e.g. a better scan or a pre-cropped file. An uploaded master is stored on

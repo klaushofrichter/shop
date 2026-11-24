@@ -22,7 +22,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 ## Next
 
 1. **Design review** by a separate agent: brief in `docs/design/REVIEW-BRIEF.md`; it writes `docs/reviews/2026-11-25-design-review.md` in its own PR. Fold the findings into `docs/design/` and record changed decisions as ADRs.
-2. ADR-0025 (originals are public on art: fetch from there, or make them private) — Klaus.
+2. ~~ADR-0025~~ accepted 2026-11-24: originals come from art's public URLs; ADR-0006 superseded; art's only change is the shop link.
 3. Build in the order of `docs/design/13-plan-and-open-questions.md` §1: database/jobs/config, then the **mock services** with replay verification against `capture/2026-11-24` and `capture/2026-11-24b`, then the shop.
 4. Stage-1 test deploy of the skeleton waits for Klaus's go in Cluster's session (exposure).
 5. Klaus, before go-live: prices; seller's permit + Stripe Tax registration + Printful resale certificate; SES domain records; S3 bucket; legal texts.

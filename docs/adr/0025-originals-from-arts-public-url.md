@@ -1,8 +1,8 @@
-# ADR-0025: Fetch originals from art's existing public URL (supersedes ADR-0006 if accepted)
+# ADR-0025: Fetch originals from art's existing public URL (supersedes ADR-0006)
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-24: "We can pass the url to the public image."
 
 ## Context
 
@@ -16,7 +16,7 @@ ADR-0006 assumed the full-resolution originals are private on art's volume and d
 
 ## Decision
 
-Pending Klaus. Recommendation: option 1 if Klaus is content with the originals being public, as they are today; option 3 if he wants them private, in which case ADR-0006 stands and art's change comes first.
+Option 1. The shop reads each original from art's public URL (`/assets/<room>/<file>?v=<v>`, built from the manifest's room id, `file` and `v`), in-cluster through `http://art.art.svc.cluster.local/` to avoid the public round trip. art needs no change for it. The shop still renders its own print file from it (crop, Display P3 → sRGB, exact pixel size; docs/design/04 §5.2), because the raw photo is neither the print area's shape nor in Printful's colour space; Printful receives the shop's rendered file.
 
 ## Consequences
 

@@ -8,7 +8,7 @@ For the agent reviewing the shop's design before implementation starts. Klaus
 Repository `klaushofrichter/shop`, branch `main`:
 
 1. `docs/design/README.md`, then documents 01–14 in order. They are the design.
-2. `docs/adr/` (25 decision records). **Accepted** records are Klaus's decisions: challenge them only with a concrete reason (a failure, a cost, a requirement they break), and say so explicitly. ADR-0025 is **Proposed** and open.
+2. `docs/adr/` (25 decision records). **Accepted** records are Klaus's decisions: challenge them only with a concrete reason (a failure, a cost, a requirement they break), and say so explicitly. All are Accepted except ADR-0006, superseded by ADR-0025.
 3. Evidence behind the design: `docs/research/` — `api-capture-findings.md` (what the real Printful and Stripe APIs did on 2026-11-24), `process-alternatives.md` (build vs Shopify etc.), `sales-tax.md`, `oss-learnings.md`. Raw captures: branches `capture/2026-11-24` and `capture/2026-11-24b`.
 4. The code that exists: a service skeleton (`src/`), CI (`.github/workflows/`), `scripts/capture/capture-apis.mjs`.
 

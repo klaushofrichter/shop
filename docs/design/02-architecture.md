@@ -6,7 +6,7 @@
                     ┌──────────────────────────────┐
   visitor ─────────►│ art.klaushofrichter.net      │  public gallery (Knative service, namespace art)
                     │  manifest (uid, title, …)    │  "Prints & merchandise" link per painting
-                    │  /internal/originals/<uid>   │◄──────────────┐ in-cluster only, bearer token
+                    │  /assets/<room>/<file> (orig)│◄──────────────┐ public; read in-cluster
                     └──────────────┬───────────────┘               │
                                    │ link /p/<uid>                  │
                     ┌──────────────▼───────────────┐               │
@@ -21,7 +21,7 @@
 ```
 
 Boundaries:
-- **art** stays a static-content gallery without secrets (ADR-0002). Its only changes: the link per painting (ADR-0009) and the internal originals endpoint (ADR-0006).
+- **art** stays a static-content gallery without secrets (ADR-0002). Its only change: the link per painting (ADR-0009). The shop reads originals from art's existing public URLs (ADR-0025).
 - **The shop** owns everything about orders: its database, print files, secrets for Stripe and Printful, the admin.
 - **Stripe** owns card data and payment state. **Printful** owns production and shipment state. The shop mirrors both and treats their APIs as the truth when they disagree with a webhook.
 
@@ -87,11 +87,11 @@ Details: [03](03-customer-journey.md) (pages), [05](05-quote-checkout-payment.md
 
 | Choice | Why | ADR |
 |---|---|---|
-| Separate service, art untouched except a link and an internal endpoint | art stays fast, public, secret-free | 0002 |
+| Separate service, art untouched except a link | art stays fast, public, secret-free | 0002 |
 | Build a small service, borrow Pressline's patterns | No open-source project fits; the patterns are known | 0003 |
 | Node 26, Express, server-rendered, SQLite, plain Deployment | The cluster's stack and runbooks | 0004 |
 | Printful API v2 behind an adapter; v1 only to cancel | Print areas, signed webhooks, draft/confirm | 0005, 0017 |
-| Originals fetched from art in-cluster with a token | Originals never public | 0006 |
+| Originals read from art's existing public URL | art already publishes them; no endpoint or token needed | 0025 |
 | Address and quote on the shop's page, then Stripe hosted Checkout | Shipping depends on address; hosted page can't recompute it | 0007, 0023 |
 | One picture per order, several products | Klaus's flow (R2); simpler pages and print files | 0008 |
 | A handful of predefined SKUs in a config file | R3; no catalog browser needed | 0022 |
