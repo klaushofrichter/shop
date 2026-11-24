@@ -1,0 +1,12 @@
+# Secrets: Printful and Stripe keys, OAuth client, S3 credentials. Never committed.
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+data/
+*.sqlite*
+*.db
+test-results/
+playwright-report/
+lighthouse-report*

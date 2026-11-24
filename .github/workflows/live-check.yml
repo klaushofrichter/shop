@@ -1,0 +1,63 @@
+name: Live check
+
+# The public-pages baseline's live check: the read-only (@live) e2e tests in
+# four browsers and Lighthouse, against https://shop.klaushofrichter.net, after
+# each successful deploy. A browser cannot run on the in-cluster runner, so
+# this runs on GitHub's runners. Adapted from klaushofrichter/art.
+#
+# A daily schedule is added once the shop is first deployed (until then the
+# site has nothing to check and a scheduled run would only fail).
+
+on:
+  workflow_run:
+    workflows: [Deploy production]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BASE_URL: https://shop.klaushofrichter.net
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: production
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - name: The release just cut is the one served
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName -q '.[0].tagName')
+          echo "EXPECT_VERSION=${latest#v}" >> "$GITHUB_ENV"
+      # Playwright's own image (browsers and libraries included), tagged to
+      # match the installed @playwright/test; see production-checks.yml.
+      - name: Walk the live site in four browsers (read-only tests)
+        run: |
+          set -euo pipefail
+          PW=$(node -p "require('@playwright/test/package.json').version")
+          docker run --rm --ipc=host -v "$PWD:/work" -w /work \
+            -e CI=true -e BASE_URL -e EXPECT_VERSION \
+            "mcr.microsoft.com/playwright:v${PW}-resolute" npx playwright test --grep @live
+      - name: Lighthouse (Google PageSpeed) on the live site
+        run: scripts/lighthouse-gate.sh "$BASE_URL/"
+      - name: Keep the reports when something failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-reports
+          path: |
+            playwright-report/
+            test-results/
+            lighthouse-report*.report.html
+          retention-days: 30
