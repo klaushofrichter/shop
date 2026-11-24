@@ -21,9 +21,28 @@ Sources: Printful's v1 and v2 API docs and help center, Stripe's docs and pricin
 ### Printful
 
 - **API version.** v2 (`https://api.printful.com/v2/...`) is still labelled beta (announced 2023-09). v1 keeps working with no announced sunset date. v2 has what we need and v1 lacks: catalog prices and availability per region, print-area sizes and DPI per placement, explicit draft → confirm orders, signed webhooks. → [ADR-0005](adr/0005-printful-api-v2.md)
-- **Auth.** A private token, store-level, with chosen scopes (`orders`, `file_library`, `webhooks`, and the read variants). Tokens expire and are rotated by hand. No OAuth app needed for one store.
+- **Auth.** A private token, store-level, with chosen scopes (`orders`, `file_library`, `webhooks`, and the read variants). Tokens expire and are rotated by hand. No OAuth app needed for one store. Klaus created the token 2026-11-24 (`PRINTFUL_TOKEN` in the shop's `.env` on the node).
 - **Catalog.** `GET /v2/catalog-products`, `/catalog-variants`, `/prices`, `/availability`, `/mockup-styles` (print-area pixels and DPI per placement), `/shipping-countries`. Product ids, checked against the live v1 catalog 2026-11-24: Enhanced Matte Paper Poster (in) **1** (33 variants, 10×10 to 24×36), Enhanced Matte Paper Framed Poster (in) **2** (39 variants: 8×10, 11×14, 12×16, 16×20, 18×24, 24×36 and more, in several frame colors), White Glossy Mug **19** (11, 15, 20 oz), Standard Postcard **433** (4×6, one variant), Unisex Staple T-Shirt Bella+Canvas 3001 **71** (628 variants, XS–5XL, many colors), Unisex Basic Softstyle T-Shirt Gildan 64000 **12** (249 variants).
 - **Print files.** PNG or JPG, at most about 100–200 MB and 20,000 px per side. Paper products want 300 DPI, apparel 150 DPI. Printful fetches files by URL (in the order item, or registered once in the file library). A 16×20 print at 300 DPI is 4800×6000 px.
+- **Measured with Klaus's token, 2026-11-24** (`scripts/printful-probe.sh`, run read-only on the node by Cluster; all 21 requests 200):
+  - The token is store-level for one native (API) store; scopes `orders`, `sync_products`, `file_library`, `webhooks` and their read variants. Catalog reads work with it. No webhooks are configured yet.
+  - Print areas and wholesale prices (North America, USD, from):
+
+    | Product | Print area | DPI | From |
+    |---|---|---|---|
+    | Poster (1), digital | the paper size: 12×16, 12×18, 16×20, 18×24, 24×36 in (portrait or landscape) | 300 | $11.75 / $13.75 / $18.95 … |
+    | Framed poster (2), digital | the same sizes | 300 | $32.20 / $46.30 / $75.90 … |
+    | Mug (19), sublimation | wrap 9 × 3.5 in (11 oz); 15 and 20 oz have their own areas (up to 10.24 × 4.02 in) | 300 | $6.95 / $8.50 / $9.69 |
+    | Postcard (433), digital | 6.14 × 4.13 in (4×6 with bleed) | 300 | $1.53 |
+    | T-shirt Bella+Canvas 3001 (71) | DTG front or back 12 × 16 in; sleeves 4 × 3.5; embroidery 4 × 4 at 300 DPI; DTF also offered | 150 | $11.95 (DTG) |
+    | T-shirt Gildan 64000 (12) | the same placements | 150 | $9.63 (DTG) |
+
+  - The v2 prices response listed 20 variants (its default page size); the full lists come from the public v1 catalog, whose variant ids match v2's. **Posters**: 33 sizes from 5×7 to 30×40 in, including 8×10, 11×14, 16×20, squares and A-sizes. **Framed posters**: 13 sizes × 3 frame colours (black, white, red oak): 8×10 $20.76, 10×10, 12×12, 11×14 $30.69, 12×16 $32.20, 12×18, 14×14, 16×16, 16×20 $42.61, 18×18, 18×24 $46.30, 20×30 $56.18, 24×36 $75.90 (v1 prices; the frame colour does not change the price).
+  - v2's North-America poster prices are about $0.60–0.70 above v1's list (e.g. 12×16: $11.75 vs $11.11); framed prices match. The shop uses v2 prices.
+  - Many paintings on art are 10 × 8 in (4:5). Sizes with the same ratio are 8×10 and 16×20; other sizes need a crop or a border (§7).
+  - Printful gives volume discounts per order (e.g. postcards 30% from 25 items, framed posters 5% from 25): irrelevant for single orders, useful for Klaus's own bulk orders.
+  - At 300 DPI a 16×20 print needs 4800 × 6000 px and a 24×36 print 7200 × 10800 px; at the 150 DPI floor proposed in §7, 2400 × 3000 and 3600 × 5400. The postcard needs about 1840 × 1240 px, the 11 oz mug wrap 2700 × 1050 px, the t-shirt front 1800 × 2400 px.
+  - **What decides the largest sizes** is the pixel size of the painting photos on art's volume, still unmeasured (open item in §14).
 - **Mockups.** An async task API with a hard limit of 2–10 task creations per minute per store. Mockups must be generated ahead of time in the admin and cached by the shop, never per visitor.
 - **Orders.** `POST /v2/orders` always creates a draft; `POST /v2/orders/{id}/confirmation` submits it and only then is Klaus's Printful account charged. `external_id` makes order creation idempotent and lets us look orders up. Statuses: draft, failed, inreview, pending, onhold, inprocess (no longer cancellable), partial, fulfilled, canceled. Costs: `POST /v2/order-estimation-tasks` (async) and `POST /v2/shipping-rates`.
 - **Webhooks.** One configuration per token; events include `shipment_sent`, `shipment_delivered`, `shipment_returned`, `order_failed`, `order_canceled`, `order_put_hold`, `order_refunded`. Signed with HMAC-SHA256 over the raw body *(verify the exact scheme)*. No documented retry policy, so we also poll.
@@ -202,6 +221,6 @@ All of it follows the cluster's repository and deployment rules (→ [ADR-0016](
 
 ## 14. Open items to verify
 
-- Printful print-area sizes and DPI per product, the v2 webhook signature scheme, whether Printful emails customers for API orders, and its fee schedule. The network now allows Printful and Stripe; the v2 catalog needs a Printful token (Klaus has accounts with both services; he creates the tokens and puts them in the shop's `.env` on the node, from which a script creates the Kubernetes Secret, never printed).
+- ~~Printful print-area sizes and DPI per product~~ (measured 2026-11-24, §2). Still open: the v2 webhook signature scheme, whether Printful emails customers for API orders, and its fee schedule. The network now allows Printful and Stripe; the v2 catalog needs a Printful token (Klaus has accounts with both services; he creates the tokens and puts them in the shop's `.env` on the node, from which a script creates the Kubernetes Secret, never printed).
 - Stripe: the exact `ui_mode` names for the pinned API version, the tax codes for posters, apparel and mugs.
 - art: the pixel size of the originals (decides the largest offered sizes); uid stability in art's tests (`e2e/helpers.ts`, `site.spec.ts`).
