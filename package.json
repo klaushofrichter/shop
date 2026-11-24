@@ -1,0 +1,35 @@
+{
+  "name": "shop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Prints and merchandise from the paintings on art.klaushofrichter.net, served at shop.klaushofrichter.net (Printful + Stripe).",
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/server.js",
+    "dev": "tsx --env-file-if-exists=.env src/server.ts",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "lint:types": "tsc --noEmit -p tsconfig.check.json"
+  },
+  "dependencies": {
+    "compression": "^1.8.2",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.65.1",
+    "@types/compression": "^1.8.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.3.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}
