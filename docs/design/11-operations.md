@@ -16,7 +16,7 @@ Per the cluster's rules (ADR-0016); the workflows exist since PR #2.
   - `kubectl` baked into the runner image (no download step, no `sudo`); an ephemeral runner;
   - the smoke test from a GitHub-hosted job (it needs only the public URL), or egress to the shop's Ingress; the egress allow-list derived from GitHub's documented runner hosts;
   - an admission policy on namespace `shop` that lets the runner change only the image digest of the shop's Deployment (patch on a Deployment otherwise reaches every Secret in the namespace), or the cluster applies kube-setup's manifest and the runner only pushes to kube-setup;
-  - the kube-setup deploy token as an **environment secret** of a protected environment limited to `production`, so a job from any other ref never receives it.
+  - the kube-setup deploy token as an **environment secret** of a GitHub environment `production` limited to the `production` branch, with the deploy job naming `environment: production`, so a job from any other ref never receives it (Cluster agrees, 2026-11-26; Klaus to approve).
 - **Cluster's part** (one request after this design is accepted):
   - namespaces `shop` and `shop-runner`; the runner as above;
   - the Deployment: `replicas: 1`, `Recreate`, the non-root `securityContext`, readiness and liveness on `/health`, memory request 256 Mi and **limit 512 Mi** (rendering a 12 × 16 print file, 3600 × 4800 px, with `sharp.concurrency(1)` and the cache off; a test asserts peak memory below 384 MiB), CPU 0.5;
@@ -44,9 +44,10 @@ is passed too. The script prints key names and the Stripe key's prefix only.
 **NetworkPolicy**, namespace `shop`, default deny: ingress from Traefik on the app port;
 egress DNS, **TCP 443 to public addresses only** (the cluster's pod and service ranges
 and the LAN excluded; Printful, Stripe, S3 and SES addresses change, so no host
-allow-list), and art. art is a Knative service, so in-cluster calls go through Knative's
-gateway: Cluster checks which rule matches, and the same for art reaching `/api/offers`
-(review C F20).
+allow-list), and art. art is a Knative service: its in-cluster name resolves to Knative's
+internal gateway, so the egress rule allows that gateway (namespace, labels and port in
+kube-setup), not art's pods. **Ingress** also allows art's Knative service, if art calls
+`/api/offers` in-cluster (Cluster, 2026-11-26, answering review C F20).
 
 ## 2. Configuration
 
