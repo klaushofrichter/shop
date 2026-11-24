@@ -85,13 +85,13 @@ describe('preview gate (03 §9, ADR-0039)', () => {
     const t = setup({ gate: true, key: 'open-sesame' });
     const tok = /name="_csrf" value="([^"]+)"/.exec((await t.agent.get('/')).text)![1];
     expect((await t.agent.post('/preview').type('form').send({ _csrf: tok, key: 'wrong', back: '/' })).status).toBe(401);
-    const ok = await t.agent.post('/preview').type('form').send({ _csrf: tok, key: 'open-sesame', back: '/cart' });
+    const ok = await t.agent.post('/preview').type('form').send({ _csrf: tok, key: 'open-sesame' });
     expect(ok.status).toBe(303);
-    expect(ok.headers.location).toBe('/cart');
+    expect(ok.headers.location).toBe('/');
     const cookie = (ok.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('shop_preview='))!;
     expect(cookie).not.toContain('open-sesame');
     expect((await t.agent.get('/')).status).toBe(200);
-    // Never an open redirect.
+    // Never an open redirect: the form's target is ignored.
     const evil = await t.agent.post('/preview').type('form').send({ _csrf: tok, key: 'open-sesame', back: '//evil.example.net' });
     expect(evil.headers.location).toBe('/');
   });

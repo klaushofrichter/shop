@@ -59,21 +59,21 @@ export function publicRouter(d: PublicDeps): Router {
     if (GATE_EXEMPT.test(req.path) || throughGate(req)) return next();
     if (req.path.startsWith('/api/')) return res.status(403).json({ error: 'preview' });
     res.setHeader('Cache-Control', 'no-store');
-    res.status(401).type('html').send(gatePage(req, res, req.originalUrl));
+    res.status(401).type('html').send(gatePage(req, res));
   });
 
   const gateLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: 'draft-8', legacyHeaders: false });
   r.post('/preview', gateLimiter, (req, res) => {
     const body = req.body as Record<string, string | undefined>;
     if (!formTokenOk(req, d.secret, body._csrf)) return res.status(403).type('text').send('form expired; reload the page');
-    const back = typeof body.back === 'string' && body.back.startsWith('/') && !body.back.startsWith('//') ? body.back : '/';
-    if (!gateActive) return res.redirect(303, back);
-    if (!keyMatches(body.key, d.previewKey!)) return res.status(401).type('html').send(gatePage(req, res, back, true));
+    // Always back to the home page: a target taken from the form would be an open redirect.
+    if (!gateActive) return res.redirect(303, '/');
+    if (!keyMatches(body.key, d.previewKey!)) return res.status(401).type('html').send(gatePage(req, res, true));
     setCookie(res, PREVIEW_COOKIE, previewProof(d.secret, d.previewKey!), 30 * 24 * 60 * 60_000);
-    res.redirect(303, back);
+    res.redirect(303, '/');
   });
 
-  function gatePage(req: Request, res: Response, back: string, wrong = false): string {
+  function gatePage(req: Request, res: Response, wrong = false): string {
     return layout({
       title: 'Preview · Shop',
       description: 'This shop is in preview.',
@@ -83,7 +83,6 @@ export function publicRouter(d: PublicDeps): Router {
 ${wrong ? '<p class="error" role="alert">That key is not right.</p>' : ''}
 <form method="post" action="/preview">
 <input type="hidden" name="_csrf" value="${esc(formToken(req, res, d.secret))}">
-<input type="hidden" name="back" value="${esc(back)}">
 <label>Preview key <input name="key" type="password" autocomplete="off" required></label>
 <button type="submit">Continue</button>
 </form>
