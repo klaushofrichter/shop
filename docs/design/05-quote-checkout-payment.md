@@ -107,13 +107,16 @@ at once, and a lost webhook does not leave the order unpaid in the shop.
 
 ## 6. Tax
 
-Decision pending (ADR-0012). The design supports both:
-- `TAX_ENABLED=false`: no tax line; prices are what the customer pays.
-- `TAX_ENABLED=true`: Stripe Tax computes tax on items and shipping from the Customer's address where Klaus is registered; Checkout shows it; the shop records it from the session. Tax codes per SKU kind in `config/skus.json` (*(verify)* codes: general tangible goods `txcd_99999999`, clothing for t-shirts, shipping `txcd_92010001`).
+ADR-0012 (accepted): collect sales tax as legally required, via Stripe Tax; background
+and Klaus's steps in [research/sales-tax.md](../research/sales-tax.md).
 
-Either way, the quote page states which applies. Printful separately charges Klaus
-sales tax on its wholesale price unless he files resale certificates (a setting in
-Printful, not in this system).
+- `TAX_ENABLED=true` in live mode once Klaus's registration is in Stripe Tax (and a test-mode registration for testing). Stripe calculates only for states with a registration; elsewhere the tax is $0, which is correct while the shop is below other states' thresholds.
+- Prices are tax-exclusive; the quote page says "Sales tax, if any, is calculated on the payment page".
+- Tax codes in `config/skus.json` per SKU kind: `txcd_99999999` (general tangible goods) for prints, framed prints, postcards and mugs; the clothing code for t-shirts (probably `txcd_30011000`, *(verify)* with `GET /v1/tax_codes`); `txcd_92010001` on the shipping rate.
+- After payment the shop stores `total_details.amount_tax` on the order and each line's tax (from the session's line items, `expand: line_items`), with the ship-to state and ZIP.
+- The admin exports, per period and state: items, shipping, tax collected, refunds (CSV), to cross-check Stripe's tax report when filing.
+- Address source: the Customer's address (ADR-0023), *(verify)* that Stripe Tax uses it; fallback: Checkout collects the shipping address restricted to the quoted country and the shop compares it with the quote.
+- Printful separately charges Klaus tax on wholesale unless his resale certificate is on file (his step, not software).
 
 ## 7. Refunds
 

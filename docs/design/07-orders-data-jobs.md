@@ -152,6 +152,7 @@ CREATE TABLE order_items (
   provider        TEXT NOT NULL,
   provider_variant_id INTEGER NOT NULL,
   unit_cents      INTEGER NOT NULL,
+  tax_cents       INTEGER,               -- this line's tax, from Stripe
   quantity        INTEGER NOT NULL CHECK (quantity BETWEEN 1 AND 10),
   print_file_sha  TEXT NOT NULL REFERENCES print_files(sha256)
 );

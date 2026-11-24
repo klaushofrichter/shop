@@ -9,7 +9,7 @@ What a customer gets without any email of ours:
 - Stripe's **receipt** (turn on "Successful payments" emails in the Stripe Dashboard): amount, items, the shop's name.
 - The **order status page** link, shown on the success page with a "bookmark this page" hint. Stripe's receipt can't carry our link, so without our emails a customer who loses the page asks by email (contact page) and Klaus sends the link from the admin: a rare manual case, and the reason to enable the confirmation email early.
 
-With email enabled (`EMAIL_ENABLED=true`, provider per ADR-0015):
+With email enabled (`EMAIL_ENABLED=true`; Amazon SES, ADR-0015):
 
 | Email | When | Content |
 |---|---|---|
@@ -36,7 +36,7 @@ With email enabled (`EMAIL_ENABLED=true`, provider per ADR-0015):
 | Reconciliation alarms | hourly run with alarms > 0 (deduplicated: one email per alarm per 24 h) |
 | Backup stale | Litestream > 2 h behind |
 
-Channel: email via the same provider once ADR-0015 is decided. Until then, alerts go
-through what the cluster already uses for alerting (Grafana Cloud: the shop exposes
+Channel: email via Amazon SES (ADR-0015), from the start. In addition, the cluster's
+own alerting can watch the shop (Grafana Cloud: the shop exposes
 `shop_alarms` and `shop_orders{state}` metrics on `/metrics` for the cluster's
 scraper, and a Grafana alert rule notifies Klaus). The Cluster session wires the rule.

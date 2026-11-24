@@ -30,6 +30,7 @@ The cluster's hand-rolled Google OAuth pattern (ADR-0013, vault "Building a New 
 | **SKUs** `/admin/skus` | The configured SKUs with Printful's current wholesale price, availability, print area, default retail price, typical margin. Read-only (SKUs are config, ADR-0022). | — |
 | **Orders** `/admin/orders` | Search by number, email, state, date. | — |
 | **Order** `/admin/orders/:id` | Everything: items, amounts (paid, Stripe fee, Printful cost, margin), address, Stripe and Printful ids with links to their dashboards, shipments and tracking, the full transition history, emails sent. | **Approve** (held order); retry submission; confirm anyway (cost guard); cancel at Printful; refund (full or partial); resend email. Each asks for confirmation and is written to `admin_audit`. |
+| **Tax report** `/admin/tax` | Orders by period and ship-to state: items, shipping, tax collected, refunds. | Export CSV. |
 | **System** `/admin/system` | Versions, mode, webhook registration status (Stripe, Printful), last events received, rate-limit headroom, job queue, recent alarms. | Run reconciliation now; re-register webhooks (test mode only from the UI); **reset the circuit breaker**. |
 
 ## 4. What the admin cannot do

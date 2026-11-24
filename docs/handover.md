@@ -14,9 +14,9 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 - PR #1 (design, research, ADRs) and PR #2 (repo baseline, skeleton, CI) merged to `main`. CI: `test`, `codeql`, `e2e` (browsers in Playwright's image; the apt install timed out on a slow mirror).
 - **Design set** for the review by Fable 5.2 on 2026-11-25: `docs/design/` (13 documents), research in `docs/research/` including `process-alternatives.md` (build vs Shopify/Quick Stores). Branch `docs/design-set`, PR #3.
 - Klaus's minimum requirements (2026-11-24): one picture → one or more products → address → quote (with Printful previews) → Stripe → Printful → tracking; customer emails optional; a handful of predefined SKUs; thin provider abstraction; fully automated, < 10 orders a week.
-- ADRs: Accepted 0001–0009, 0013, 0014, 0016–0019, 0021, 0022. Accepted 0020 (fail-safes against large or unusual orders, reshaped 2026-11-24). Proposed: 0010, 0011, 0012, 0015, 0023.
+- ADRs 0001–0024 all Accepted (2026-11-24: 0010, 0011, 0012 sales tax via Stripe Tax, 0015 Amazon SES, 0020 fail-safes, 0023, 0024 mock services). None Proposed.
 - `production` branch protection approved by Klaus (2026-11-24): required `test`, `codeql`, `e2e`; strict; no force push or deletion; owner override. The branch does **not** exist yet: Cluster creates it from `main` and protects it right before the first real deploy (creating it triggers `deploy-production`). **Never create `production` from this session**; include it in the deploy request.
-- No deploy request yet (after the design review).
+- Klaus allowed a test deploy (2026-11-24) on condition that **no transaction with a real service and no Printful order** happens: deploy the skeleton now; later the shop only in mock mode (no real keys in the pod) until he says otherwise.
 
 ## Next
 

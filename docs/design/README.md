@@ -24,6 +24,7 @@ Design of `shop.klaushofrichter.net`: prints and merchandise of the paintings on
 | 11 | [Operations](11-operations.md) | Configuration, deployment, backup, monitoring, runbooks |
 | 12 | [Testing](12-testing.md) | Unit, integration, e2e, test mode, go-live checks |
 | 13 | [Delivery plan and open questions](13-plan-and-open-questions.md) | Build order, what Klaus still decides, what the review should challenge |
+| 14 | [Mock services](14-mock-services.md) | Mock Printful and mock Stripe for CI and test deployments, and how they are verified against the real services |
 
 ## The process in one paragraph
 

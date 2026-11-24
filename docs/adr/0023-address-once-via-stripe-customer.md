@@ -1,8 +1,8 @@
 # ADR-0023: The address is entered once, on the shop's page, and passed to Stripe as a Customer
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-24: "other: as recommended"
 
 ## Context
 
@@ -16,7 +16,7 @@ Shipping cost depends on the address, so the shop asks for it before the quote (
 
 ## Decision
 
-Option 1 proposed. To verify in Stripe test mode: that a fixed `shipping_options` entry works without `shipping_address_collection` (fallback: shipping as a line item), and that Stripe Tax takes the Customer's address.
+Option 1. To verify in Stripe test mode: that a fixed `shipping_options` entry works without `shipping_address_collection` (fallback: shipping as a line item), and that Stripe Tax takes the Customer's address.
 
 ## Consequences
 

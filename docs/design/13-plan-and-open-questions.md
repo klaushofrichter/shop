@@ -9,31 +9,37 @@ before step 9.
 |---|---|---|
 | 1 | ~~Repo baseline, skeleton, CI~~ (done, PR #2) | — |
 | 2 | Database, migrations, job runner, config loading and validation, SKU config, `/metrics` | design review |
-| 3 | art manifest reader; Printful adapter (catalog, shipping rates) with contract fixtures; SKU check at startup | step 2, Printful token in CI? (no: fixtures) |
+| 2a | **Mock services**, stages 1–2 ([14 §10](14-mock-services.md#10-build-order)): Printful catalog, shipping rates, orders, webhooks; Stripe Customers, Sessions, Checkout page, events, refunds; control API; schema conformance in CI | design review |
+| 3 | art manifest reader; Printful adapter (catalog, shipping rates) tested against the mocks; SKU check at startup | steps 2, 2a |
 | 4 | Admin sign-in; pictures and offers pages; print-file rendering (from fixtures and uploaded masters); mockup jobs | step 3 |
 | 5 | Public pages: picture page, cart, address, quote | step 4 |
 | 6 | Checkout (Stripe Customer + Session), Stripe webhooks, success/cancel pages, order status page | step 5 |
 | 7 | Submission, Printful webhooks, shipments, cost guard, failure handling, refunds, reconciliation, purge | step 6 |
-| 8 | Alerts to Klaus; customer emails behind a flag (ADR-0015) | step 7 |
-| 9 | `scripts/create-secrets.sh`; deploy to the cluster in **test mode** (Cluster: namespaces, Secrets, PVC, Litestream, Ingress, NetworkPolicy, `production` branch); art's internal endpoint with its own tests, the Traefik block, and the link (art's session, Cluster); real test-mode run ([12 §3](12-testing.md#3-test-mode-against-the-real-services)) | steps 1–8, art, Cluster |
+| 8 | Alerts to Klaus and customer emails via Amazon SES (customer emails behind a flag); mock verification stages 3–4 (recorder, comparator, shadow mode) | step 7 |
+| 9 | `scripts/create-secrets.sh`; deploy to the cluster in **mock mode** (shop + shop-mocks, no real keys in the pod, [14 §9](14-mock-services.md#9-test-deployment)), then **test mode** (Cluster: namespaces, Secrets, PVC, Litestream, Ingress, NetworkPolicy, `production` branch); art's internal endpoint with its own tests, the Traefik block, and the link (art's session, Cluster); real test-mode run ([12 §3](12-testing.md#3-test-mode-against-the-real-services)) | steps 1–8, art, Cluster |
 | 10 | Go-live checklist ([12 §4](12-testing.md#4-test-mode-and-go-live)), Klaus's go | Klaus |
 
 Rough size: 3,000–4,000 lines of TypeScript including tests; steps 2–8 are a few
 focused sessions each.
 
-## 2. Decisions Klaus still makes
+## 2. Decisions
 
-| ADR | Question | Recommendation | Needed by |
-|---|---|---|---|
-| 0010 | Failure windows: retry 24 h; refund automatically after 72 h on a billing hold and 24 h after a cost-guard stop | as proposed (fully automatic, R9) | step 7 |
-| 0011 | Shipping countries | US only at launch | step 5 |
-| 0012 | Sales tax | Stripe Tax on with home-state registration (ask an adviser); or off if he has no obligation | go-live |
-| 0015 | Email provider (customer emails optional; alerts need a channel) | Amazon SES, or alerts via Grafana only at first | step 8 |
-| 0020 | Fail-safe thresholds (accepted in principle 2026-11-24) | Hard limits $500 / 10 per item / 20 items; hold ≥ $250 or repeat customer in 24 h or Radar elevated; breaker > 10 orders or > $600 Printful cost in 24 h; auto-refund after 72 h | step 7 |
-| 0023 | Address entered once, passed to Stripe as a Customer | yes | step 6 |
-| — | Retail prices per SKU | Klaus | step 9 |
-| — | Legal texts | Klaus (drafts on request) | go-live |
-| — | S3 bucket + IAM user for backups | Klaus creates | step 9 |
+Decided by Klaus on 2026-11-24: ADR-0010 (failure windows as proposed), 0011 (US only),
+0012 (sales tax as legally required, via Stripe Tax), 0015 (Amazon SES), 0020
+(fail-safes), 0023 (address via Stripe Customer), 0024 (mock services). No ADR is
+Proposed at the moment.
+
+Still Klaus's, outside the ADRs:
+
+| Item | Needed by |
+|---|---|
+| Retail prices per SKU (defaults in config are placeholders) | step 10 |
+| Fail-safe thresholds (defaults in ADR-0020) | step 7 |
+| Home-state seller's permit; registration in Stripe Tax; resale certificate at Printful ([research](../research/sales-tax.md) §5) | go-live |
+| SES: domain verification records at Squarespace, production access | step 8 |
+| S3 bucket + IAM user for backups | step 9 |
+| Stripe restricted keys with Customers write; Printful billing with auto-recharge | step 9 |
+| Legal texts (drafts on request) | go-live |
 
 ## 3. Open questions for the review
 
@@ -54,7 +60,8 @@ focused sessions each.
 | Item | How |
 |---|---|
 | `shipping_options` without `shipping_address_collection` in hosted Checkout | Stripe test mode |
-| Stripe Tax uses the Customer's shipping address | Stripe test mode |
+| Stripe Tax uses the Customer's shipping address | Stripe test mode (test-mode tax registration) |
+| Clothing tax code (`txcd_30011000`?) | `GET /v1/tax_codes` |
 | v1 cancel works with the store-level token | a Printful draft → confirm in a test store, or ask Printful support |
 | Printful `orientation` / landscape posters | a draft order with a landscape file |
 | Variant ids and print areas in `config/skus.json` | startup check against the live catalog (built in) |

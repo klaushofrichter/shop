@@ -1,8 +1,8 @@
 # ADR-0012: Sales tax and VAT
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-24
-- Decided by: (pending, Klaus)
+- Decided by: Klaus, 2026-11-24: "We want to be able to pay sales tax as legally required."
 
 ## Context
 
@@ -12,11 +12,11 @@ Not tax advice; Klaus decides, ideally with a tax adviser. Facts: Stripe Tax com
 
 1. **Stripe Tax on, registered in the home state** (and later where thresholds are crossed); prices shown tax-exclusive in the US.
 2. No tax collection at launch: only acceptable if Klaus confirms he has no obligation.
-3. Prices tax-inclusive (common in the EU), Stripe Tax computes the tax portion.
+3. Prices tax-inclusi## Decision
 
-## Decision
+Option 1. The shop collects US sales tax through **Stripe Tax** (`automatic_tax`, tax-exclusive prices, tax codes per product kind and on shipping) in every state where Klaus is registered, records the tax per order and line, and exports it by period and state for filing. Which states require registration, the registration itself, the resale certificate at Printful and the filing are Klaus's (with his adviser); the steps are in docs/research/sales-tax.md §5. At the expected volume only the home state is likely to require registration. EU/UK VAT is out of scope while shipping is US-only (ADR-0011).
 
-Pending Klaus (and his adviser). Recommendation: option 1 together with ADR-0011 option 1, plus resale certificates at Printful for the home state.
+1, plus resale certificates at Printful for the home state.
 
 ## Consequences
 

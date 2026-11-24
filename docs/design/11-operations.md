@@ -27,7 +27,7 @@ builds each Secret from named keys only and never prints a value:
 | Actions secret `KUBE_SETUP_DEPLOY_TOKEN` (repo) | `GITHUB_KUBE_SETUP_PAT`, set by Klaus |
 | `art-internal` (namespace `art`) | `ART_INTERNAL_TOKEN` (same value as in `shop-env`) |
 
-The script refuses `--live` unless `STRIPE_MODE=live` is also passed, prints only key
+With `--mock` the script puts **only mock keys** in `shop-env` (no real Stripe key, no real Printful token): the configuration for every test deployment until Klaus allows more. The script refuses `--live` unless `STRIPE_MODE=live` is also passed, prints only key
 names and the Stripe key's prefix (`rk_test_`/`rk_live_`), and exits non-zero on a
 missing key.
 
@@ -46,6 +46,8 @@ Environment variables (Kubernetes Secret `shop-env` for secrets, ConfigMap for t
 | `DATA_DIR` | | `/var/lib/shop` (database, files, mockups) |
 | `ART_URL`, `ART_INTERNAL_URL` | | `https://art.klaushofrichter.net/`, `http://art.art.svc.cluster.local` |
 | `ART_INTERNAL_TOKEN` | yes | originals endpoint |
+| `PRINTFUL_BASE_URL`, `STRIPE_API_BASE` | | real API hosts, or the mock service in mock mode ([14 §3](14-mock-services.md#3-selecting-mocks-in-the-shop)) |
+| `SHADOW_PRINTFUL`, `SHADOW_STRIPE` | | off by default; `readonly` / `test` turn on shadow comparison ([14 §7.3](14-mock-services.md#7-verification-against-the-real-services)) |
 | `PRINTFUL_TOKEN` | yes | Printful store-level token |
 | `PRINTFUL_WEBHOOK_SECRET`, `PRINTFUL_WEBHOOK_PUBLIC_KEY` | yes / no | from webhook registration |
 | `FULFILMENT_CONFIRM` | | `false` (drafts only) until go-live |
