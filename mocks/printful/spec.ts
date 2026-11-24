@@ -13,6 +13,7 @@ import Ajv2019, { type ValidateFunction } from 'ajv/dist/2019';
 
 type Schema = Record<string, unknown>;
 
+const METHODS = ['get', 'post', 'put', 'patch', 'delete'] as const;
 const SPEC_FILE = path.join(__dirname, '..', 'spec', 'printful-v2.openapi.json');
 
 export class PrintfulSpec {
@@ -40,10 +41,14 @@ export class PrintfulSpec {
    * operation takes no JSON body.
    */
   validateRequest(method: string, concretePath: string, body: unknown): string[] {
-    const key = `${method.toLowerCase()} ${this.template(concretePath) ?? concretePath}`;
-    if (!this.cache.has(key)) this.cache.set(key, this.compile(method.toLowerCase(), this.template(concretePath)));
+    // Only known methods and paths of the spec form a cache key; anything else has nothing to validate.
+    const m = METHODS.find((x) => x === method.toLowerCase());
+    const template = this.template(concretePath);
+    if (!m || !template) return [];
+    const key = `${m} ${template}`;
+    if (!this.cache.has(key)) this.cache.set(key, this.compile(m, template));
     const validate = this.cache.get(key);
-    if (!validate) return [];
+    if (typeof validate !== 'function') return [];
     if (validate(body)) return [];
     return (validate.errors ?? []).map((e) => `${e.instancePath || '/'} ${e.message}${e.params && 'unevaluatedProperty' in e.params ? `: ${String(e.params.unevaluatedProperty)}` : ''}`);
   }
