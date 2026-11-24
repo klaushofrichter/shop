@@ -1,6 +1,6 @@
 # ADR-0006: Print files come from art's originals through an internal endpoint
 
-- Status: Accepted
+- Status: Superseded by ADR-0025 (2026-11-24: art already serves the originals publicly)
 - Date: 2026-11-24
 - Decided by: Klaus, 2026-11-24 (accepted with group 1: "yes, accept group 1")
 

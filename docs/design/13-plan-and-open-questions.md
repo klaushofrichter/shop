@@ -16,7 +16,7 @@ before step 9.
 | 6 | Checkout (Stripe Customer + Session), Stripe webhooks, success/cancel pages, order status page | step 5 |
 | 7 | Submission, Printful webhooks, shipments, cost guard, failure handling, refunds, reconciliation, purge | step 6 |
 | 8 | Alerts to Klaus and customer emails via Amazon SES (customer emails behind a flag); mock verification stages 3–4 (recorder, comparator, shadow mode) | step 7 |
-| 9 | `scripts/create-secrets.sh`; deploy to the cluster in **mock mode** (shop + shop-mocks, no real keys in the pod, [14 §9](14-mock-services.md#9-test-deployment)), then **test mode** (Cluster: namespaces, Secrets, PVC, Litestream, Ingress, NetworkPolicy, `production` branch); art's internal endpoint with its own tests, the Traefik block, and the link (art's session, Cluster); real test-mode run ([12 §3](12-testing.md#3-test-mode-against-the-real-services)) | steps 1–8, art, Cluster |
+| 9 | `scripts/create-secrets.sh`; deploy to the cluster in **mock mode** (shop + shop-mocks, no real keys in the pod, [14 §9](14-mock-services.md#9-test-deployment)), then **test mode** (Cluster: namespaces, Secrets, PVC, Litestream, Ingress, NetworkPolicy, `production` branch); art's "Prints & merchandise" link (art's session); real test-mode run ([12 §3](12-testing.md#3-test-mode-against-the-real-services)) | steps 1–8, art, Cluster |
 | 10 | Go-live checklist ([12 §4](12-testing.md#4-test-mode-and-go-live)), Klaus's go | Klaus |
 
 Rough size: 3,000–4,000 lines of TypeScript including tests; steps 2–8 are a few
@@ -53,7 +53,7 @@ Still Klaus's, outside the ADRs:
 8. **Mug layout**: the painting twice, left and right of the handle. Better: one wide panorama crop? (Taste.)
 9. **Orientation of prints**: does Printful's `orientation` field on the order item select landscape for posters, or is a landscape file enough? (To verify with a draft order.)
 10. **Fail-safe thresholds** (ADR-0020): do they stop misuse without bothering real customers? Is auto-refund after 72 h the right fail-safe default?
-11. **Originals are already public on art** (found 2026-11-24): art serves every original at full resolution at `/assets/<room>/<file>` (its download link). The internal originals endpoint (ADR-0006) and the caution about print-file URLs (ADR-0019) protect something that is public anyway. Proposed ADR-0025: fetch originals from art's existing URL, no internal endpoint. Klaus decides whether originals should stay public on art.
+11. ~~Originals~~: decided 2026-11-24 (ADR-0025): the shop reads them from art's public URLs.
 12. **Street addresses**: Printful validates none (captured). Accept returned parcels as the rare failure, or add an address-validation service?
 13. **Is anything here over-engineered for < 10 orders a week?** Candidates: the provider interface, the jobs table, reconciliation every hour.
 

@@ -7,7 +7,6 @@
 | Stripe restricted keys, webhook secrets | Create charges and refunds, read customers |
 | Printful token | Create orders that charge Klaus's Printful account |
 | Google OAuth client, `COOKIE_SECRET` | Admin access |
-| `ART_INTERNAL_TOKEN` | Full-resolution originals of the paintings |
 | Customer data (names, emails, addresses) | Personal data |
 | Print files | Full-resolution reproductions |
 | The order database | Money records |
@@ -25,7 +24,7 @@
 | Admin takeover | Google sign-in, allow-list checked on every request, HMAC cookie, CSRF tokens, `no-store`; no passwords stored. |
 | XSS | Server-rendered with escaping by default; strict CSP without `unsafe-inline` (already in place); manifest text from art is escaped like user input. |
 | Enumeration of orders | Status page requires the token; wrong token → 404; order ids are random. |
-| Originals leaking | Originals only via art's internal endpoint (token, in-cluster, `/internal` blocked on art's public route); the shop doesn't store them. Print files are full-resolution but unguessable (accepted risk, ADR-0019). |
+| Originals | Public on art by Klaus's choice (art's download link; ADR-0025); the shop doesn't store them. Print files are derived from them and served at unguessable URLs. |
 | Secrets leaking | Secrets only in Kubernetes Secrets created from the node's `.env` by Cluster or Klaus; never in git, logs or chat. The app logs no headers, no tokens, no full addresses. Startup checks log only *which* variables are present. |
 | Dependency vulnerabilities | `npm audit` gates in CI, Dependabot, CodeQL (cluster baseline). |
 | Container escape / privilege | Non-root (uid 1000), drop ALL capabilities, no privilege escalation, seccomp RuntimeDefault (cluster rule). |
