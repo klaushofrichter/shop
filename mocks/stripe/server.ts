@@ -101,7 +101,7 @@ export function createMockStripe(opts: MockStripeOptions) {
     if (!ses) return res.status(404).type('text').send('no such session');
     const t = totals(ses);
     const esc = (x: string) => x.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-    res.type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Mock Stripe checkout</title></head><body><main>
+    res.type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Mock Stripe checkout</title><link rel="icon" href="data:,"></head><body><main>
 <h1>Mock Stripe checkout</h1>
 <p>Status: ${ses.status}</p>
 <ul>${ses.lines.map((l) => `<li>${esc(l.name)} × ${l.quantity}: $${(l.unit * l.quantity / 100).toFixed(2)}</li>`).join('')}</ul>

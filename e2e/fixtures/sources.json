@@ -1,0 +1,14 @@
+{
+  "_comment": "The e2e run's source (mock mode): the fake art of mocks/art, read through MOCK_SOURCE_URL. Prints allowed for every work, so the purchase test can offer one.",
+  "sources": [
+    {
+      "id": "art",
+      "default": true,
+      "adapter": "art-manifest",
+      "publicUrl": "https://art.example.com",
+      "creator": "A. Painter",
+      "printsAllowedDefault": true,
+      "printsAllowedWorks": []
+    }
+  ]
+}

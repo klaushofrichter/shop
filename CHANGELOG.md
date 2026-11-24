@@ -5,6 +5,7 @@ then empties it on `main`.
 
 ## [Unreleased]
 
+- A whole purchase is tested in a browser on every change, against stand-ins for Printful, Stripe and the gallery.
 - Paying with Stripe: Pay opens Stripe's checkout; the order page (`/order/<id>`, reached by the link in the success page) shows the order and its status; "Find my order" e-mails the link (e-mails arrive with a later step).
 - The cart takes a US shipping address (with a ZIP check against the state) and shows a quote: the items, the shipping methods Printful offers, and the total before tax.
 - Picture pages (`/p/<work>`) with the products on offer, a cart, and `/api/offers` for the gallery's link. Before go-live a preview key closes the shop, and test shops say so on every page.

@@ -55,7 +55,7 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
   const dbs = openDatabases(config.dataDir, config.mode);
   const runner = new JobRunner(dbs.orders, clock, log);
   const store = new FileStore(config.dataDir);
-  const contentSources = createSources(sources, config.mode);
+  const contentSources = createSources(sources, config.mode, undefined, config.mockSourceUrl);
   registerCatalogJobs(runner, {
     catalog: dbs.catalog,
     orders: dbs.orders,
@@ -94,6 +94,7 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
   const app = createApp({
     workerHealth: () => workerHealth(dbs.orders, clock, { checkReconciliation: false, checkAlerts: false, startedAtMs }),
     dataDir: config.dataDir,
+    mockStripePages: config.mockStripePages,
     auth: {
       google:
         config.admin.googleClientId && config.admin.googleClientSecret && config.admin.googleRedirectUri
