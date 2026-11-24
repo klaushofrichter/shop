@@ -131,7 +131,7 @@ export function registerProviderJobs(runner: JobRunner, d: ProviderJobDeps): voi
       if (row?.status === 'ok' || row?.status === 'failed') return;
       let file;
       try {
-        file = row?.provider_file_id ? await d.provider.getFile(row.provider_file_id) : await d.provider.registerFile(`${d.publicUrl}/files/${sha}.jpg`);
+        file = row?.provider_file_id ? await d.provider.getFile(row.provider_file_id) : await d.provider.registerFile(`${d.publicUrl}${pf.path}`);
       } catch (e) {
         retryable(e);
         return;

@@ -14,6 +14,7 @@ import { systemClock, type Clock } from './clock';
 import { describeConfig, loadConfig, type Config } from './config';
 import { openDatabases, type Databases } from './db';
 import { registerCatalogJobs, scheduleSourceRefresh } from './catalog/jobs';
+import { registerOfferJobs } from './catalog/offers';
 import { FileStore } from './images/store';
 import { JobRunner } from './jobs';
 import { createSources } from './sources';
@@ -61,6 +62,17 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
     limits: { maxInputPixels: config.maxInputPixels },
     log,
   });
+  registerOfferJobs(runner, {
+    catalog: dbs.catalog,
+    orders: dbs.orders,
+    clock,
+    sources: contentSources,
+    skus,
+    store,
+    limits: { maxInputPixels: config.maxInputPixels },
+    registerFiles: !!config.printful.token,
+    log,
+  });
   if (config.sourcesRefresh) scheduleSourceRefresh(dbs.orders, clock, sources.map((s) => s.id));
   const startedAtMs = clock.now();
   const app = createApp({
@@ -84,6 +96,8 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
       cookieSecret: config.admin.cookieSecret,
       allowedEmails: config.admin.allowedEmails,
       publicUrl: config.publicUrl,
+      skus,
+      storeLabel: config.mode,
     },
   });
   console.log(JSON.stringify({ level: 'info', msg: 'configuration', detail: describeConfig(config), skus: skus.skus.length, sources: sources.map((s) => s.id) }));

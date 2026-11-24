@@ -8,6 +8,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import express, { type Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { CodeChallengeMethod, OAuth2Client } from 'google-auth-library';
 import type { Clock } from '../clock';
 import { adminLayout } from './views';
@@ -57,6 +58,9 @@ export interface AuthDeps {
 
 export function authRouter(d: AuthDeps): Router {
   const r = express.Router();
+  // Sign-in is a handful of requests a day; anything more is someone guessing.
+  const limiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false });
+  r.use(['/admin/login', '/auth/google', '/auth/logout'], limiter);
 
   r.get('/admin/login', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');

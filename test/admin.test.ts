@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
+import { loadSkus } from '../src/catalog-config';
 import type { GoogleSignIn } from '../src/admin/auth';
 import { csrfToken, SESSION_COOKIE, signSession, verifySession } from '../src/admin/session';
 import { FakeClock } from '../src/clock';
@@ -9,6 +10,7 @@ import { memoryDatabases } from '../src/db';
 const SECRET = 'x'.repeat(40);
 const ADMIN = 'admin@example.com';
 const PUBLIC = 'https://shop.example.com';
+const SKUS = loadSkus('config/skus.json', 'test');
 
 function setup(google?: GoogleSignIn) {
   const clock = new FakeClock(Date.UTC(2026, 10, 26, 12));
@@ -16,7 +18,7 @@ function setup(google?: GoogleSignIn) {
   const logs: Record<string, unknown>[] = [];
   const app = createApp({
     auth: { google, cookieSecret: SECRET, allowedEmails: [ADMIN], clock, log: (l) => logs.push(l) },
-    admin: { catalog, orders, clock, mode: 'test', cookieSecret: SECRET, allowedEmails: [ADMIN], publicUrl: PUBLIC },
+    admin: { catalog, orders, clock, mode: 'test', cookieSecret: SECRET, allowedEmails: [ADMIN], publicUrl: PUBLIC, skus: SKUS, storeLabel: 'test' },
   });
   const session = { email: ADMIN, exp: clock.now() + 3600_000 };
   // The e2e approach (review 2 F8): mint a real signed cookie; no test login route exists.
@@ -133,7 +135,7 @@ describe('admin requests', () => {
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
     expect(res.text).toContain('TEST');
-    const other = createApp({ admin: { catalog, orders, clock, mode: 'test', cookieSecret: SECRET, allowedEmails: ['new@example.com'], publicUrl: PUBLIC } });
+    const other = createApp({ admin: { catalog, orders, clock, mode: 'test', cookieSecret: SECRET, allowedEmails: ['new@example.com'], publicUrl: PUBLIC, skus: SKUS, storeLabel: 'test' } });
     expect((await request(other).get('/admin').set('Cookie', cookie)).status).toBe(303);
   });
 
