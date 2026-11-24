@@ -151,3 +151,22 @@ where only he can act (his Printful billing, a returned parcel, a dispute).
 
 All windows (24 h, 72 h) are configuration (ADR-0010 sets them; proposed values shown).
 Klaus's "involvement" is limited to the right column; none of it is in the happy path.
+
+## 8. Fail-safes against large or unusual orders
+
+ADR-0020 (Klaus: "a fail save and protection against large orders … not misuse"). Normal
+orders pass untouched; unusual ones never reach Printful without Klaus, and fail safe to
+a refund.
+
+| Layer | Rule (defaults, configurable) | Effect |
+|---|---|---|
+| Hard limits | quantity per item ≤ 10 (postcards ≤ 25), ≤ 20 items, total ≤ $500 | Checkout refused; contact address offered. Checked at `POST /cart`, `/cart/address` and `/checkout`. |
+| Approval hold | total ≥ $250; or the same email or card fingerprint paid another order in the last 24 h; or Stripe Radar risk level `elevated`/`highest` | After payment the order goes to `awaiting_approval` instead of submission; alert to Klaus with the reasons. Admin: **Approve** → submit; **Refund** → refund. **No action in 72 h → automatic full refund.** |
+| Circuit breaker | > 10 paid orders in 24 h, or > $600 provider cost of submitted orders in 24 h | Breaker trips (stored in the database, survives restarts); alert; every newly paid order is held as above. Admin: **Reset breaker** releases the held orders to normal processing. Quotes and payments keep working. |
+| Always | per-IP rate limits, Stripe Radar, cost guard (§4 step 5) | as described there |
+
+The check runs once, in the job that follows `paid`, in this order: breaker tripped?
+→ hold. Hold conditions? → hold. Otherwise submit. Radar's risk level is read from the
+charge of the PaymentIntent (`outcome.risk_level`). The card fingerprint is
+`payment_method_details.card.fingerprint` (stored on the order, not the card number).
+

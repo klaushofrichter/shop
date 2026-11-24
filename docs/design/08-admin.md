@@ -24,13 +24,13 @@ The cluster's hand-rolled Google OAuth pattern (ADR-0013, vault "Building a New 
 
 | Page | Content | Actions |
 |---|---|---|
-| **Dashboard** `/admin` | Orders by state (today, 7 days), anything in `needs_attention` / `on_hold` with its timer ("refunds automatically in 17 h"), last reconciliation, backup age, mode (TEST/LIVE banner). | — |
+| **Dashboard** `/admin` | Orders by state (today, 7 days), anything in `awaiting_approval` / `needs_attention` / `on_hold` with its timer ("refunds automatically in 17 h"), the circuit breaker's state, last reconciliation, backup age, mode (TEST/LIVE banner). | — |
 | **Pictures** `/admin/pictures` | Every picture in art's manifest: thumbnail, title, source pixel size, enabled offers, readiness (print files, mockups). | Enable/disable picture; refresh manifest. |
 | **Picture** `/admin/pictures/:uid` | One row per SKU: enable, price (default shown), effective DPI with warning colours, crop preview with a draggable crop box (fill SKUs), print file status, mockup. | Enable/disable offer; set price override; adjust crop (re-renders); upload a print master; regenerate mockup. |
 | **SKUs** `/admin/skus` | The configured SKUs with Printful's current wholesale price, availability, print area, default retail price, typical margin. Read-only (SKUs are config, ADR-0022). | — |
 | **Orders** `/admin/orders` | Search by number, email, state, date. | — |
-| **Order** `/admin/orders/:id` | Everything: items, amounts (paid, Stripe fee, Printful cost, margin), address, Stripe and Printful ids with links to their dashboards, shipments and tracking, the full transition history, emails sent. | Retry submission; confirm anyway (cost guard); cancel at Printful; refund (full or partial); resend email. Each asks for confirmation and is written to `admin_audit`. |
-| **System** `/admin/system` | Versions, mode, webhook registration status (Stripe, Printful), last events received, rate-limit headroom, job queue, recent alarms. | Run reconciliation now; re-register webhooks (test mode only from the UI). |
+| **Order** `/admin/orders/:id` | Everything: items, amounts (paid, Stripe fee, Printful cost, margin), address, Stripe and Printful ids with links to their dashboards, shipments and tracking, the full transition history, emails sent. | **Approve** (held order); retry submission; confirm anyway (cost guard); cancel at Printful; refund (full or partial); resend email. Each asks for confirmation and is written to `admin_audit`. |
+| **System** `/admin/system` | Versions, mode, webhook registration status (Stripe, Printful), last events received, rate-limit headroom, job queue, recent alarms. | Run reconciliation now; re-register webhooks (test mode only from the UI); **reset the circuit breaker**. |
 
 ## 4. What the admin cannot do
 

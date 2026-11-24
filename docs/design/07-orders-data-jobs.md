@@ -11,20 +11,23 @@
 ## 2. State machine
 
 ```
-                  ┌─► abandoned (Stripe call failed / customer cancelled)
-                  ├─► expired (session expired)          ─┐
- checkout_open ───┼─► payment_failed (async failure)      │  terminal, no money
-                  │                                      ─┘
-                  └─► paid ──► submitted ──► in_production ──► partially_shipped ──► shipped ──► delivered
-                        │         │  ▲            │                   │                 │
-                        │         ▼  │            ▼                   ▼                 ▼
-                        │       on_hold ◄─────────┘              (annotations: returned, reshipped)
-                        │         │
-                        ▼         ▼
-                  needs_attention ──► (Klaus or timer) ──► submitted | refunded
-                        │
-                        └──────────────────────────────► canceled ──► refunded
- any paid state ──(full refund, e.g. from the Dashboard)──► refunded
+                  ┌─► abandoned       (Stripe call failed / customer cancelled)   ┐
+ checkout_open ───┼─► expired         (session expired)                           ├ terminal, no money
+                  ├─► payment_failed  (async payment failed)                      ┘
+                  │
+                  └─► paid ─┬─────────────► submitted ─► in_production ─► partially_shipped ─► shipped ─► delivered
+                            │                 │ ▲            │
+                            │ fail-safe       ▼ │            ▼
+                            │ (ADR-0020)    on_hold ◄────────┘          (returns, reshipments: annotations)
+                            ▼                 │
+                   awaiting_approval          │
+                     │ approve → submit       │ failure / cost guard / hold timeout
+                     │ refund, or 72 h        ▼
+                     │                  needs_attention ── Klaus "confirm anyway" ──► submitted
+                     │                        │ timer or Klaus
+                     ▼                        ▼
+                  refunded ◄──────────── canceled (Printful or admin)
+ any paid state ──(full refund, e.g. from the Stripe Dashboard)──► refunded
 ```
 
 | From | To | Trigger (cause) |
@@ -35,6 +38,9 @@
 | `checkout_open` | `payment_failed` | `checkout.session.async_payment_failed` |
 | `checkout_open` | `paid` | `checkout.session.completed`/`async_payment_succeeded` with paid status, or success page re-fetch, or reconciliation |
 | `paid` | `submitted` | submit job (job) |
+| `paid` | `awaiting_approval` | fail-safe check: large or unusual order, or circuit breaker tripped (job) |
+| `awaiting_approval` | `paid` → submit | Klaus approves, or resets the breaker (admin) |
+| `awaiting_approval` | `refunded` | Klaus refunds (admin), or 72 h without approval (job) |
 | `paid` | `needs_attention` | permanent failure, cost guard, retries exhausted (job) |
 | `submitted` | `on_hold`, `in_production`, `partially_shipped`, `shipped`, `delivered`, `canceled` | Printful status (printful_webhook, reconciliation); skip-forward allowed |
 | `on_hold` | `submitted`, `in_production`, `canceled` | Printful status |
@@ -130,6 +136,8 @@ CREATE TABLE orders (
   refunded_cents     INTEGER NOT NULL DEFAULT 0,
   currency           TEXT NOT NULL DEFAULT 'usd',
   stripe_customer_id TEXT, stripe_session_id TEXT UNIQUE, stripe_payment_intent TEXT,
+  card_fingerprint   TEXT, radar_risk_level TEXT,    -- fail-safe inputs (ADR-0020)
+  hold_reasons       TEXT,                           -- why awaiting_approval, if it was
   mode               TEXT NOT NULL,      -- test | live
   created_at TEXT NOT NULL, updated_at TEXT NOT NULL, paid_at TEXT, purged_at TEXT
 );
@@ -218,6 +226,10 @@ CREATE TABLE reconciliation_runs (
   report_json TEXT, alarms INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE settings (             -- runtime switches, e.g. the circuit breaker
+  key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by TEXT
+);
+
 CREATE TABLE admin_audit (
   id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor TEXT NOT NULL,
   action TEXT NOT NULL, target TEXT, details_json TEXT
@@ -244,7 +256,7 @@ Hourly job (and on demand from the admin); dry-run option for tests. Steps:
 6. `emails` unsent with attempts < 5: retry.
 7. Report: counts per state, alarms. Stored in `reconciliation_runs`; an email to Klaus **only when there are alarms**.
 
-Alarm conditions: paid but not submitted for 24 h; `needs_attention` older than 12 h;
+Alarm conditions: an order in `awaiting_approval` (once, then a reminder 24 h before its automatic refund); circuit breaker tripped; paid but not submitted for 24 h; `needs_attention` older than 12 h;
 `on_hold` older than 24 h; any webhook signature failures in the last hour; last
 Litestream replication older than 2 h; a SKU disabled by availability.
 

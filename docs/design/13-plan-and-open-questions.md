@@ -29,7 +29,7 @@ focused sessions each.
 | 0011 | Shipping countries | US only at launch | step 5 |
 | 0012 | Sales tax | Stripe Tax on with home-state registration (ask an adviser); or off if he has no obligation | go-live |
 | 0015 | Email provider (customer emails optional; alerts need a channel) | Amazon SES, or alerts via Grafana only at first | step 8 |
-| 0020 | Hold large orders for approval | **Withdrawn as a recommendation**: it is manual work (R9). Rely on Stripe Radar; reconsider if fraud appears | — |
+| 0020 | Fail-safe thresholds (accepted in principle 2026-11-24) | Hard limits $500 / 10 per item / 20 items; hold ≥ $250 or repeat customer in 24 h or Radar elevated; breaker > 10 orders or > $600 Printful cost in 24 h; auto-refund after 72 h | step 7 |
 | 0023 | Address entered once, passed to Stripe as a Customer | yes | step 6 |
 | — | Retail prices per SKU | Klaus | step 9 |
 | — | Legal texts | Klaus (drafts on request) | go-live |
@@ -46,7 +46,8 @@ focused sessions each.
 7. **Alerts channel** before an email provider exists: Grafana alert on `/metrics`, or require SES from the start?
 8. **Mug layout**: the painting twice, left and right of the handle. Better: one wide panorama crop? (Taste.)
 9. **Orientation of prints**: does Printful's `orientation` field on the order item select landscape for posters, or is a landscape file enough? (To verify with a draft order.)
-10. **Is anything here over-engineered for < 10 orders a week?** Candidates: the provider interface, the jobs table, reconciliation every hour.
+10. **Fail-safe thresholds** (ADR-0020): do they stop misuse without bothering real customers? Is auto-refund after 72 h the right fail-safe default?
+11. **Is anything here over-engineered for < 10 orders a week?** Candidates: the provider interface, the jobs table, reconciliation every hour.
 
 ## 4. Items to verify before code depends on them
 

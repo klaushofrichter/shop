@@ -29,6 +29,9 @@ Environment variables (Kubernetes Secret `shop-env` for secrets, ConfigMap for t
 | `SHIP_COUNTRIES` | | `US` (ADR-0011) |
 | `MARGIN_FLOOR_CENTS`, `SHIPPING_MARKUP_CENTS` | | cost guard, markup |
 | `RETRY_WINDOW_HOURS`, `HOLD_REFUND_HOURS`, `ATTENTION_REFUND_HOURS` | | 24, 72, 24 (ADR-0010) |
+| `LIMIT_ITEM_QTY`, `LIMIT_ITEMS`, `LIMIT_ORDER_CENTS` | | 10 (postcards 25 in the SKU config), 20, 50000 (ADR-0020) |
+| `APPROVAL_OVER_CENTS`, `APPROVAL_REFUND_HOURS` | | 25000, 72 |
+| `BREAKER_ORDERS_24H`, `BREAKER_COST_CENTS_24H` | | 10, 60000 |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ALLOWED_EMAILS`, `COOKIE_SECRET` | yes (all but the URI) | admin sign-in |
 | `EMAIL_ENABLED`, `EMAIL_FROM`, provider credentials | creds yes | ADR-0015 |
 | `ALERT_EMAIL` | | where alerts go |

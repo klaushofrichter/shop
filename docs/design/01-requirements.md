@@ -34,11 +34,12 @@ From Klaus, 2026-11-23 and 2026-11-24. Each has an id for tracing.
 | R8 | The shop receives **shipping confirmation and tracking** from Printful and stores it. Sending status and tracking emails to the customer is **optional for now**. |
 | R9 | **Fully automated**: no routine work for Klaus per order. He is involved only for exceptions the system cannot resolve, and never as a step in the happy path. |
 | R10 | **Repeatable and scalable** in the sense of: adding a picture or a SKU is configuration, not code; the process works the same for every order. |
-| R11 | Volume: **fewer than 10 orders a week**. Simplicity beats throughput. |
+| R11 | Volume: **fewer than 10 orders a week** from real customers (an estimate, not a limit). Simplicity beats throughput. |
 | R12 | An admin area (Google sign-in, Klaus only) to choose which SKUs each picture offers and at what price. |
 | R13 | A thin abstraction for fulfilment providers is acceptable (Printful now; another, e.g. Prodigi for fine-art prints, possible later). |
 | R14 | Start in Stripe test mode and with Printful draft orders; go live only when Klaus says so. |
 | R15 | Follow the cluster's repository and deployment rules (ADR-0016). |
+| R16 | **Fail-safes against large or unusual orders** (misuse, not real customers): hard limits, a hold for approval with an automatic refund if nobody approves, and a circuit breaker on volume (Klaus, 2026-11-24; ADR-0020). |
 
 ## 4. Quality requirements
 
@@ -72,6 +73,7 @@ From Klaus, 2026-11-23 and 2026-11-24. Each has an id for tracing.
 | R13 | [06 §2](06-fulfilment.md#2-provider-interface), ADR-0017 |
 | R14 | [11 §2](11-operations.md#2-configuration), [12 §4](12-testing.md#4-test-mode-and-go-live) |
 | R15 | [11](11-operations.md), ADR-0016 |
+| R16 | [05 §3](05-quote-checkout-payment.md#3-checkout-session), [06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders), ADR-0020 |
 
 ## 6. Out of scope (for launch)
 

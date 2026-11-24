@@ -37,7 +37,7 @@ Rate limit on the public side: quotes are limited per client IP (e.g. 20 per 10 
 
 `POST /checkout` (body: quote id, chosen shipping option id, CSRF token; checkbox "I agree to the terms of sale" if Stripe's own consent collection is not used):
 
-1. Re-validate: quote exists, not expired, belongs to this cart; every offer still enabled, its print file ready, its price unchanged; the chosen option is in the quote. On any change → re-quote and show `/quote` again with a notice.
+1. Re-validate: hard limits (ADR-0020: quantity per item, items per order, order total) — exceeded → the cart page with a message; quote exists, not expired, belongs to this cart; every offer still enabled, its print file ready, its price unchanged; the chosen option is in the quote. On any change → re-quote and show `/quote` again with a notice.
 2. Create the **order** in one transaction: `orders` row (state `checkout_open`, order number, status token hash, address, email, shipping method and amount, item subtotal, expected total excluding tax), `order_items` rows (copies of SKU name, variant, picture title, unit price, quantity, print file hash), and a transition row (cause `storefront`).
 3. Create a **Stripe Customer** for this order:
    ```
@@ -85,7 +85,7 @@ Events subscribed (and nothing else):
 
 | Event | Job does |
 |---|---|
-| `checkout.session.completed` | Re-fetch the session (`expand: payment_intent`). If `payment_status = paid`: check `currency = usd`, `amount_subtotal` = order's item subtotal, `shipping_cost.amount_total` = order's shipping, `customer` = order's customer; record `amount_total`, `total_details.amount_tax`, `payment_intent` id; transition `checkout_open → paid`; enqueue `order.submit`. A mismatch → `needs_attention` with a note (should never happen: we created the session). If `unpaid` (delayed method): stay, wait for the async events. |
+| `checkout.session.completed` | Re-fetch the session (`expand: payment_intent`). If `payment_status = paid`: check `currency = usd`, `amount_subtotal` = order's item subtotal, `shipping_cost.amount_total` = order's shipping, `customer` = order's customer; record `amount_total`, `total_details.amount_tax`, `payment_intent` id; transition `checkout_open → paid`; then the **fail-safe check** ([06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders)) either enqueues `order.submit` or moves the order to `awaiting_approval`. A mismatch → `needs_attention` with a note (should never happen: we created the session). If `unpaid` (delayed method): stay, wait for the async events. |
 | `checkout.session.async_payment_succeeded` | Same as completed-and-paid. |
 | `checkout.session.async_payment_failed` | `checkout_open → payment_failed` (terminal). |
 | `checkout.session.expired` | `checkout_open → expired` (terminal). |

@@ -38,7 +38,7 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0017](0017-fulfilment-provider-interface.md) | A fulfilment-provider interface; Printful first, Prodigi to evaluate for framed prints | Accepted (2026-11-24) |
 | [0018](0018-order-ledger-and-reconciliation.md) | Order ledger, idempotent submit and hourly reconciliation | Accepted (2026-11-24) |
 | [0019](0019-print-files-before-sale.md) | Print files exist and validate before a product is sold; their URLs never change | Accepted (2026-11-24) |
-| [0020](0020-approval-hold-above-amount.md) | Hold orders above an amount for Klaus's approval | Proposed |
+| [0020](0020-approval-hold-above-amount.md) | Fail-safes against large or unusual orders | Accepted (2026-11-24) |
 | [0021](0021-launch-scope.md) | What ships at launch and what waits | Accepted (2026-11-24) |
 | [0022](0022-predefined-skus-in-config.md) | A handful of predefined SKUs, defined in a config file | Accepted (2026-11-24) |
 | [0023](0023-address-once-via-stripe-customer.md) | The address is entered once, on the shop's page, and passed to Stripe as a Customer | Proposed |

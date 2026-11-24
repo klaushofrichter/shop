@@ -14,7 +14,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 - PR #1 (design, research, ADRs) and PR #2 (repo baseline, skeleton, CI) merged to `main`. CI: `test`, `codeql`, `e2e` (browsers in Playwright's image; the apt install timed out on a slow mirror).
 - **Design set** for the review by Fable 5.2 on 2026-11-25: `docs/design/` (13 documents), research in `docs/research/` including `process-alternatives.md` (build vs Shopify/Quick Stores). Branch `docs/design-set`, PR #3.
 - Klaus's minimum requirements (2026-11-24): one picture → one or more products → address → quote (with Printful previews) → Stripe → Printful → tracking; customer emails optional; a handful of predefined SKUs; thin provider abstraction; fully automated, < 10 orders a week.
-- ADRs: Accepted 0001–0009, 0013, 0014, 0016–0019, 0021, 0022. Proposed: 0010, 0011, 0012, 0015, 0020 (recommendation withdrawn: manual work), 0023.
+- ADRs: Accepted 0001–0009, 0013, 0014, 0016–0019, 0021, 0022. Accepted 0020 (fail-safes against large or unusual orders, reshaped 2026-11-24). Proposed: 0010, 0011, 0012, 0015, 0023.
 - Cluster: told that the first CI landed; it asks Klaus about `production` protection. No deploy request yet.
 
 ## Next

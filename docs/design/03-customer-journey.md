@@ -117,6 +117,8 @@ The link is shown after payment and in every email. `noindex`, `Cache-Control: n
 | Payment declined | Stripe handles it on its page. |
 | Paid, Printful order fails | Status page: "Delayed — we're on it". The system retries; after the limit it refunds automatically ([06 §7](06-fulfilment.md#7-failure-handling)) and the page says "Refunded". |
 | Product no longer available between quote and pay | Re-quote page with a notice; the item is removed. |
+| Order above the hard limits (quantity, items, total) | The form says so and offers the contact address for larger orders (ADR-0020). |
+| Paid order held for approval | Status page: "Payment received — we're preparing your order" (no difference shown to the customer; if refunded after 72 h, "Refunded" and an email if enabled). |
 
 ## 9. Accessibility and quality
 

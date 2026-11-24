@@ -28,6 +28,8 @@ With email enabled (`EMAIL_ENABLED=true`, provider per ADR-0015):
 | Alert | When |
 |---|---|
 | New paid order (optional, `NOTIFY_EACH_ORDER`) | `paid` |
+| Order held for approval | at once, with the reasons (amount, repeat customer, Radar risk, breaker); reminder 24 h before the automatic refund |
+| Circuit breaker tripped | at once |
 | Needs attention | cost guard, retries exhausted, permanent failure (FYI: already refunded) |
 | Billing hold at Printful | at once (only he can fix it) |
 | Returned parcel, dispute | at once |
