@@ -84,8 +84,8 @@ step ([12 §4](12-testing.md#4-go-live-checklist-klaus-decides-each-box)).
 |---|---|
 | `SHOP_MODE` | above |
 | `PUBLIC_URL`, `DATA_DIR` | the shop's address; database, files, images |
-| `SOURCES_CONFIG` | path to `config/sources.json` (overridable in tests) |
-| `PRINTFUL_BASE_URL`, `STRIPE_API_BASE` | set only in mock mode |
+| `SOURCES_CONFIG`, `SKUS_CONFIG` | paths to `config/sources.json` and `config/skus.json` (overridable in tests); placeholder prices are refused in live mode |
+| `PRINTFUL_BASE_URL`, `STRIPE_API_BASE` | set only in mock mode, never to the real hosts; mock keys start with `mock_printful_` and `mock_stripe_` |
 | `PREVIEW_GATE`, `PREVIEW_KEY` | the gate (§2.1) |
 | `PRINTFUL_STORE_TEST`, `PRINTFUL_STORE_LIVE` | expected store per mode; **values in kube-setup** |
 | `PRINTFUL_WEBHOOK_PUBLIC_KEY` | checked against `x-pf-webhook-public-key` |
@@ -95,7 +95,7 @@ step ([12 §4](12-testing.md#4-go-live-checklist-klaus-decides-each-box)).
 | `MARGIN_FLOOR_CENTS`, `SHIPPING_MARKUP_CENTS`, `PROVIDER_TAX_ALLOWANCE_PCT`, `STRIPE_FEE_PCT`, `STRIPE_FEE_FIXED_CENTS` | cost checks ([05 §2](05-quote-checkout-payment.md#2-quote), [06 §4](06-fulfilment.md#4-submission)); the fee estimate includes Stripe Tax's percentage |
 | `PROVIDER_RETRY_WINDOW_HOURS`, hold deadlines per reason, `COMPLETE_AFTER_SHIPPED_DAYS` | ADR-0010, [07 §2.5](07-orders-data-jobs.md#25-holds), [07 §2.7](07-orders-data-jobs.md#27-completion) |
 | `MAX_INPUT_MEGAPIXELS` | uploads and originals ([04 §5](04-catalog-and-print-files.md#5-print-files)) |
-| fail-safe thresholds (`APPROVAL_OVER_CENTS`, `REPEAT_*`, `BREAKER_*`, order limits) | **values in kube-setup's ConfigMap**, not in this repository; required in live mode; tests use artificial values |
+| fail-safe thresholds: `APPROVAL_OVER_CENTS`, `REPEAT_OVER_CENTS`, `REPEAT_ORDERS`, `BREAKER_ORDERS_24H`, `BREAKER_COST_CENTS_24H`, `MAX_ITEMS_PER_ORDER`, `MAX_ORDER_CENTS`, `SKU_MAX_QUANTITY` (JSON, `{"default": n, "<sku>": m}`) | **values in kube-setup's ConfigMap**, not in this repository; required in test and live mode; mock mode and tests use artificial values (`src/config.ts`) |
 | `DELAY_NOTICE_HOURS`, `EMAIL_ENABLED`, `EMAIL_FROM`, `ALERT_EMAIL` | e-mail |
 
 The process validates everything at startup and logs only which variables are present.

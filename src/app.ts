@@ -3,6 +3,12 @@ import compression from 'compression';
 import express, { type Express } from 'express';
 import { homePage, notFoundPage } from './pages';
 import { appVersion } from './version';
+import type { WorkerHealth } from './worker-health';
+
+export interface AppDeps {
+  /** `/health/worker`; absent → 503 (no runner in this process). */
+  workerHealth?: () => WorkerHealth;
+}
 
 // The stylesheet and icon. Relative to the working directory: the repo root
 // locally and in tests, /app in the image.
@@ -22,7 +28,7 @@ const CSP = [
   "object-src 'none'",
 ].join('; ');
 
-export function createApp(): Express {
+export function createApp(deps: AppDeps = {}): Express {
   const app = express();
 
   // Traefik and the pod network: req.protocol and req.ip come from the
@@ -49,6 +55,14 @@ export function createApp(): Express {
   app.get('/health', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json({ status: 'ok', version: appVersion() });
+  });
+
+  // The job runner, reconciliation and alerts (docs/design/11 §4). Names of
+  // the failing checks only; no provider is called.
+  app.get('/health/worker', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const health = deps.workerHealth?.() ?? { ok: false, failing: ['runner'] };
+    res.status(health.ok ? 200 : 503).json({ status: health.ok ? 'ok' : 'failing', failing: health.failing });
   });
 
   app.use('/static', express.static(PUBLIC_DIR, { maxAge: '1h', index: false }));

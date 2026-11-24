@@ -147,7 +147,7 @@ mode and uses obviously artificial values in tests.
 
 | Layer | Rule | Effect |
 |---|---|---|
-| Hard limits | per-SKU `maxQuantity` (config), items per order, order total | Checkout refused with the contact address. Checked when the cart changes, at the quote and at checkout. |
+| Hard limits | quantity per SKU (`SKU_MAX_QUANTITY`), items per order, order total | Checkout refused with the contact address. Checked when the cart changes, at the quote and at checkout. |
 | Approval hold | **all** of these are evaluated and stored (review 1 F8): the order total at or above `APPROVAL_OVER_CENTS`; the same e-mail or card fingerprint has paid more than `REPEAT_OVER_CENTS` in total, or at least `REPEAT_ORDERS` orders, in the last 24 h (cumulative, review 1 F7); Radar risk `elevated` or `highest`; the circuit breaker is tripped | `approval` hold with all reasons. Admin **Approve** (recorded: who, when; the check is not re-run) or **Refund**. Deadline: refund (the order is never confirmed, so I4 holds). |
 | Circuit breaker | more than `BREAKER_ORDERS_24H` paid orders, or more than `BREAKER_COST_CENTS_24H` provider cost, counted since `max(now − 24 h, breaker_reset_at)` | Breaker trips (stored in `settings`); alert; the order that crosses the limit and every later paid order get an `approval` hold with reason `breaker`. **Reset** sets `breaker_reset_at` and releases only holds whose sole reason is `breaker`; holds with other reasons stay for a decision. |
 | Always | rate limits, Radar, the pre-payment cost check, the cost guard | as described |
