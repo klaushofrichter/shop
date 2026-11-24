@@ -19,7 +19,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 1. Klaus's decisions on the Proposed ADRs (list in the PR description).
 2. Repo baseline and skeleton service (design.md §13 step 1–2).
-3. Klaus: Printful private token (store-level), Stripe restricted key and webhook secret (test mode first), Google OAuth client, S3 bucket + IAM user, email provider. Values go into `~/Development/shop/.env` on the node, never into chat or git.
+3. Klaus: ~~Printful private token~~ (created 2026-11-24, in the node's `.env`; probed read-only with `scripts/printful-probe.sh` run by Cluster), Stripe restricted key and webhook secret (test mode first), Google OAuth client, S3 bucket + IAM user, email provider. Values go into `~/Development/shop/.env` on the node, never into chat or git.
 
 ## Exposure
 
