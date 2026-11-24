@@ -55,7 +55,7 @@ Endpoints (the subset the shop uses, response shapes from the v2 OpenAPI spec):
 - `POST /v2/shipping-rates`: a rate table by country/state/weight class, seeded from recorded real quotes; same response shape including `shipments[]` and the optional delivery fields.
 - Orders: `POST /v2/orders` (draft, `costs.calculation_status: calculating` then `done` after a configurable delay), `GET /v2/orders/{id}` and `@external_id`, `POST /v2/orders/{id}/confirmation`, `DELETE /v2/orders/{id}` (drafts only, as the real API), `GET /v2/orders/{id}/shipments`; v1 `DELETE /orders/{id}` (cancel). `external_id` uniqueness forever, as Printful.
 - Mockups: `POST /v2/mockup-tasks`, `GET /v2/mockup-tasks` returning a generated preview (the print file composited onto a plain product silhouette), with the 2–10 per minute limit enforced.
-- Files: `POST /v2/files`, `GET /v2/files/{id}` (fetches the URL like Printful does, reports size and DPI).
+- Files: `POST /v2/files`, `GET /v2/files/{id}` (fetches the URL like Printful does: `waiting` → `ok` with width, height, size, MIME type, or `failed`; de-duplicates by URL). `DELETE /v2/files/{id}` answers 404, as the real API does.
 - Webhooks: `POST/GET/DELETE /v2/webhooks` returning `secret_key` (hex) and `public_key`; events delivered with `x-pf-webhook-signature` (HMAC-SHA256 of the body with the hex-decoded secret) and `x-pf-webhook-public-key`, retried at 1, 4, 16, 64, 256, 1024 minutes of **mock clock** time.
 - Rate limiting: `X-Ratelimit-*` headers and `429` with `Retry-After`, configurable.
 
