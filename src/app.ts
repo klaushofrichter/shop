@@ -21,6 +21,7 @@ export interface AppDeps {
 /** Content-addressed names only: 64 hex characters and a known extension. */
 const IMG_NAME = /^[0-9a-f]{64}\.(webp|jpg)$/;
 const FILE_NAME = /^[0-9a-f]{64}\.(jpg|png)$/;
+const MOCKUP_NAME = /^[0-9a-f]{64}\.jpg$/;
 
 // The stylesheet and icon. Relative to the working directory: the repo root
 // locally and in tests, /app in the image.
@@ -90,6 +91,18 @@ export function createApp(deps: AppDeps = {}): Express {
       if (!IMG_NAME.test(name)) return next();
       res.setHeader('X-Robots-Tag', 'noindex');
       res.sendFile(name, { root: imgDir, maxAge: '365d', immutable: true, dotfiles: 'deny' }, (err) => {
+        if (err) next();
+      });
+    });
+  }
+
+  // Mockups (docs/design/04 §7): Printful's previews, re-encoded without metadata.
+  if (deps.dataDir) {
+    const mockupDir = path.resolve(deps.dataDir, 'mockups');
+    app.get('/mockups/:name', fileLimiter, (req, res, next) => {
+      const name = String(req.params.name);
+      if (!MOCKUP_NAME.test(name)) return next();
+      res.sendFile(name, { root: mockupDir, maxAge: '365d', immutable: true, dotfiles: 'deny' }, (err) => {
         if (err) next();
       });
     });

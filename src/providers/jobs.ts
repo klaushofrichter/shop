@@ -10,7 +10,10 @@ import type { SkuCatalog } from '../catalog-config';
 import { iso, type Clock } from '../clock';
 import { transaction, type Db } from '../db';
 import { enqueue, PermanentJobError, RetryLater, type JobRunner } from '../jobs';
-import { compareSku, StartupRefused, verifyIdentity, type SkuCheck, type Verification } from './checks';
+import sharp from 'sharp';
+import { compareSku, placementFor, StartupRefused, variantFor, verifyIdentity, type SkuCheck, type Verification } from './checks';
+import { getSetting, setSetting } from '../db';
+import type { FileStore } from '../images/store';
 import { ProviderError, type FulfilmentProvider } from './types';
 
 export const CATALOG_CHECK_EVERY_MS = 24 * 60 * 60_000;
@@ -18,6 +21,10 @@ const VERIFY_RETRY_MS = 60_000;
 const UNVERIFIED_ALERT_MS = 30 * 60_000;
 const FILE_POLL_MS = 5_000;
 const FILE_GIVE_UP_MS = 10 * 60_000;
+/** One mockup task per 30 s (Printful allows 2–10 a minute; 04 §7). */
+const MOCKUP_SPACING_MS = 30_000;
+const MOCKUP_POLL_MS = 5_000;
+const MOCKUP_MAX_BYTES = 20 * 1024 * 1024;
 
 /** Whether the provider's identity has been confirmed since the start. */
 export class ProviderStatus {
@@ -41,6 +48,8 @@ export interface ProviderJobDeps {
   orders: Db;
   clock: Clock;
   skus: SkuCatalog;
+  /** Where mockups are stored; absent → no mockups. */
+  store?: FileStore;
   log: (line: Record<string, unknown>) => void;
 }
 
@@ -155,6 +164,88 @@ export function registerProviderJobs(runner: JobRunner, d: ProviderJobDeps): voi
         .run(sha, d.storeLabel, file.id, status, error, status === 'waiting' ? (row?.checked_at ?? now) : now);
       if (status === 'failed') d.log({ level: 'alert', msg: 'print file failed at Printful', file: sha.slice(0, 12), error });
       if (status === 'waiting') throw new RetryLater(FILE_POLL_MS, 'file processing');
+    },
+  });
+}
+
+/**
+ * A mockup per offer and print file (04 §7): one task at Printful, polled
+ * until completed, the image re-encoded without metadata and stored under
+ * /mockups/<sha>.jpg. A failure leaves the display image as the fallback.
+ */
+export function registerMockupJob(runner: JobRunner, d: ProviderJobDeps): void {
+  runner.register('mockup.create', {
+    maxAttempts: 10,
+    async run(ctx) {
+      if (!d.status.verified) throw new RetryLater(VERIFY_RETRY_MS, 'provider unverified');
+      if (!d.store) return;
+      const { sourceId, workId, skuId } = ctx.payload as { sourceId: string; workId: string; skuId: string };
+      const sku = d.skus.byId.get(skuId);
+      if (!sku) throw new PermanentJobError(`unknown SKU ${skuId}`);
+      const o = d.catalog
+        .prepare('SELECT enabled, print_file_sha, orientation, mockup_task_id, mockup_for, mockup_sha FROM offers WHERE source_id = ? AND work_id = ? AND sku_id = ?')
+        .get(sourceId, workId, skuId) as
+        | { enabled: number; print_file_sha: string | null; orientation: string | null; mockup_task_id: string | null; mockup_for: string | null; mockup_sha: string | null }
+        | undefined;
+      if (!o?.enabled || !o.print_file_sha) return;
+      if (o.mockup_sha && o.mockup_for === o.print_file_sha) return; // already current
+      const taskIsCurrent = !!o.mockup_task_id && o.mockup_for === o.print_file_sha;
+      const pf = d.catalog.prepare('SELECT path FROM print_files WHERE sha256 = ?').get(o.print_file_sha) as { path: string } | undefined;
+      if (!pf) return;
+      // mockup_for: the print file the task (and then the stored mockup) shows.
+      const setTask = (taskId: string) =>
+        d.catalog
+          .prepare('UPDATE offers SET mockup_task_id = ?, mockup_for = ? WHERE source_id = ? AND work_id = ? AND sku_id = ?')
+          .run(taskId, o.print_file_sha, sourceId, workId, skuId);
+      const dropTask = () =>
+        d.catalog.prepare('UPDATE offers SET mockup_task_id = NULL WHERE source_id = ? AND work_id = ? AND sku_id = ?').run(sourceId, workId, skuId);
+
+      try {
+        // A task for an older print file is abandoned.
+        if (!taskIsCurrent) {
+          const last = getSetting<number>(d.orders, 'mockup_last_task_at') ?? 0;
+          const wait = last + MOCKUP_SPACING_MS - d.clock.now();
+          if (wait > 0) throw new RetryLater(wait, 'pacing mockup tasks');
+          const orientation = sku.kind === 'paper' ? (o.orientation === 'landscape' ? 'horizontal' : 'vertical') : undefined;
+          const task = await d.provider.createMockup({
+            productId: sku.productId,
+            variantId: variantFor(sku, o.orientation === 'landscape' ? 'landscape' : 'portrait'),
+            ...placementFor(sku),
+            orientation,
+            fileUrl: `${d.publicUrl}${pf.path}`,
+          });
+          setSetting(d.orders, 'mockup_last_task_at', d.clock.now(), iso(d.clock));
+          setTask(task.id);
+          throw new RetryLater(MOCKUP_POLL_MS, 'mockup pending');
+        }
+        const task = await d.provider.getMockup(o.mockup_task_id!);
+        if (task.status === 'pending') throw new RetryLater(MOCKUP_POLL_MS, 'mockup pending');
+        if (task.status === 'failed' || !task.urls[0]) {
+          dropTask();
+          d.log({ level: 'warn', msg: 'mockup failed; the display image stands in', sku: skuId, reasons: task.failures.slice(0, 3) });
+          throw new PermanentJobError('mockup failed');
+        }
+        const raw = await d.provider.downloadMockup(task.urls[0], MOCKUP_MAX_BYTES);
+        const clean = await sharp(raw, { limitInputPixels: 25_000_000 })
+          .rotate()
+          .resize({ width: 1000, withoutEnlargement: true })
+          .toColourspace('srgb')
+          .withIccProfile('srgb')
+          .jpeg({ quality: 85, mozjpeg: true })
+          .toBuffer();
+        const sha = d.store.put('mockups', 'jpg', clean);
+        d.catalog
+          .prepare('UPDATE offers SET mockup_sha = ?, mockup_task_id = NULL WHERE source_id = ? AND work_id = ? AND sku_id = ? AND print_file_sha = ?')
+          .run(sha, sourceId, workId, skuId, o.print_file_sha);
+        d.log({ level: 'info', msg: 'mockup stored', sku: skuId });
+      } catch (e) {
+        if (e instanceof ProviderError && e.kind === 'rate_limited') throw new RetryLater(e.retryAfterMs ?? 60_000, 'rate limited');
+        if (e instanceof ProviderError && (e.kind === 'permanent' || e.kind === 'auth')) {
+          dropTask();
+          throw new PermanentJobError(e.message);
+        }
+        throw e;
+      }
     },
   });
 }

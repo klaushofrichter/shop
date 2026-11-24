@@ -19,7 +19,7 @@ import { FileStore } from './images/store';
 import { JobRunner } from './jobs';
 import { createSources } from './sources';
 import { verifyIdentity } from './providers/checks';
-import { ProviderStatus, registerProviderJobs, scheduleProviderJobs } from './providers/jobs';
+import { ProviderStatus, registerMockupJob, registerProviderJobs, scheduleProviderJobs } from './providers/jobs';
 import { PrintfulClient } from './providers/printful';
 import { workerHealth } from './worker-health';
 import { googleSignIn } from './admin/auth';
@@ -119,7 +119,7 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
       const status = new ProviderStatus(clock, verification);
       shop.providerStatus = status;
       log({ level: verification.state === 'verified' ? 'info' : 'warn', msg: `Printful ${verification.state}` });
-      registerProviderJobs(runner, {
+      const providerDeps = {
         provider,
         status,
         expectedStore: config.printful.expectedStore,
@@ -129,8 +129,11 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
         orders: dbs.orders,
         clock,
         skus,
+        store,
         log,
-      });
+      };
+      registerProviderJobs(runner, providerDeps);
+      registerMockupJob(runner, providerDeps);
       scheduleProviderJobs(dbs.orders, clock, status);
     },
     stop() {

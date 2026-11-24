@@ -83,6 +83,11 @@ ALTER TABLE print_files ADD COLUMN preview_path TEXT;
 ALTER TABLE offers ADD COLUMN cut_pct INTEGER;
 ALTER TABLE offers ADD COLUMN render_error TEXT;
 `,
+  // 5: mockups (docs/design/04 §7): the task at Printful and the print file it shows.
+  `
+ALTER TABLE offers ADD COLUMN mockup_task_id TEXT;
+ALTER TABLE offers ADD COLUMN mockup_for TEXT;
+`,
 ];
 
 export const MODE_MIGRATIONS: string[] = [

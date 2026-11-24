@@ -8,12 +8,16 @@
  * with `mock_printful_`; anything else gets Printful's 401.
  */
 import express, { type Express, type Request, type Response } from 'express';
+import sharp from 'sharp';
 import type { Clock } from '../../src/clock';
 import { MOCK_VARIANTS, SHIP_RATES, US_STATES, type MockVariant } from './catalog';
 import { PrintfulSpec } from './spec';
 
 export const MOCK_STORE = { id: 10000001, name: 'mock store', type: 'native' };
 const FILE_PROCESSING_MS = 5_000;
+/** Captured: ~20 s from pending to completed. Printful allows 2–10 tasks a minute; the mock allows 10. */
+const MOCKUP_MS = 20_000;
+const MOCKUPS_PER_MINUTE = 10;
 
 interface MockFile {
   id: number;
@@ -28,6 +32,16 @@ export interface Scenario {
   status?: { code: number; count: number; retryAfterS?: number };
   /** File URLs containing this text end `failed`. */
   failFilesMatching?: string;
+  /** Mockup tasks end `failed`. */
+  failMockups?: boolean;
+}
+
+interface MockMockup {
+  id: number;
+  created: number;
+  variantId: number;
+  placement: string;
+  failed: boolean;
 }
 
 export interface MockPrintful {
@@ -50,6 +64,8 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     scenario: {} as Scenario,
     requests: [] as Array<{ method: string; path: string; body: unknown }>,
     remaining: 120,
+    mockups: new Map<number, MockMockup>(),
+    nextMockupId: 700000001,
   };
   const variants = new Map(MOCK_VARIANTS.map((v) => [v.id, v]));
   const app = express();
@@ -74,6 +90,16 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     res.json({ now: new Date(clock.now()).toISOString() });
   });
   app.get('/__mock/requests', (_req, res) => res.json(state.requests));
+  // The finished mockup images (Printful serves them from a temporary S3 URL).
+  app.get('/__mock/mockup-images/:id.jpg', async (req, res) => {
+    const m = state.mockups.get(Number(req.params.id));
+    if (!m) return res.status(404).end();
+    const img = await sharp({ create: { width: 1000, height: 1000, channels: 3, background: { r: 230, g: 228, b: 222 } } })
+      .withExifMerge({ IFD0: { Software: 'mock printful' } })
+      .jpeg()
+      .toBuffer();
+    res.type('image/jpeg').send(img);
+  });
 
   // ---- every API call: record, authenticate, rate-limit headers, scenario, spec ----
   app.use((req, res, next) => {
@@ -251,11 +277,46 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
   // Library entries can't be deleted through the API (captured).
   app.delete('/v2/files/:id', (_req, res) => fail(res, 404, 'NotFound', 'Not found'));
 
+  // ---- mockup tasks: pending → completed after ~20 s of mock time ----
+  const mockupBody = (req: Request, m: MockMockup) => {
+    const done = clock.now() - m.created >= MOCKUP_MS;
+    const status = !done ? 'pending' : m.failed ? 'failed' : 'completed';
+    return {
+      id: m.id,
+      status,
+      catalog_variant_mockups:
+        status === 'completed'
+          ? [{ catalog_variant_id: m.variantId, mockups: [{ placement: m.placement, display_name: 'Print file', technique: 'digital', style_id: 1, mockup_url: `${req.protocol}://${req.get('host')}/__mock/mockup-images/${m.id}.jpg`, view: 'Front' }] }]
+          : [],
+      failure_reasons: status === 'failed' ? [{ type: 'mock', message: 'mock scenario: mockup failed' }] : [],
+      _links: { self: { href: `https://api.printful.com/v2/mockup-tasks?id=${m.id}` } },
+    };
+  };
+  app.post('/v2/mockup-tasks', (req, res) => {
+    const recent = [...state.mockups.values()].filter((m) => clock.now() - m.created < 60_000).length;
+    if (recent >= MOCKUPS_PER_MINUTE) {
+      res.setHeader('retry-after', '60');
+      return fail(res, 429, 'TooManyRequests', 'Too many mockup tasks, try again later.');
+    }
+    const p = (req.body as { products: Array<{ catalog_variant_ids?: number[]; placements?: Array<{ placement: string }> }> }).products[0];
+    const variantId = p?.catalog_variant_ids?.[0];
+    if (!variantId || !variants.has(variantId)) return fail(res, 404, 'NotFound', `Variant with ID: ${variantId} does not exist.`);
+    const m: MockMockup = { id: state.nextMockupId++, created: clock.now(), variantId, placement: p.placements?.[0]?.placement ?? 'default', failed: !!state.scenario.failMockups };
+    state.mockups.set(m.id, m);
+    send(res, 200, { data: [mockupBody(req, m)], extra: [] });
+  });
+  app.get('/v2/mockup-tasks', (req, res) => {
+    const m = state.mockups.get(Number(req.query.id));
+    send(res, 200, { data: m ? [mockupBody(req, m)] : [], extra: [], paging: { total: m ? 1 : 0, limit: 20, offset: 0 }, _links: {} });
+  });
+
   app.use((req, res) => fail(res, 404, 'NotFound', `mock: no route for ${req.method} ${req.path}`));
 
   function reset() {
     state.files.clear();
     state.nextFileId = 900000001;
+    state.mockups.clear();
+    state.nextMockupId = 700000001;
     state.scenario = {};
     state.requests.length = 0;
     state.remaining = 120;

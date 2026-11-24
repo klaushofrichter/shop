@@ -29,6 +29,7 @@ export interface OfferRow {
   effective_dpi: number | null;
   cut_pct: number | null;
   render_error: string | null;
+  mockup_sha?: string | null;
 }
 
 export function anchorOf(o: Pick<OfferRow, 'crop_json'> | undefined): Anchor {
@@ -153,12 +154,17 @@ export function registerOfferJobs(runner: JobRunner, d: OfferJobDeps): void {
       transaction(d.catalog, () => {
         d.catalog
           .prepare(
-            `UPDATE offers SET print_file_sha = ?, orientation = ?, effective_dpi = ?, cut_pct = ?, render_error = NULL
+            `UPDATE offers SET print_file_sha = ?, orientation = ?, effective_dpi = ?, cut_pct = ?, render_error = NULL,
+               mockup_sha = CASE WHEN mockup_for IS ? THEN mockup_sha ELSE NULL END
              WHERE source_id = ? AND work_id = ? AND sku_id = ?`,
           )
-          .run(sha!, orientation, effectiveDpi, cutPct, sourceId, workId, skuId);
+          .run(sha!, orientation, effectiveDpi, cutPct, sha!, sourceId, workId, skuId);
       });
-      if (d.registerFiles) enqueue(d.orders, d.clock, 'printfile.register', sha!, { sha });
+      if (d.registerFiles) {
+        enqueue(d.orders, d.clock, 'printfile.register', sha!, { sha });
+        // A mockup shows the customer this exact print file (04 §7).
+        enqueue(d.orders, d.clock, 'mockup.create', `${sourceId}/${workId}/${skuId}`, { sourceId, workId, skuId });
+      }
       d.log({ level: 'info', msg: 'offer rendered', source: sourceId, work: workId, sku: skuId, reused: !!existing });
     },
   });
