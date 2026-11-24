@@ -20,7 +20,8 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 - Real API behaviour captured twice on 2026-11-24; raw captures in the private repository `shop-private` (no CI). The capture script now reads only the test-store token and refuses to write inside this repository.
 - Cluster, 2026-11-25: a fork PR can reach a self-hosted runner on a public repository; the shop's runner gets no Docker-in-Docker and the repository requires approval for outside contributors. kube-setup is private (threshold values and store ids go there). Secret scanning and push protection are on.
 
-- **Step 2 in progress** (2026-11-26): configuration and mode checks (`src/config.ts`), SKU and source files (`config/`), both database files with migrations (`src/db/`), the `Clock`, the job runner and `/health/worker`.
+- **Step 2 done** (PR #12): configuration and mode checks, SKU and source files, both database files with migrations, the `Clock`, the job runner and `/health/worker`.
+- **Step 3 in progress**, in two PRs: (a) the art adapter, works in `catalog.db`, original checks by SHA-256 and display images at `/img/*`; (b) the Printful adapter (catalog, shipping rates, files) and mock Printful stage 1.
 
 ## Next
 

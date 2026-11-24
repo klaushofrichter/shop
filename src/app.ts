@@ -8,7 +8,12 @@ import type { WorkerHealth } from './worker-health';
 export interface AppDeps {
   /** `/health/worker`; absent → 503 (no runner in this process). */
   workerHealth?: () => WorkerHealth;
+  /** DATA_DIR: content-addressed images are served from its `img/` folder. */
+  dataDir?: string;
 }
+
+/** Content-addressed names only: 64 hex characters and a known extension. */
+const IMG_NAME = /^[0-9a-f]{64}\.(webp|jpg)$/;
 
 // The stylesheet and icon. Relative to the working directory: the repo root
 // locally and in tests, /app in the image.
@@ -64,6 +69,19 @@ export function createApp(deps: AppDeps = {}): Express {
     const health = deps.workerHealth?.() ?? { ok: false, failing: ['runner'] };
     res.status(health.ok ? 200 : 503).json({ status: health.ok ? 'ok' : 'failing', failing: health.failing });
   });
+
+  // Display images (docs/design/04 §6): immutable, named by their hash.
+  // Outside the preview gate: Stripe fetches them for its checkout page.
+  if (deps.dataDir) {
+    const imgDir = path.resolve(deps.dataDir, 'img');
+    app.get('/img/:name', (req, res, next) => {
+      if (!IMG_NAME.test(req.params.name)) return next();
+      res.setHeader('X-Robots-Tag', 'noindex');
+      res.sendFile(req.params.name, { root: imgDir, maxAge: '365d', immutable: true, dotfiles: 'deny' }, (err) => {
+        if (err) next();
+      });
+    });
+  }
 
   app.use('/static', express.static(PUBLIC_DIR, { maxAge: '1h', index: false }));
 

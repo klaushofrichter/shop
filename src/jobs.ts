@@ -29,6 +29,8 @@ export interface JobKind {
   maxAttempts?: number;
   /** Delay before attempt n+1, given n failed attempts (default: exponential, 30 s … 1 h). */
   backoffMs?(attempts: number): number;
+  /** Periodic jobs: once a run ends (done or failed), the same job is queued again this much later. */
+  repeatEveryMs?: number;
 }
 
 /** Thrown by a handler when retrying can't help. */
@@ -168,6 +170,7 @@ export class JobRunner {
       if (!handler) throw new PermanentJobError(`no handler for job kind ${job.kind}`);
       await handler.run(ctx);
       this.finish(job.id, 'done', null);
+      this.repeat(job, handler);
     } catch (e) {
       const err = e as Error;
       const message = `${err.name}: ${err.message}`.slice(0, 500);
@@ -180,11 +183,18 @@ export class JobRunner {
       if (err instanceof PermanentJobError || job.attempts >= max) {
         this.finish(job.id, 'failed', message);
         this.log({ level: 'error', msg: 'job failed', job: job.id, kind: job.kind, attempts: job.attempts, error: message });
+        this.repeat(job, handler);
       } else {
         const delay = (handler?.backoffMs ?? defaultBackoff)(job.attempts);
         this.requeue(job.id, delay, message, false);
         this.log({ level: 'warn', msg: 'job retry', job: job.id, kind: job.kind, attempts: job.attempts, error: message });
       }
+    }
+  }
+
+  private repeat(job: JobRow, handler: JobKind | undefined): void {
+    if (handler?.repeatEveryMs) {
+      enqueue(this.db, this.clock, job.kind, job.key, job.payload_json === null ? undefined : JSON.parse(job.payload_json), handler.repeatEveryMs);
     }
   }
 

@@ -13,7 +13,10 @@ import { loadSkus, loadSources, type SkuCatalog, type SourceConfig } from './cat
 import { systemClock, type Clock } from './clock';
 import { describeConfig, loadConfig, type Config } from './config';
 import { openDatabases, type Databases } from './db';
+import { registerCatalogJobs, scheduleSourceRefresh } from './catalog/jobs';
+import { FileStore } from './images/store';
 import { JobRunner } from './jobs';
+import { createSources } from './sources';
 import { workerHealth } from './worker-health';
 
 export interface Shop {
@@ -26,15 +29,31 @@ export interface Shop {
   stop(): void;
 }
 
+const log = (line: Record<string, unknown>) => console.log(JSON.stringify(line));
+
 export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = systemClock): Shop {
   const config = loadConfig(env);
   const skus = loadSkus(config.skusConfig, config.mode);
   const sources = loadSources(config.sourcesConfig);
   const dbs = openDatabases(config.dataDir, config.mode);
-  const runner = new JobRunner(dbs.orders, clock);
+  const runner = new JobRunner(dbs.orders, clock, log);
+  const store = new FileStore(config.dataDir);
+  const contentSources = createSources(sources, config.mode);
+  registerCatalogJobs(runner, {
+    catalog: dbs.catalog,
+    orders: dbs.orders,
+    clock,
+    sources: contentSources,
+    sourceConfigs: sources,
+    store,
+    limits: { maxInputPixels: config.maxInputPixels },
+    log,
+  });
+  if (config.sourcesRefresh) scheduleSourceRefresh(dbs.orders, clock, sources.map((s) => s.id));
   const startedAtMs = clock.now();
   const app = createApp({
     workerHealth: () => workerHealth(dbs.orders, clock, { checkReconciliation: false, checkAlerts: false, startedAtMs }),
+    dataDir: config.dataDir,
   });
   console.log(JSON.stringify({ level: 'info', msg: 'configuration', detail: describeConfig(config), skus: skus.skus.length, sources: sources.map((s) => s.id) }));
   return {

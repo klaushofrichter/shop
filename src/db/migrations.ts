@@ -58,6 +58,13 @@ CREATE TABLE provider_files (             -- one registration per provider store
   PRIMARY KEY (print_file_sha, provider, store)
 );
 `,
+  // 2: works no longer listed by their source are hidden, not deleted (04 §4.5);
+  // display images carry their height for width/height attributes.
+  `
+ALTER TABLE works ADD COLUMN listed INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE display_images ADD COLUMN height_px INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX display_images_work ON display_images(source_id, work_id);
+`,
 ];
 
 export const MODE_MIGRATIONS: string[] = [
