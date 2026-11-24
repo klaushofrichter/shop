@@ -84,6 +84,7 @@ step ([12 §4](12-testing.md#4-go-live-checklist-klaus-decides-each-box)).
 |---|---|
 | `SHOP_MODE` | above |
 | `PUBLIC_URL`, `DATA_DIR` | the shop's address; database, files, images |
+| `SOURCES_REFRESH` | `on` (default on the cluster) or `off` (default in mock mode): refresh content sources every 10 minutes |
 | `SOURCES_CONFIG`, `SKUS_CONFIG` | paths to `config/sources.json` and `config/skus.json` (overridable in tests); placeholder prices are refused in live mode |
 | `PRINTFUL_BASE_URL`, `STRIPE_API_BASE` | set only in mock mode, never to the real hosts; mock keys start with `mock_printful_` and `mock_stripe_` |
 | `PREVIEW_GATE`, `PREVIEW_KEY` | the gate (§2.1) |

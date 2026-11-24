@@ -90,8 +90,8 @@ in its own list; the seller is still Klaus (A3).
 
 ### 4.3 The art adapter
 
-- **Today**: parses `<script type="application/json" id="manifest">` from art's home page (fetched in-cluster every 10 minutes, conditional GET). Original URL: `/assets/<room>/<file>?v=<v>` (ADR-0025). `kind` from the room (art's "Colors" room = paintings, the others = photographs) until art supplies it.
-- **Contract test**: the adapter runs in CI against a recorded copy of art's manifest; a daily job alerts on a schema mismatch with the live manifest.
+- **Today**: parses `<script type="application/json" id="manifest">` from art's home page (fetched in-cluster every 10 minutes, conditional GET). Original URL: `/assets/<room>/<file>?v=<v>` (ADR-0025); the work's permalink at art is `/?id=<uid>`. `kind` from the room (art's "Colors" room = paintings, the others = photographs) until art supplies it.
+- **Contract test**: the adapter runs in CI against a recorded copy of art's manifest (`test/fixtures/art/home.html`). Every refresh (every 10 minutes) validates the live manifest and records skipped works as problems (`settings`, key `source_problems:<id>`); alerts on them arrive with step 8.
 - **Proposed for art** (art's repository and decision): a versioned feed, e.g. `/feed/works.v1.json`, with exactly the `Work` fields and a per-work `printsAllowed` flag. The adapter switches to it when it exists; the shop then needs no knowledge of art's page markup.
 - Later sources (christina-art, instagetter) are one adapter each. Insta-style sources bring small square images (612–1440 px): only postcards, mugs and t-shirts pass the DPI floor; titles come from the admin (`works.title_override`); opt-in per image. For a large source, originals are fetched and hashed and display images rendered **only for works Klaus opens or enables**; the admin's list uses an admin-only thumbnail route that fetches and resizes on demand (review C F18).
 

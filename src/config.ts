@@ -30,6 +30,10 @@ export interface Config {
   skusConfig: string;
   previewGate: boolean;
   previewKey?: string;
+  /** Refresh content sources on a schedule (on by default on the cluster, off in mock mode). */
+  sourcesRefresh: boolean;
+  /** sharp's limitInputPixels and the upload limit (docs/design/04 §5.5). */
+  maxInputPixels: number;
   printful: {
     token?: string;
     baseUrl: string;
@@ -182,6 +186,11 @@ export function loadConfig(env: Env = process.env): Config {
   }
   const statusTokenSecret = real ? need('STATUS_TOKEN_SECRET', inMode) : get('STATUS_TOKEN_SECRET');
 
+  const refreshRaw = get('SOURCES_REFRESH') ?? (real ? 'on' : 'off');
+  if (refreshRaw !== 'on' && refreshRaw !== 'off') problems.push('SOURCES_REFRESH must be on or off');
+  const mp = Number(get('MAX_INPUT_MEGAPIXELS') ?? 50);
+  if (!Number.isFinite(mp) || mp < 1 || mp > 200) problems.push('MAX_INPUT_MEGAPIXELS must be between 1 and 200');
+
   const limits = loadLimits(env, mode, problems);
 
   if (problems.length) throw new ConfigError(problems);
@@ -195,6 +204,8 @@ export function loadConfig(env: Env = process.env): Config {
     skusConfig: get('SKUS_CONFIG') ?? './config/skus.json',
     previewGate,
     previewKey,
+    sourcesRefresh: refreshRaw === 'on',
+    maxInputPixels: Math.round(mp * 1_000_000),
     printful: {
       token: printfulToken,
       baseUrl: printfulBase ?? REAL_PRINTFUL,

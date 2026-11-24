@@ -133,7 +133,7 @@ real hosts with mock keys.
 
 Each mock piece is built when the shop step that needs it starts (review 1 F23.11;
 expect roughly the shop's own size again):
-1. With step 3 (catalog, shipping rates): mock catalog, shipping rates, files, the clock, the control API skeleton, spec validation.
+1. With step 3 (catalog, shipping rates): mock catalog, shipping rates, files, the clock, the control API skeleton, spec validation. **Done** (`mocks/printful/`, used in-process by the tests; the image comes with step 6, when e2e needs it). Variants not yet captured (6 × 8, 12 × 16, framed 12 × 16, t-shirt S/L/XL) carry plausible values, marked in `mocks/printful/catalog.ts`.
 2. With step 6 (checkout): mock Stripe customers, sessions, checkout page, events and signatures.
 3. With step 7 (submission): orders, webhooks, holds, shipments, all §6 scenarios; the invariant tests.
 4. Before step 10: the `inbound_events` export and the adapter's request trace for the go-live recording (§7.3).

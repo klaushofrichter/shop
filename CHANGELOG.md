@@ -5,6 +5,7 @@ then empties it on `main`.
 
 ## [Unreleased]
 
+- Picture images and print files are served from the shop itself (`/img/*`, `/files/*`), named by their content, rate-limited.
 - `/health/worker`: 200 while the background job runner is alive, 503 otherwise, for the uptime monitor.
 - The shop refuses to start with a configuration that doesn't fit its mode (`SHOP_MODE` mock, test or live) and names the problem.
 - First service skeleton: `/health` with the release version, a placeholder home page linking to the gallery, a 404 page, strict Content Security Policy, compressed text.
