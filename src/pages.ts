@@ -18,21 +18,28 @@ interface Layout {
   title: string;
   description: string;
   body: string;
+  /** Items in the visitor's cart; the header shows the cart link with it. */
+  cartCount?: number;
+  /** Before go-live (03 §9): the test banner and noindex. */
+  testShop?: boolean;
 }
 
-export function layout({ title, description, body }: Layout): string {
+export function layout({ title, description, body, cartCount, testShop }: Layout): string {
+  const robots = testShop ? '\n<meta name="robots" content="noindex">' : '';
+  const banner = testShop ? '\n<p class="test-banner" role="note">Test shop — nothing is charged or shipped.</p>' : '';
+  const cart = cartCount === undefined ? '' : ` <a class="cart-link" href="/cart">Cart${cartCount ? ` (${cartCount})` : ''}</a>`;
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
-<meta name="description" content="${esc(description)}">
+<meta name="description" content="${esc(description)}">${robots}
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/shop.css">
 </head>
-<body>
-<header class="top"><a class="brand" href="/">Shop</a> <span class="by">prints of paintings by Klaus Hofrichter</span></header>
+<body>${banner}
+<header class="top"><a class="brand" href="/">Shop</a> <span class="by">prints of paintings by Klaus Hofrichter</span>${cart}</header>
 <main>
 ${body}
 </main>
@@ -42,8 +49,9 @@ ${body}
 `;
 }
 
-export function homePage(): string {
+export function homePage(opts: { testShop?: boolean; cartCount?: number } = {}): string {
   return layout({
+    ...opts,
     title: 'Prints of paintings by Klaus Hofrichter',
     description: 'Prints, framed prints and merchandise of the paintings by Klaus Hofrichter shown at art.klaushofrichter.net.',
     body: `<h1>Prints of paintings by Klaus Hofrichter</h1>
@@ -52,8 +60,9 @@ export function homePage(): string {
   });
 }
 
-export function notFoundPage(): string {
+export function notFoundPage(opts: { testShop?: boolean; cartCount?: number } = {}): string {
   return layout({
+    ...opts,
     title: 'Not found · Shop',
     description: 'This page does not exist.',
     body: `<h1>Not found</h1>
