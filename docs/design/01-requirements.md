@@ -40,6 +40,9 @@ From Klaus, 2026-11-23 and 2026-11-24. Each has an id for tracing.
 | R14 | Start in Stripe test mode and with Printful draft orders; go live only when Klaus says so. |
 | R15 | Follow the cluster's repository and deployment rules (ADR-0016). |
 | R16 | **Fail-safes against large or unusual orders** (misuse, not real customers): hard limits, a hold for approval with an automatic refund if nobody approves, and a circuit breaker on volume (Klaus, 2026-11-24; ADR-0020). |
+| R17 | **Sales tax as legally required**: collected via Stripe Tax wherever Klaus is registered, recorded per order and line, exportable by period and state (Klaus, 2026-11-24; ADR-0012). |
+| R18 | **Mock Printful and mock Stripe**, usable instead of the real services by configuration, in CI and in test deployments, and verified against the real services by recording and comparing (Klaus, 2026-11-24; ADR-0024). |
+| R19 | Test deployments execute **no transaction with a real service and no Printful order** (Klaus, 2026-11-24). |
 
 ## 4. Quality requirements
 
@@ -74,6 +77,9 @@ From Klaus, 2026-11-23 and 2026-11-24. Each has an id for tracing.
 | R14 | [11 §2](11-operations.md#2-configuration), [12 §4](12-testing.md#4-test-mode-and-go-live) |
 | R15 | [11](11-operations.md), ADR-0016 |
 | R16 | [05 §3](05-quote-checkout-payment.md#3-checkout-session), [06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders), ADR-0020 |
+| R17 | [05 §6](05-quote-checkout-payment.md#6-tax), [08 §3](08-admin.md#3-pages), ADR-0012 |
+| R18 | [14](14-mock-services.md), [12](12-testing.md), ADR-0024 |
+| R19 | [14 §9](14-mock-services.md#9-test-deployment), [11 §1](11-operations.md#1-deployment) |
 
 ## 6. Out of scope (for launch)
 

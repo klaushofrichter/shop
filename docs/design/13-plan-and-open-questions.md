@@ -54,17 +54,15 @@ Still Klaus's, outside the ADRs:
 9. **Orientation of prints**: does Printful's `orientation` field on the order item select landscape for posters, or is a landscape file enough? (To verify with a draft order.)
 10. **Fail-safe thresholds** (ADR-0020): do they stop misuse without bothering real customers? Is auto-refund after 72 h the right fail-safe default?
 11. **Originals are already public on art** (found 2026-11-24): art serves every original at full resolution at `/assets/<room>/<file>` (its download link). The internal originals endpoint (ADR-0006) and the caution about print-file URLs (ADR-0019) protect something that is public anyway. Proposed ADR-0025: fetch originals from art's existing URL, no internal endpoint. Klaus decides whether originals should stay public on art.
-12. **Is anything here over-engineered for < 10 orders a week?** Candidates: the provider interface, the jobs table, reconciliation every hour.
+12. **Street addresses**: Printful validates none (captured). Accept returned parcels as the rare failure, or add an address-validation service?
+13. **Is anything here over-engineered for < 10 orders a week?** Candidates: the provider interface, the jobs table, reconciliation every hour.
 
 ## 4. Items to verify
 
-Captured on 2026-11-24 ([research/api-capture-findings.md](../research/api-capture-findings.md)): `shipping_options` without address collection ✔, Stripe Tax with the Customer's address ✔ (amount pending a test-mode registration), clothing tax code ✔, v1 cancel with the store-level token ✔ (on a draft), `@external_id` lookup ✔, error shapes ✔. Still open:
+Captured on 2026-11-24 ([research/api-capture-findings.md](../research/api-capture-findings.md)): `shipping_options` without address collection ✔, Stripe Tax with the Customer's address ✔ (amount pending a test-mode registration), clothing tax code ✔, v1 cancel with the store-level token ✔ (on a draft), `@external_id` lookup ✔, error shapes ✔; second capture: Stripe shapes with the pinned version ✔, estimation rejects state/ZIP errors but no street errors ✔, file library `ok`/`failed` ✔. Still open:
 
 | Item | How |
 |---|---|
-| Stripe response shapes with the pinned API version `2026-11-18.endive` | re-capture (requested) |
-| Does Printful's order estimation reject invalid addresses? | re-capture (requested; creates no order) |
-| Printful file library: processing result for good and broken files | re-capture (requested) |
 | Stripe Tax amounts | after Klaus adds a test-mode tax registration |
 | Printful `orientation` / landscape posters | a draft with a landscape file (allowed: drafts) |
 | Printful emails to end customers for API stores (expected: none) | first real order at go-live |

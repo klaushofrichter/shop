@@ -3,7 +3,7 @@
 Design of `shop.klaushofrichter.net`: prints and merchandise of the paintings on
 `art.klaushofrichter.net`, paid with Stripe, printed and shipped by Printful.
 
-- Status: **draft for review**, 2026-11-24. Review by Fable 5.2 on 2026-11-25, before implementation.
+- Status: **ready for review**, 2026-11-24, before implementation. Reviewer brief: [REVIEW-BRIEF.md](REVIEW-BRIEF.md).
 - Owner: Klaus Hofrichter (decides). Author: Shop - Cloud (agent).
 - Decisions behind this design: [docs/adr](../adr/README.md). Research: [docs/research](../research/).
 
@@ -57,3 +57,6 @@ path needs Klaus; he is told only when something cannot be fixed automatically.
 5. Are secrets, the originals and customer data protected as [10](10-security-privacy-legal.md) claims?
 6. Is anything here more than <10 orders a week needs? (Simplicity is a requirement, R11.)
 7. Should we build at all? ([02 §6](02-architecture.md#6-alternatives-to-building-it))
+8. Do the fail-safes ([06 §8](06-fulfilment.md#8-fail-safes-against-large-or-unusual-orders)) stop misuse without bothering real customers, and can a held order ever cost Klaus a Printful charge?
+9. Can the mock services ([14](14-mock-services.md)) drift from the real APIs unnoticed, and is any path through them able to reach a real payment or a real Printful order (R19)?
+10. Does the design use what the real APIs actually did ([research/api-capture-findings.md](../research/api-capture-findings.md)), e.g. address validation before payment and print files via the file library?
