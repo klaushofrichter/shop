@@ -115,7 +115,7 @@ Measured 2026-11-24 (Cluster, read-only on art's volume): 35 originals, all iPho
 - URL: `https://shop.klaushofrichter.net/files/<sha256>.jpg`. Immutable (`Cache-Control: public, max-age=31536000, immutable`), no directory listing, 404 for unknown hashes, `X-Robots-Tag: noindex`.
 - Printful fetches it when the order is created and again for reprints (ADR-0019), so files are kept as long as any order references them, plus 1 year.
 - The URL is unguessable (256-bit hash) but not secret once shared with Printful. Anyone holding it has a full-resolution reproduction. Accepted risk (ADR-0019); the URLs appear only in Printful requests and the admin.
-- Alternative kept open: register the file once in Printful's file library (`POST /v2/files`) and reference its id. It still needs the URL once.
+- **Registered in Printful's file library** when the offer is enabled (`POST /v2/files` with the URL, then poll until processed). The offer becomes sellable only when Printful reports the file OK, because Printful accepts a draft order with an unreachable file URL and would fail it only later (captured 2026-11-24). Orders then reference the file.
 
 ## 6. Previews (mockups)
 

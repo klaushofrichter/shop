@@ -16,7 +16,8 @@ Run on the cluster node (the keys are in its `.env`):
 
 ```bash
 NODE_USE_ENV_PROXY=1 node scripts/capture/capture-apis.mjs --env ~/Development/shop/.env --out captures/$(date +%F)
-# options: --only printful|stripe, --no-drafts
+# options: --only printful,stripe,estimation,files (comma-separated), --no-drafts,
+#          --stripe-version 2026-11-18.endive (default: the version stripe-node pins)
 ```
 
 Output: one JSON file per scenario (requests, statuses, selected headers, bodies) and

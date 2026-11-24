@@ -72,7 +72,8 @@ the schema has `provider_orders` as a separate table so it can.
 - Order body: `external_id`, `shipping` (the method the customer paid for, e.g. `STANDARD`, sent explicitly), `recipient` (from the order), `order_items`, `retail_costs { currency: "USD", shipping, tax }` (what the customer paid, shown on Printful's side), `customization.packing_slip { store_name: "Klaus Hofrichter Art", message, email, custom_order_id: <order number> }`.
 - `external_id`: our order id, `[A-Za-z0-9_-]`, at most 32 characters; Printful never releases a used id, so a resubmission after a cancel uses `<id>-2`, `-3`… (stored on `provider_orders`).
 - Lookup by our id: `GET /v2/orders/@<external_id>` (documented in the v2 spec: "Order External ID (string prepended with @ symbol)").
-- Cancel: v2 `DELETE /v2/orders/{id}` only deletes drafts, failed or cancelled orders; cancelling a submitted order uses **v1** `DELETE https://api.printful.com/orders/{id}` *(verify with a test order that the store-level token works on v1)*.
+- Cancel: v2 `DELETE /v2/orders/{id}` only deletes drafts, failed or cancelled orders; cancelling a submitted order uses **v1** `DELETE https://api.printful.com/orders/{id}`. Captured 2026-11-24 on a draft: the store-level token works on v1, the order becomes `canceled` and stays visible. (On a confirmed order it can't be observed without a real order.)
+- Error mapping from captured responses: duplicate `external_id` → 400 "External ID validation error…" → treat as "exists", look up `@external_id`; unknown variant → 404 → `Permanent`; invalid address → 400 "Recipient: …" → `Permanent` with the message; after a `PATCH`, costs return to `calculating`.
 
 ## 4. Submission
 

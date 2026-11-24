@@ -46,7 +46,7 @@ function readEnv(path) {
 const env = args['self-test'] ? {} : readEnv(envPath);
 const PRINTFUL_TOKEN = env.PRINTFUL_TOKEN;
 const STRIPE_KEY = env.STRIPE_TEST_TOKEN;
-if (!args['self-test'] && only.includes('printful') && !PRINTFUL_TOKEN) die('PRINTFUL_TOKEN missing');
+if (!args['self-test'] && (only.includes('printful') || only.includes('estimation') || only.includes('files')) && !PRINTFUL_TOKEN) die('PRINTFUL_TOKEN missing');
 if (!args['self-test'] && only.includes('stripe')) {
   if (!STRIPE_KEY) die('STRIPE_TEST_TOKEN missing');
   if (!/^(rk|sk)_test_/.test(STRIPE_KEY)) die('STRIPE_TEST_TOKEN is not a test-mode key; refusing');
@@ -187,11 +187,7 @@ async function printful() {
   for (let i = 0; estId && i < 10; i++) { const r = await pf('GET', `/v2/order-estimation-tasks?id=${estId}`); estPolls.push(r); if (r.body?.data?.status !== 'pending') break; await sleep(2000); }
   save('printful-order-estimation', [est, ...estPolls]);
 
-  const fileReg = await pf('POST', '/v2/files', { json: { url: FILE_URL } });
-  const fileId = fileReg.body?.data?.id;
-  const filePolls = [];
-  for (let i = 0; fileId && i < 6; i++) { const r = await pf('GET', `/v2/files/${fileId}`); filePolls.push(r); if (r.body?.data?.processing_status !== 'waiting') break; await sleep(3000); }
-  save('printful-files', [fileReg, ...filePolls]);
+  await files();
 
   const mock = await pf('POST', '/v2/mockup-tasks', { json: { format: 'jpg', mockup_width_px: 1000, products: [{ source: 'catalog', catalog_product_id: 2, catalog_variant_ids: [4651], placements: [{ placement: 'default', technique: 'digital', layers: [{ type: 'file', url: FILE_URL }] }] }] } });
   const taskId = mock.body?.data?.[0]?.id;
@@ -258,9 +254,42 @@ async function printfulDrafts() {
   save('printful-draft-errors', bad);
 }
 
+// ---------- Printful file library: how a good and a broken file are reported (no cost) ----------
+async function files() {
+  const ex = [];
+  for (const [label, url] of [['good', FILE_URL], ['unreachable', 'https://shop.klaushofrichter.net/files/does-not-exist.jpg'], ['not-an-image', 'https://art.klaushofrichter.net/health']]) {
+    const reg = await pf('POST', '/v2/files', { json: { url } });
+    reg.label = label; ex.push(reg);
+    const id = reg.body?.data?.id;
+    for (let i = 0; id && i < 12; i++) { const r = await pf('GET', `/v2/files/${id}`); r.label = label; ex.push(r); if (r.body?.data?.status !== 'waiting') break; await sleep(5000); }
+  }
+  save('printful-files', ex);
+}
+
+// ---------- Printful: does the cost estimate validate an address? (creates no order) ----------
+async function estimationAddresses() {
+  const items = draftItems([[11513, 1]]);
+  const ex = [];
+  for (const [label, recipient] of [
+    ['valid', ADDR],
+    ['state-zip-mismatch', { ...ADDR, state_code: 'NY' }],
+    ['invalid-state', { ...ADDR, state_code: 'ZZ', zip: '00000' }],
+    ['nonexistent-street', { ...ADDR, address1: '99999 Nonexistent Rd' }],
+    ['missing-address1', { name: 'Capture Test', city: 'Austin', state_code: 'TX', zip: '78701', country_code: 'US' }],
+  ]) {
+    const r = await pf('POST', '/v2/order-estimation-tasks', { json: { recipient, order_items: items } });
+    r.label = label; ex.push(r);
+    const id = r.body?.data?.id;
+    for (let i = 0; id && i < 10; i++) { const p = await pf('GET', `/v2/order-estimation-tasks?id=${id}`); p.label = label; ex.push(p); if (p.body?.data?.status !== 'pending') break; await sleep(2000); }
+  }
+  save('printful-estimation-addresses', ex);
+}
+
 // ---------- Stripe (test mode) ----------
 async function stripe() {
-  const ver = {}; // the account's default API version; recorded from the response's stripe-version header
+  // Pin the version the shop will use (the stripe-node release's pinned version). The
+  // account's default (2017-04-06 when first captured) has older response shapes.
+  const ver = { 'Stripe-Version': String(args['stripe-version'] ?? '2026-11-18.endive') };
   const customer = await st('POST', '/v1/customers', { headers: ver, form: { email: 'capture-test@example.com', name: 'Capture Test', address: { line1: '500 E Cesar Chavez St', city: 'Austin', state: 'TX', postal_code: '78701', country: 'US' }, shipping: { name: 'Capture Test', address: { line1: '500 E Cesar Chavez St', city: 'Austin', state: 'TX', postal_code: '78701', country: 'US' } }, metadata: { order_id: `capture-${stamp}` } } });
   const cus = customer.body?.id;
   save('stripe-customer', [customer, cus ? await st('GET', `/v1/customers/${cus}`, { headers: ver }) : null].filter(Boolean));
@@ -324,6 +353,8 @@ if (args['self-test']) { await selfTest(); process.exit(0); }
 mkdirSync(outDir, { recursive: true });
 try {
   if (only.includes('printful')) await printful();
+  if (only.includes('estimation')) await estimationAddresses();
+  if (only.includes('files')) await files();
   if (only.includes('stripe')) await stripe();
 } finally {
   writeFileSync(join(outDir, 'SUMMARY.txt'), log.join('\n') + '\n');

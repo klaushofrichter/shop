@@ -27,7 +27,8 @@
    Response (per option): `shipping` (method id, e.g. `STANDARD`), `shipping_method_name`, `rate`, `currency`, `min/max_delivery_days`, `min/max_delivery_dates` (may be absent), `shipments[]` (one entry per departure facility, with `customs_fees_possible`). Confirmed against the v2 OpenAPI spec, 2026-11-24.
 3. Keep at most 3 options: `STANDARD` first, then by price. A `400` "cannot ship" means no option: the quote page says so.
 4. Optional shipping markup: `SHIPPING_MARKUP_CENTS` per order (default 0; Klaus's choice).
-5. Store a **quote** row: cart snapshot (SKU, variant, quantity, unit price), normalised address, options, `expires_at = now + 30 min`. The quote id goes into the cart.
+5. **Validate the address and get the exact cost** with a Printful order-estimation task (`POST /v2/order-estimation-tasks`, no order is created; ~2–3 s): Printful rejects invalid addresses when an order is created, which in this flow is after payment (captured 2026-11-24), so the shop asks before payment. If the estimate rejects the address, the address form shows Printful's message. *(Whether estimation validates addresses like order creation: capture pending; [research](../research/api-capture-findings.md).)*
+6. Store a **quote** row: cart snapshot (SKU, variant, quantity, unit price), normalised address, options, `expires_at = now + 30 min`. The quote id goes into the cart.
 
 Caching: an identical request (same variants, quantities, country, state, zip) within 5 minutes reuses the previous response, which protects the 120 requests/minute limit and makes "back" cheap.
 
@@ -56,7 +57,7 @@ Rate limit on the public side: quotes are limited per client IP (e.g. 20 per 10 
    | `client_reference_id` | order id |
    | `metadata.order_id`, `payment_intent_data.metadata.order_id` | order id |
    | `line_items[]` | per item: `price_data { currency: usd, unit_amount, tax_behavior: exclusive, product_data { name: "Framed print 8 × 10 in, black frame — Undertow", images: [mockup URL], tax_code } }`, `quantity` |
-   | `shipping_options` | exactly one: `shipping_rate_data { type: fixed_amount, fixed_amount { amount, currency: usd }, display_name, delivery_estimate { minimum/maximum business_day }, tax_behavior: exclusive, tax_code: txcd_92010001 }` *(verify that `shipping_options` works without `shipping_address_collection`; fallback: shipping as a separate line item "Shipping — Standard")* |
+   | `shipping_options` | exactly one: `shipping_rate_data { type: fixed_amount, fixed_amount { amount, currency: usd }, display_name, delivery_estimate { minimum/maximum business_day }, tax_behavior: exclusive, tax_code: txcd_92010001 }`. Works without `shipping_address_collection` (captured 2026-11-24: total = items + shipping). |
    | `shipping_address_collection` | not set: the address comes from the Customer |
    | `billing_address_collection` | `auto` |
    | `automatic_tax.enabled` | `TAX_ENABLED` (ADR-0012) |
@@ -112,10 +113,10 @@ and Klaus's steps in [research/sales-tax.md](../research/sales-tax.md).
 
 - `TAX_ENABLED=true` in live mode once Klaus's registration is in Stripe Tax (and a test-mode registration for testing). Stripe calculates only for states with a registration; elsewhere the tax is $0, which is correct while the shop is below other states' thresholds.
 - Prices are tax-exclusive; the quote page says "Sales tax, if any, is calculated on the payment page".
-- Tax codes in `config/skus.json` per SKU kind: `txcd_99999999` (general tangible goods) for prints, framed prints, postcards and mugs; the clothing code for t-shirts (probably `txcd_30011000`, *(verify)* with `GET /v1/tax_codes`); `txcd_92010001` on the shipping rate.
+- Tax codes in `config/skus.json` per SKU kind: `txcd_99999999` (general tangible goods) for prints, framed prints, postcards and mugs; `txcd_30011000` (Clothing & Footwear, confirmed) for t-shirts; `txcd_92010001` on the shipping rate.
 - After payment the shop stores `total_details.amount_tax` on the order and each line's tax (from the session's line items, `expand: line_items`), with the ship-to state and ZIP.
 - The admin exports, per period and state: items, shipping, tax collected, refunds (CSV), to cross-check Stripe's tax report when filing.
-- Address source: the Customer's address (ADR-0023), *(verify)* that Stripe Tax uses it; fallback: Checkout collects the shipping address restricted to the quoted country and the shop compares it with the quote.
+- Address source: the Customer's address (ADR-0023). Captured 2026-11-24: a session with `automatic_tax` and the address only on the Customer is accepted with `automatic_tax.status: complete` (tax 0 without a test-mode registration; the amount is checked once one exists).
 - Printful separately charges Klaus tax on wholesale unless his resale certificate is on file (his step, not software).
 
 ## 7. Refunds
@@ -130,6 +131,7 @@ and Klaus's steps in [research/sales-tax.md](../research/sales-tax.md).
 | Variable | Use |
 |---|---|
 | `STRIPE_MODE` | `test` (default) or `live` |
+| API version | **pinned** in code: `2026-11-18.endive` (what stripe-node 23 pins). The account's default is `2017-04-06` (captured 2026-11-24), whose response shapes differ, so the shop never relies on the default. |
 | `STRIPE_SECRET_KEY` | the restricted key of the current mode; the pod only ever holds one. Built by `scripts/create-secrets.sh` from the node's `STRIPE_TEST_TOKEN`, or from `STRIPE_LIVE_TOKEN` at go-live ([11 §1](11-operations.md#1-deployment)). The process refuses to start if the key's prefix (`rk_test_`/`rk_live_`) doesn't match `STRIPE_MODE`. |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_…` of that mode's endpoint registration |
 

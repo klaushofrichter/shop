@@ -56,15 +56,16 @@ Still Klaus's, outside the ADRs:
 11. **Originals are already public on art** (found 2026-11-24): art serves every original at full resolution at `/assets/<room>/<file>` (its download link). The internal originals endpoint (ADR-0006) and the caution about print-file URLs (ADR-0019) protect something that is public anyway. Proposed ADR-0025: fetch originals from art's existing URL, no internal endpoint. Klaus decides whether originals should stay public on art.
 12. **Is anything here over-engineered for < 10 orders a week?** Candidates: the provider interface, the jobs table, reconciliation every hour.
 
-## 4. Items to verify before code depends on them
+## 4. Items to verify
+
+Captured on 2026-11-24 ([research/api-capture-findings.md](../research/api-capture-findings.md)): `shipping_options` without address collection ✔, Stripe Tax with the Customer's address ✔ (amount pending a test-mode registration), clothing tax code ✔, v1 cancel with the store-level token ✔ (on a draft), `@external_id` lookup ✔, error shapes ✔. Still open:
 
 | Item | How |
 |---|---|
-| `shipping_options` without `shipping_address_collection` in hosted Checkout | Stripe test mode |
-| Stripe Tax uses the Customer's shipping address | Stripe test mode (test-mode tax registration) |
-| Clothing tax code (`txcd_30011000`?) | `GET /v1/tax_codes` |
-| v1 cancel works with the store-level token | a Printful draft → confirm in a test store, or ask Printful support |
-| Printful `orientation` / landscape posters | a draft order with a landscape file |
-| Variant ids and print areas in `config/skus.json` | startup check against the live catalog (built in) |
-| Printful emails to end customers for API stores (expected: none) | first test order |
+| Stripe response shapes with the pinned API version `2026-11-18.endive` | re-capture (requested) |
+| Does Printful's order estimation reject invalid addresses? | re-capture (requested; creates no order) |
+| Printful file library: processing result for good and broken files | re-capture (requested) |
+| Stripe Tax amounts | after Klaus adds a test-mode tax registration |
+| Printful `orientation` / landscape posters | a draft with a landscape file (allowed: drafts) |
+| Printful emails to end customers for API stores (expected: none) | first real order at go-live |
 | Cluster scraping and alerting from `/metrics` | Cluster |
