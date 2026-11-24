@@ -77,7 +77,7 @@ keeps none of it).
 ```json
 [{ "id": "art", "default": true, "adapter": "art-manifest",
    "publicUrl": "https://art.klaushofrichter.net", "clusterUrl": "http://art.art.svc.cluster.local",
-   "creator": "Klaus Hofrichter", "packingSlipStoreName": "Klaus Hofrichter Art",
+   "creator": "Klaus Hofrichter",
    "printsAllowedDefault": false,
    "printsAllowedWorks": ["<work id>", "…"] }]
 ```

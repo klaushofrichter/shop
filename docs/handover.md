@@ -20,6 +20,8 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 - Real API behaviour captured twice on 2026-11-24; raw captures in the private repository `shop-private` (no CI). The capture script now reads only the test-store token and refuses to write inside this repository.
 - Cluster, 2026-11-25: a fork PR can reach a self-hosted runner on a public repository; the shop's runner gets no Docker-in-Docker and the repository requires approval for outside contributors. kube-setup is private (threshold values and store ids go there). Secret scanning and push protection are on.
 
+- **Step 2 in progress** (2026-11-26): configuration and mode checks (`src/config.ts`), SKU and source files (`config/`), both database files with migrations (`src/db/`), the `Clock`, the job runner and `/health/worker`.
+
 ## Next
 
 1. Build in the order of `docs/design/13-plan-and-open-questions.md` §1, starting with step 2.

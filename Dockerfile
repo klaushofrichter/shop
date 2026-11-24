@@ -13,8 +13,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
 COPY public ./public
+COPY config ./config
 # The shop's data (SQLite, print files) will live on a volume mounted here.
 RUN mkdir -p /var/lib/shop && chown 1000:1000 /var/lib/shop
+ENV DATA_DIR=/var/lib/shop
 # Numeric, not `USER node`: runAsNonRoot must be able to verify it.
 USER 1000:1000
 # Stamped by the deploy (YYYY.MM.DD.N); "dev" for local builds. Last, so a new

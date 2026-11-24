@@ -43,7 +43,7 @@ CSRF token** (review 1 F28).
 `GET /p/:source/:work`:
 1. Look the work up. Unknown → 404 with links to the galleries. Known but nothing sellable → "Prints of *Title* aren't available" with a link back to the work on its source.
 2. Show the work (the shop's display image, `srcset`, width and height set), title, creator, year, and wording from its `kind` ("Prints of the painting …" / "of the photograph …"); never claims about originals the source didn't make.
-3. The sellable offers as cards: mockup, name ("Art print 12 × 16 in, landscape"), price, a quantity field whose `max` is the SKU's `maxQuantity`; **Add to cart**.
+3. The sellable offers as cards: mockup, name ("Art print 12 × 16 in, landscape"), price, a quantity field whose `max` is the SKU's limit from `SKU_MAX_QUANTITY`; **Add to cart**.
 4. A visible cart link with the item count on every page.
 
 ## 4. Cart and address

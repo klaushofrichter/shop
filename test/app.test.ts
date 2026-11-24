@@ -1,7 +1,11 @@
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
+import { FakeClock } from '../src/clock';
+import { memoryDatabases } from '../src/db';
+import { JobRunner } from '../src/jobs';
 import { esc } from '../src/pages';
+import { workerHealth } from '../src/worker-health';
 
 const app = createApp();
 
@@ -58,5 +62,29 @@ describe('pages', () => {
 describe('esc', () => {
   it('escapes HTML metacharacters', () => {
     expect(esc(`<a href="x">'&'</a>`)).toBe('&lt;a href=&quot;x&quot;&gt;&#39;&amp;&#39;&lt;/a&gt;');
+  });
+});
+
+describe('/health/worker', () => {
+  it('is 503 without a job runner', async () => {
+    const res = await request(createApp()).get('/health/worker');
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ status: 'failing', failing: ['runner'] });
+  });
+
+  it('follows the runner heartbeat', async () => {
+    const clock = new FakeClock();
+    const { orders } = memoryDatabases();
+    const opts = { checkReconciliation: true, checkAlerts: true, startedAtMs: clock.now() };
+    const worker = createApp({ workerHealth: () => workerHealth(orders, clock, opts) });
+    expect((await request(worker).get('/health/worker')).status).toBe(200); // fresh start
+    await new JobRunner(orders, clock).tick();
+    clock.advance(6 * 60_000);
+    const stale = await request(worker).get('/health/worker');
+    expect(stale.status).toBe(503);
+    expect(stale.body.failing).toEqual(['runner']);
+    clock.advance(2 * 60 * 60_000);
+    await new JobRunner(orders, clock).tick();
+    expect((await request(worker).get('/health/worker')).body.failing).toEqual(['reconciliation']);
   });
 });
