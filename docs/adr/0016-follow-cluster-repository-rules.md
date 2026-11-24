@@ -22,7 +22,7 @@ The shop follows those rules. Where this repo's own docs disagree with them, the
 - **README badge row:** release, PR checks, image build, deploy, Dependabot.
 - **Container:** non-root, `USER 1000:1000`, the drop-ALL `securityContext`, digest-pinned image for a Deployment, atomic writes to the PVC with random temp names.
 - **Public pages baseline:** e2e in Chromium, Android, iPhone (WebKit) and Firefox with `failOnFlakyTests`, axe-core with zero WCAG 2.2 AA violations, Lighthouse floors, a live check after each release, text compression.
-- **Google OAuth:** the hand-rolled pattern (`state` cookie, `verifyIdToken`, `ALLOWED_EMAILS`, HMAC-signed cookie, logout that really logs out, `trust proxy` as a CIDR list), its own OAuth client in the `skylar-technology` project.
+- **Google OAuth:** the hand-rolled pattern (`state` cookie, `verifyIdToken`, `ALLOWED_EMAILS`, HMAC-signed cookie, logout that really logs out, `trust proxy` as a CIDR list), its own OAuth client in the cluster's Google Cloud project.
 - **Secrets:** never in git or chat; `.env` git-ignored, no inline comments in `.env` values; Kubernetes Secrets created with `kubectl create secret` by Klaus or Cluster.
 - **Cluster changes** (namespace, manifests, runner, Ingress, NetworkPolicy, monitoring) are made by the Cluster session in kube-setup; repo settings and branch protection too.
 - **Releases:** merge and release when all required checks are green (Klaus, 2026-11-10); exceptions (exposure, secrets, deletions, cost, permissions, going live) stay Klaus's.

@@ -6,7 +6,7 @@
 
 ## Context
 
-The cluster's pattern: hand-rolled Google OAuth with `google-auth-library`, `ALLOWED_EMAILS`, HMAC-signed session cookie, logout that really logs out (vault: Building a New Service). New OAuth clients go into the Google Cloud project `skylar-technology`.
+The cluster's pattern: hand-rolled Google OAuth with `google-auth-library`, `ALLOWED_EMAILS`, HMAC-signed session cookie, logout that really logs out (vault: Building a New Service). New OAuth clients go into the cluster's Google Cloud project.
 
 ## Options considered
 

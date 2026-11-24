@@ -162,7 +162,7 @@ quoted ──► checkout_open ──► paid ──► files_ready ──► su
 
 ## 8. Admin
 
-- Inside the shop at `/admin`, behind Google sign-in with the cluster's hand-rolled pattern (`google-auth-library`, `state` cookie, `ALLOWED_EMAILS`, HMAC-signed session cookie, logout that lands on a 200 page with a Sign in link, `Cache-Control: no-store`), its own OAuth client in the `skylar-technology` project; CSRF protection on admin forms. → [ADR-0013](adr/0013-admin-in-shop.md)
+- Inside the shop at `/admin`, behind Google sign-in with the cluster's hand-rolled pattern (`google-auth-library`, `state` cookie, `ALLOWED_EMAILS`, HMAC-signed session cookie, logout that lands on a 200 page with a Sign in link, `Cache-Control: no-store`), its own OAuth client in the cluster's Google Cloud project; CSRF protection on admin forms. → [ADR-0013](adr/0013-admin-in-shop.md)
 - **SKUs**: Klaus picks Printful catalog products and variants (e.g. framed poster 16×20 black frame, mug 11 oz, t-shirt M white). The list comes from Printful's catalog API, so only supported variants can be chosen. Each SKU stores Printful's product and variant ids, the placement, the print area (pixels, DPI) and a default retail price. A job refreshes Printful's prices and availability daily and flags SKUs that went out of stock or got more expensive.
 - **Pictures**: from art's manifest. Per picture: enabled or not, which SKUs it offers, price overrides, crop/position per product (a simple crop box on the preview), the effective DPI per SKU, mockups.
 - **Prices**: per SKU, with optional per-picture override. The admin shows Printful's cost (product + typical shipping), Stripe's fee and the margin next to each price.
