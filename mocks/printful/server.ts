@@ -1,13 +1,14 @@
 /**
  * Mock Printful (docs/design/14 §4, §10): identity, catalog, shipping rates,
  * the file library, mockups, orders (draft, costs, confirm, delete, cancel),
- * rate-limit headers and the control API. Webhooks follow with step 7b.
+ * shipments, signed webhooks, rate-limit headers and the control API.
  *
  * Shapes follow the 2026-11-24 captures; requests are validated against the
  * pinned v2 spec and unknown fields are refused (14 §7.1). Mock tokens start
  * with `mock_printful_`; anything else gets Printful's 401.
  */
 import express, { type Express, type Request, type Response } from 'express';
+import { createHmac } from 'node:crypto';
 import sharp from 'sharp';
 import type { Clock } from '../../src/clock';
 import { MOCK_VARIANTS, SHIP_RATES, US_STATES, type MockVariant } from './catalog';
@@ -58,6 +59,22 @@ export interface MockOrder {
   costsFail: boolean;
   confirmedAt?: number;
   canceledBy?: 'shop' | 'printful';
+  shipments: MockShipment[];
+}
+
+export interface MockShipment {
+  id: number;
+  status: string;
+  delivery: string;
+  shippedAt: number;
+  deliveredAt?: number;
+}
+
+/** Where and how the mock sends webhooks (06 §3); target is read at send time. */
+export interface MockWebhookConfig {
+  target: string;
+  secretHex: string;
+  publicKey: string;
 }
 
 interface MockMockup {
@@ -76,13 +93,18 @@ export interface MockPrintful {
   requests: Array<{ method: string; path: string; body: unknown }>;
   files: Map<number, MockFile>;
   orders: Map<number, MockOrder>;
-  /** Move an order along as Printful would (the webhooks follow with step 7b). */
-  setOrderStatus(id: number, status: string): void;
+  /** Move an order along as Printful would, sending its webhook. */
+  advance(id: number, status: string): Promise<void>;
+  /** Ship every item in one parcel: `fulfilled`, `shipment_sent`. Returns the shipment id. */
+  ship(id: number): Promise<number>;
+  deliver(shipmentId: number): Promise<void>;
+  /** Send an event as Printful would (used by the scenarios above). */
+  emit(type: string, o: MockOrder, sh?: MockShipment): Promise<number | 'error'>;
 }
 
 let spec: PrintfulSpec | undefined;
 
-export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number): void } }): MockPrintful {
+export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number): void }; webhook?: MockWebhookConfig }): MockPrintful {
   spec ??= new PrintfulSpec();
   const { clock } = opts;
   const state = {
@@ -113,10 +135,17 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     state.scenario = { ...state.scenario, ...(req.body as Scenario) };
     res.json({ ok: true });
   });
-  app.post('/__mock/orders/:id/status', (req, res) => {
-    const o = state.orders.get(Number(req.params.id));
-    if (!o) return res.status(404).json({ error: 'no such order' });
-    o.status = String((req.body as { status?: string }).status);
+  app.post('/__mock/orders/:id/advance', async (req, res) => {
+    if (!state.orders.has(Number(req.params.id))) return res.status(404).json({ error: 'no such order' });
+    await advance(Number(req.params.id), String((req.body as { status?: string }).status));
+    res.json({ ok: true });
+  });
+  app.post('/__mock/orders/:id/ship', async (req, res) => {
+    if (!state.orders.has(Number(req.params.id))) return res.status(404).json({ error: 'no such order' });
+    res.json({ shipment: await ship(Number(req.params.id)) });
+  });
+  app.post('/__mock/shipments/:id/deliver', async (req, res) => {
+    await deliver(Number(req.params.id));
     res.json({ ok: true });
   });
   app.get('/__mock/orders', (_req, res) => res.json([...state.orders.values()].map((o) => ({ id: o.id, external_id: o.externalId, status: o.status }))));
@@ -393,7 +422,7 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     }
     const o: MockOrder = {
       id: state.nextOrderId++, externalId: b.external_id ?? null, status: 'draft', created: clock.now(), shipping: b.shipping ?? 'STANDARD',
-      body: req.body as Record<string, unknown>, itemsCents: items, shippingCents: shipping, costsFail: !!state.scenario.failCosts,
+      body: req.body as Record<string, unknown>, itemsCents: items, shippingCents: shipping, costsFail: !!state.scenario.failCosts, shipments: [],
     };
     state.orders.set(o.id, o);
     if (state.scenario.loseNextCreateAnswer) {
@@ -438,7 +467,71 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     o.status = 'canceled';
     o.canceledBy = 'shop';
     res.json({ code: 200, result: { id: o.id, status: 'canceled' } });
+    void emit('order_canceled', o);
   });
+  app.get('/v2/orders/:ref/shipments', (req, res) => {
+    const o = findOrder(String(req.params.ref));
+    if (!o) return fail(res, 404, 'NotFound', 'Order not found');
+    send(res, 200, { data: o.shipments.map((sh) => shipmentBody(o, sh)), extra: [], paging: { total: o.shipments.length, limit: 100, offset: 0 }, _links: {} });
+  });
+
+  // ---- webhooks (06 §3): signed deliveries, shipment details only via the API ----
+  const isoS = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const shipmentBody = (o: MockOrder, sh: MockShipment) => ({
+    id: sh.id, order_id: o.id, order_external_id: o.externalId, carrier: 'USPS', service: 'USPS Ground Advantage',
+    shipment_status: sh.status, shipped_at: isoS(sh.shippedAt), delivery_status: sh.delivery, delivered_at: sh.deliveredAt ? isoS(sh.deliveredAt) : null,
+    departure_address: { country_name: 'United States', country_code: 'US', state_code: 'NC' }, is_reshipment: false,
+    tracking_number: `9400000000000${sh.id}`, tracking_url: `https://tools.usps.com/go/TrackConfirmAction?tLabels=9400000000000${sh.id}`,
+    tracking_events: [], estimated_delivery: { from_date: isoS(sh.shippedAt + 2 * 86_400_000).slice(0, 10), to_date: isoS(sh.shippedAt + 5 * 86_400_000).slice(0, 10), calculated_at: isoS(sh.shippedAt) },
+    shipment_items: ((o.body.order_items ?? []) as Array<{ external_id?: string; quantity: number }>).map((i, k) => ({ id: o.id * 10 + k, order_item_id: o.id * 10 + k, order_item_external_id: i.external_id ?? null, quantity: i.quantity })),
+    _links: { self: { href: `https://api.printful.com/v2/shipments/${sh.id}` } },
+  });
+  let nextShipmentId = 41000001;
+  async function emit(type: string, o: MockOrder, sh?: MockShipment): Promise<number | 'error'> {
+    const w = opts.webhook;
+    if (!w?.target) return 'error';
+    const body = Buffer.from(JSON.stringify({
+      type, occurred_at: isoS(clock.now()), retries: 0, store_id: MOCK_STORE.id,
+      data: {
+        order: { id: o.id, external_id: o.externalId, status: o.status, store_id: MOCK_STORE.id, dashboard_url: `https://www.printful.com/dashboard?order_id=${o.id}`, created_at: isoS(o.created), updated_at: isoS(clock.now()) },
+        ...(sh ? { shipment: { id: sh.id, shipment_status: sh.status, delivery_status: sh.delivery } } : {}),
+      },
+    }));
+    const signature = createHmac('sha256', Buffer.from(w.secretHex, 'hex')).update(body).digest('hex');
+    try {
+      const r = await fetch(w.target, { method: 'POST', headers: { 'content-type': 'application/json', 'x-pf-webhook-signature': signature, 'x-pf-webhook-public-key': w.publicKey }, body });
+      return r.status;
+    } catch {
+      return 'error';
+    }
+  }
+  const EVENT_FOR: Record<string, string> = { inprocess: 'order_updated', pending: 'order_updated', canceled: 'order_canceled', failed: 'order_failed', onhold: 'order_put_hold' };
+  async function advance(id: number, status: string) {
+    const o = state.orders.get(id);
+    if (!o) return;
+    const was = o.status;
+    o.status = status;
+    if (status === 'canceled') o.canceledBy = 'printful';
+    await emit(was === 'onhold' && status !== 'onhold' ? 'order_remove_hold' : (EVENT_FOR[status] ?? 'order_updated'), o);
+  }
+  async function ship(id: number): Promise<number> {
+    const o = state.orders.get(id)!;
+    const sh: MockShipment = { id: nextShipmentId++, status: 'shipped', delivery: 'in_transit', shippedAt: clock.now() };
+    o.shipments.push(sh);
+    o.status = 'fulfilled';
+    await emit('shipment_sent', o, sh);
+    return sh.id;
+  }
+  async function deliver(shipmentId: number) {
+    for (const o of state.orders.values()) {
+      const sh = o.shipments.find((x) => x.id === shipmentId);
+      if (sh) {
+        sh.delivery = 'delivered';
+        sh.deliveredAt = clock.now();
+        await emit('shipment_delivered', o, sh);
+      }
+    }
+  }
 
   app.use((req, res) => fail(res, 404, 'NotFound', `mock: no route for ${req.method} ${req.path}`));
 
@@ -461,9 +554,9 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     requests: state.requests,
     files: state.files,
     orders: state.orders,
-    setOrderStatus(id, status) {
-      const o = state.orders.get(id);
-      if (o) o.status = status;
-    },
+    advance,
+    ship,
+    deliver,
+    emit,
   };
 }

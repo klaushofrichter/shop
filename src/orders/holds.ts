@@ -28,6 +28,7 @@ export const REASONS: Record<string, { kind: HoldKind; deadlineMs: number; actio
   costs_failed: { kind: 'attention', deadlineMs: 24 * H, action: 'refund' },
   provider_failed: { kind: 'attention', deadlineMs: 24 * H, action: 'alert' }, // order_failed; the deadline tries a delete (7c)
   confirm_failed: { kind: 'attention', deadlineMs: 24 * H, action: 'alert' }, // three confirms without a confirmed order
+  provider_canceled: { kind: 'attention', deadlineMs: 0, action: 'refund' }, // Printful cancelled the newest attempt: refund if I4 holds
 };
 
 /** Open a hold with all its reasons (they must share a kind). Returns the hold id. */

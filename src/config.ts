@@ -237,6 +237,8 @@ export function loadConfig(env: Env = process.env): Config {
     stripeFeeFixedCents: num('STRIPE_FEE_FIXED_CENTS', 30, 200),
   };
 
+  const pfSecret = get('PRINTFUL_WEBHOOK_SECRET');
+  if (pfSecret && !/^([0-9a-f]{2})+$/i.test(pfSecret)) problems.push('PRINTFUL_WEBHOOK_SECRET must be hex (the secret_key Printful returns)');
   const slipEmail = get('PACKING_SLIP_EMAIL');
   if (slipEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(slipEmail)) problems.push('PACKING_SLIP_EMAIL must be an e-mail address');
   const slipPhone = get('PACKING_SLIP_PHONE');

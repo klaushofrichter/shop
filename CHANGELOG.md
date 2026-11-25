@@ -5,6 +5,7 @@ then empties it on `main`.
 
 ## [Unreleased]
 
+- The order page follows the order through Printful: in production, shipped (each parcel with its carrier, tracking link and expected delivery), delivered.
 - Paid orders go to Printful automatically: a draft, a cost check, then confirmation (a test shop stops at the draft). Problems put the order on hold for Klaus instead of guessing.
 - Every picture from art is offered with every product that prints sharply enough; the admin can switch a picture or product off. Prices are set per product.
 - A whole purchase is tested in a browser on every change, against stand-ins for Printful, Stripe and the gallery.

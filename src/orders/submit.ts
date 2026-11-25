@@ -144,6 +144,9 @@ export function adoptProviderOrder(db: Db, clock: Clock, orderId: string, attemp
     ).run(po.id, po.status, state, JSON.stringify(po.costs), now, orderId, attempt);
     if (newestAttempt(db, orderId)?.attempt !== attempt) return;
     const to = po.status === 'draft' && a.state === 'confirming' ? 'confirming' : FULFILMENT_OF[po.status];
+    // Delivery is the shop's own conclusion from the shipments; Printful's `fulfilled` never undoes it.
+    const cur = (db.prepare('SELECT fulfilment_state f FROM orders WHERE id = ?').get(orderId) as { f: string }).f;
+    if ((cur === 'delivered' && to === 'shipped') || cur === 'test_draft_ok') return;
     moveFulfilment(db, clock, orderId, to, cause, attempt);
   });
 }

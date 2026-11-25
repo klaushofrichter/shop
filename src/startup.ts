@@ -27,6 +27,7 @@ import { randomBytes } from 'node:crypto';
 import { StripeClient } from './payments/stripe';
 import { registerStripeEventJob } from './orders/webhooks';
 import { registerSubmitJob } from './orders/submit';
+import { registerPrintfulEventJob } from './orders/fulfilment-events';
 import { RetryLater } from './jobs';
 
 export interface Shop {
@@ -94,6 +95,7 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
       skus, quote: config.quote, fulfilment: config.fulfilment, log,
     });
   }
+  if (provider) registerPrintfulEventJob(runner, { orders: dbs.orders, clock, provider, log });
   // E-mails arrive with step 8: their jobs wait until then.
   for (const kind of provider && stripe ? ['email.send'] : ['order.submit', 'email.send']) {
     runner.register(kind, { maxAttempts: 1_000_000, run: async () => { throw new RetryLater(6 * 60 * 60_000, `${kind} is not built yet`); } });
@@ -126,6 +128,14 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
       storeLabel: config.mode,
     },
     webhooks: { orders: dbs.orders, clock, stripeWebhookSecret: config.stripe.webhookSecret, log },
+    printfulWebhooks: {
+      orders: dbs.orders,
+      clock,
+      secretHex: config.printful.webhookSecret,
+      publicKey: config.printful.webhookPublicKey,
+      storeId: () => providerStatus?.storeId,
+      log,
+    },
     publicSite: {
       catalog: dbs.catalog,
       orders: dbs.orders,

@@ -116,6 +116,19 @@ test('Klaus offers a print, a customer buys it, the order page shows the payment
     await page.goto(orderUrl);
     await expect(page.getByText('In preparation')).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 60_000 });
+
+  // Mock Printful ships it; its signed webhook reaches the shop: "Shipped", with the parcel's tracking.
+  const MOCK_PRINTFUL = process.env.MOCK_PRINTFUL_URL ?? 'http://localhost:9101';
+  const pfOrders = (await (await fetch(`${MOCK_PRINTFUL}/__mock/orders`)).json()) as Array<{ id: number; status: string }>;
+  const pending = pfOrders.filter((o) => o.status === 'pending');
+  expect(pending).toHaveLength(1);
+  await fetch(`${MOCK_PRINTFUL}/__mock/orders/${pending[0].id}/ship`, { method: 'POST' });
+  await expect(async () => {
+    await page.goto(orderUrl);
+    await expect(page.getByText('Shipped', { exact: true })).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 60_000 });
+  await expect(page.getByText(/Parcel 1: USPS/)).toBeVisible();
+  expect((await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze()).violations.map((v) => v.id)).toEqual([]);
   expect(problems).toEqual([]);
   await customer.close();
 });

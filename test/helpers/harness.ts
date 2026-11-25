@@ -13,6 +13,8 @@ import { FakeClock } from '../../src/clock';
 import { startShop, type Shop } from '../../src/startup';
 
 export const WEBHOOK_SECRET = 'whsec_mock_harness';
+export const PF_SECRET = 'ab'.repeat(32);
+export const PF_PUBLIC_KEY = 'mock-pf-public-key';
 
 const listen = async (app: { listen(port: number): Server }) => {
   const s = app.listen(0);
@@ -31,7 +33,8 @@ export interface Harness {
 
 export async function startHarness(env: Record<string, string> = {}): Promise<Harness> {
   const clock = new FakeClock(Date.UTC(2026, 10, 26, 15));
-  const printful = createMockPrintful({ clock });
+  const pfWebhook = { target: '', secretHex: PF_SECRET, publicKey: PF_PUBLIC_KEY };
+  const printful = createMockPrintful({ clock, webhook: pfWebhook });
   const stripeOpts = { clock, webhookSecret: WEBHOOK_SECRET, checkoutBase: 'http://checkout.invalid/pay', webhookTarget: '' };
   const stripe = createMockStripe(stripeOpts);
   const pf = await listen(printful.app);
@@ -44,6 +47,7 @@ export async function startHarness(env: Record<string, string> = {}): Promise<Ha
       STATUS_TOKEN_SECRET: 's'.repeat(40), COOKIE_SECRET: 'c'.repeat(40),
       APPROVAL_OVER_CENTS: '20000', REPEAT_OVER_CENTS: '50000', REPEAT_ORDERS: '3', BREAKER_ORDERS_24H: '10',
       BREAKER_COST_CENTS_24H: '100000', MAX_ITEMS_PER_ORDER: '10', MAX_ORDER_CENTS: '100000', SKU_MAX_QUANTITY: '{"default":9}',
+      PRINTFUL_WEBHOOK_SECRET: PF_SECRET, PRINTFUL_WEBHOOK_PUBLIC_KEY: PF_PUBLIC_KEY,
       PACKING_SLIP_EMAIL: 'orders@example.com', PACKING_SLIP_PHONE: '+1 555 010 0000',
       ...env,
     },
@@ -53,6 +57,7 @@ export async function startHarness(env: Record<string, string> = {}): Promise<Ha
   await shop.runner.tick(); // the start-up jobs (catalog check) out of the way
   const s = await listen(shop.app);
   stripeOpts.webhookTarget = `${s.url}/webhooks/stripe`;
+  pfWebhook.target = `${s.url}/webhooks/printful`;
   const c = shop.dbs.catalog;
   c.exec(`INSERT INTO works (source_id, work_id, title, canonical_url, original_url, prints_allowed, enabled, seen_at) VALUES ('art', 'w1', 'Undertow', 'u', 'u', 1, 1, 'now')`);
   for (const [sku, wholesale] of [['print-8x10', 825], ['framed-12x16-black', 3375]] as const) {

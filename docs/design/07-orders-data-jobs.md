@@ -157,6 +157,7 @@ Actions per reason:
 | `costs_failed` | `refund` (I4) |
 | `provider_failed` (`order_failed` after confirmation) | `alert`; the deadline tries a v2 delete (06 §7) |
 | `confirm_failed` (three confirms without a confirmed order, or a refused confirm) | `alert` |
+| `provider_canceled` (Printful cancelled the newest attempt) | `refund` at once if I4 holds (a cancel returns Printful's charge) |
 
 Rules:
 - Holds are resolved with a conditional update (`… WHERE id = ? AND resolved_at IS NULL`);
