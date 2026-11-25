@@ -96,6 +96,10 @@ describe('the client against mock Stripe', () => {
   it('refuses unknown parameters, negative amounts and other API versions', async () => {
     const c = await stripe().createCustomer({}, 'k3');
     await expect(stripe().createCheckoutSession(sessionParams(c.id, 1, { shipping_adress_collection: 'x' }), 'k4')).rejects.toMatchObject({ kind: 'permanent', param: 'shipping_adress_collection' });
+    // Automatic tax with a PaymentIntent shipping address: refused (cluster test mode, 2026-11-25).
+    await expect(
+      stripe().createCheckoutSession(sessionParams(c.id, 1, { automatic_tax: { enabled: true }, payment_intent_data: { shipping: { name: 'J', address: { line1: '1 Main St', city: 'Austin', state: 'TX', postal_code: '78701', country: 'US' } } } }), 'k4c'),
+    ).rejects.toMatchObject({ kind: 'permanent', message: 'stripe: You cannot enable automatic tax calculation with `payment_intent_data[shipping]` set.' });
     // Removed in the pinned version (cluster test mode, 2026-11-25): Stripe answers 400 with this param.
     await expect(stripe().createCheckoutSession(sessionParams(c.id, 1, { payment_method_types: ['card'] }), 'k4b')).rejects.toMatchObject({ kind: 'permanent', param: 'payment_method_types' });
     const neg = sessionParams(c.id);
