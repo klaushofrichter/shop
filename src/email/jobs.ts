@@ -179,6 +179,9 @@ export function alertingLog(
     const day = new Date(clock.now()).toISOString().slice(0, 10);
     const key = String(line.alertKey ?? createHash('sha256').update(`${msg}|${String(line.order ?? '')}|${day}`).digest('hex').slice(0, 32));
     try {
+      // Once per key, whatever became of the earlier job: `enqueue` alone only refuses a
+      // duplicate while the first is still open, and a sent alert is done within seconds.
+      if (orders.prepare("SELECT 1 FROM jobs WHERE kind = 'alert.send' AND key = ?").get(key)) return;
       enqueue(orders, clock, 'alert.send', key, { msg, fields } satisfies AlertPayload);
     } catch {
       // An alert must never break the work that raised it.
