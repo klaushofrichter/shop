@@ -172,4 +172,4 @@ Not bugs. Listed so they aren't lost; none is urgent.
 
 Tests for each are in `test/review-fixes.test.ts`.
 | §4 transitions | Done: `setDispute` and `completeOrder` in `src/orders/holds.ts` (conditional, with a history line naming the cause or rule); every hold resolution writes a history line. |
-
+| §4 Stripe fee | Done: one `stripeFeeCents` in `src/money.ts` used by the quote check, the cost guard and the admin. Each passes what Stripe charges as far as it is known (before payment: items and shipping; after: the amount paid), so no number changed. |

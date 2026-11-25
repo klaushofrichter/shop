@@ -8,6 +8,7 @@
  * 4. stored for 30 minutes, with the address and e-mail only here (not on the
  *    cart; review C F14).
  */
+import { stripeFeeCents } from '../money';
 import { randomBytes } from 'node:crypto';
 import type { SkuCatalog } from '../catalog-config';
 import { iso, type Clock } from '../clock';
@@ -147,7 +148,7 @@ export function estimatedMargin(
   cost += rateCents;
   cost += Math.ceil((cost * s.providerTaxAllowancePct) / 100);
   const revenue = items.reduce((t, i) => t + i.unitCents * i.quantity, 0) + chargedShippingCents;
-  const fee = Math.ceil((revenue * s.stripeFeePct) / 100) + s.stripeFeeFixedCents;
+  const fee = stripeFeeCents(revenue, s);
   return { estCostCents: cost, marginCents: revenue - fee - cost };
 }
 

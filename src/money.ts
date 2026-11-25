@@ -20,3 +20,12 @@ export function formatCents(cents: number): string {
 
 /** For display: "$10.89". */
 export const usd = (cents: number): string => `$${formatCents(cents)}`;
+
+/**
+ * Stripe's fee on an amount charged, as estimated everywhere (the quote's cost check, the cost guard,
+ * the admin's margin): a percentage plus a fixed part (05 §2). The amount is what Stripe charges, tax
+ * included where it is known; before payment the tax isn't, so the quote estimates on items and shipping.
+ */
+export function stripeFeeCents(chargedCents: number, s: { stripeFeePct: number; stripeFeeFixedCents: number }): number {
+  return Math.ceil((chargedCents * s.stripeFeePct) / 100) + s.stripeFeeFixedCents;
+}
