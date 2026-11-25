@@ -60,3 +60,4 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0039](0039-go-live-behind-the-preview-gate.md) | Go live behind the preview gate; record Printful only | Accepted (2026-11-26) |
 | [0040](0040-every-work-every-product-by-default.md) | Every work and every product by default; prices per product | Accepted (2026-11-25) |
 | [0041](0041-launch-prices.md) | Launch prices | Accepted (2026-11-25) |
+| [0042](0042-circuit-breaker-cost-and-reset.md) | The circuit breaker's cost limit, self-reset, manual reset | Accepted (2026-11-25) |
