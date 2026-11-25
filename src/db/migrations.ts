@@ -227,4 +227,8 @@ CREATE TABLE admin_audit (id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor TEXT N
   `
 ALTER TABLE orders ADD COLUMN checkout_quote_id TEXT;
 `,
+  // 3: the orientation sent to Printful with each item (06 §3), frozen at checkout.
+  `
+ALTER TABLE order_items ADD COLUMN orientation TEXT;
+`,
 ];

@@ -153,6 +153,10 @@ Actions per reason:
 | `dispute` | `alert` only |
 | `refund_failed` | `alert`; admin actions "retry refund", "fulfil anyway"; a new deadline twice as long as the last |
 | `amount_mismatch` | `alert` |
+| `provider_refused` (Printful refused the draft: address, variant, file) | `refund` at once (the whole cart; 06 §7) |
+| `costs_failed` | `refund` (I4) |
+| `provider_failed` (`order_failed` after confirmation) | `alert`; the deadline tries a v2 delete (06 §7) |
+| `confirm_failed` (three confirms without a confirmed order, or a refused confirm) | `alert` |
 
 Rules:
 - Holds are resolved with a conditional update (`… WHERE id = ? AND resolved_at IS NULL`);

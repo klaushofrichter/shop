@@ -26,6 +26,7 @@ import { googleSignIn } from './admin/auth';
 import { randomBytes } from 'node:crypto';
 import { StripeClient } from './payments/stripe';
 import { registerStripeEventJob } from './orders/webhooks';
+import { registerSubmitJob } from './orders/submit';
 import { RetryLater } from './jobs';
 
 export interface Shop {
@@ -80,14 +81,21 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
   });
   if (config.sourcesRefresh) scheduleSourceRefresh(dbs.orders, clock, sources.map((s) => s.id));
   const startedAtMs = clock.now();
-  const provider = config.printful.token ? new PrintfulClient({ baseUrl: config.printful.baseUrl, token: config.printful.token }) : undefined;
+  const provider = config.printful.token ? new PrintfulClient({ baseUrl: config.printful.baseUrl, token: config.printful.token, mayConfirm: config.mode !== 'test' }) : undefined;
   const stripe = config.stripe.secretKey ? new StripeClient({ apiBase: config.stripe.apiBase, secretKey: config.stripe.secretKey }) : undefined;
   // Status links (ADR-0037); mock mode without a secret gets a per-process one (links end with the process).
   const statusSecret = config.statusTokenSecret ?? randomBytes(32).toString('hex');
   const paymentDeps = stripe ? { orders: dbs.orders, clock, stripe, limits: config.limits, log } : undefined;
   if (paymentDeps) registerStripeEventJob(runner, paymentDeps);
-  // Submission arrives with step 7, e-mails with step 8: their jobs wait until then.
-  for (const kind of ['order.submit', 'email.send']) {
+  // Submission (06 §4) needs Printful and Stripe; without them the job waits.
+  if (provider && stripe) {
+    registerSubmitJob(runner, {
+      orders: dbs.orders, catalog: dbs.catalog, clock, provider, stripe, mode: config.mode, publicUrl: config.publicUrl,
+      skus, quote: config.quote, fulfilment: config.fulfilment, log,
+    });
+  }
+  // E-mails arrive with step 8: their jobs wait until then.
+  for (const kind of provider && stripe ? ['email.send'] : ['order.submit', 'email.send']) {
     runner.register(kind, { maxAttempts: 1_000_000, run: async () => { throw new RetryLater(6 * 60 * 60_000, `${kind} is not built yet`); } });
   }
   // Set once ready() has checked Printful's identity.

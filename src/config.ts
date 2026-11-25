@@ -61,6 +61,13 @@ export interface Config {
   limits: FailSafeLimits;
   /** The pre-payment cost check and shipping (docs/design/05 §2). Not secret; defaults below. */
   quote: QuoteSettings;
+  /** Submission (06 §3–4). The packing-slip contact is Klaus's and lives in the cluster's ConfigMap, not here. */
+  fulfilment: {
+    providerRetryWindowMs: number;
+    shopName: string;
+    packingSlipEmail?: string;
+    packingSlipPhone?: string;
+  };
 }
 
 export interface QuoteSettings {
@@ -230,6 +237,17 @@ export function loadConfig(env: Env = process.env): Config {
     stripeFeeFixedCents: num('STRIPE_FEE_FIXED_CENTS', 30, 200),
   };
 
+  const slipEmail = get('PACKING_SLIP_EMAIL');
+  if (slipEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(slipEmail)) problems.push('PACKING_SLIP_EMAIL must be an e-mail address');
+  const slipPhone = get('PACKING_SLIP_PHONE');
+  if (slipPhone && !/^\+?[0-9 ()-]{7,20}$/.test(slipPhone)) problems.push('PACKING_SLIP_PHONE must be a phone number');
+  const fulfilment = {
+    providerRetryWindowMs: num('PROVIDER_RETRY_WINDOW_HOURS', 24, 168) * 60 * 60_000,
+    shopName: get('SHOP_NAME') ?? new URL(publicUrl).host,
+    packingSlipEmail: slipEmail,
+    packingSlipPhone: slipPhone,
+  };
+
   if (problems.length) throw new ConfigError(problems);
 
   return {
@@ -261,6 +279,7 @@ export function loadConfig(env: Env = process.env): Config {
     statusTokenSecret,
     limits,
     quote,
+    fulfilment,
   };
 }
 
