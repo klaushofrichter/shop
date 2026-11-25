@@ -5,6 +5,7 @@ then empties it on `main`.
 
 ## [Unreleased]
 
+- Refunds: an order that can't be fulfilled is refunded automatically once nothing is left at Printful; a refund cancels what Printful hasn't started; fraud warnings refund before production; disputes never refund automatically.
 - The order page follows the order through Printful: in production, shipped (each parcel with its carrier, tracking link and expected delivery), delivered.
 - Paid orders go to Printful automatically: a draft, a cost check, then confirmation (a test shop stops at the draft). Problems put the order on hold for Klaus instead of guessing.
 - Every picture from art is offered with every product that prints sharply enough; the admin can switch a picture or product off. Prices are set per product.

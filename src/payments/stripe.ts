@@ -75,8 +75,32 @@ export interface Charge {
   id: string;
   amount: number;
   amount_refunded: number;
+  payment_intent?: string | null;
+  disputed?: boolean;
   outcome?: { risk_level?: string } | null;
   payment_method_details?: { card?: { fingerprint?: string } | null } | null;
+}
+
+export interface Refund {
+  id: string;
+  amount: number;
+  charge: string;
+  /** pending, requires_action, succeeded, failed, canceled */
+  status: string;
+  metadata?: Record<string, string>;
+}
+
+export interface Dispute {
+  id: string;
+  charge: string;
+  /** warning_needs_response, …, needs_response, under_review, won, lost */
+  status: string;
+}
+
+export interface EarlyFraudWarning {
+  id: string;
+  charge: string;
+  actionable: boolean;
 }
 
 export interface LineItem {
@@ -119,6 +143,27 @@ export class StripeClient {
 
   expireCheckoutSession(id: string): Promise<CheckoutSession> {
     return this.call('POST', `/v1/checkout/sessions/${encodeURIComponent(id)}/expire`, {}) as unknown as Promise<CheckoutSession>;
+  }
+
+  getCharge(id: string): Promise<Charge> {
+    return this.call('GET', `/v1/charges/${encodeURIComponent(id)}`) as unknown as Promise<Charge>;
+  }
+
+  /** A refund of the payment (05 §7); the key makes a repeat return the same refund for 24 h. */
+  createRefund(paymentIntent: string, amountCents: number, metadata: Record<string, string>, idempotencyKey: string): Promise<Refund> {
+    return this.call('POST', '/v1/refunds', { payment_intent: paymentIntent, amount: amountCents, metadata }, idempotencyKey) as unknown as Promise<Refund>;
+  }
+
+  getRefund(id: string): Promise<Refund> {
+    return this.call('GET', `/v1/refunds/${encodeURIComponent(id)}`) as unknown as Promise<Refund>;
+  }
+
+  getDispute(id: string): Promise<Dispute> {
+    return this.call('GET', `/v1/disputes/${encodeURIComponent(id)}`) as unknown as Promise<Dispute>;
+  }
+
+  getEarlyFraudWarning(id: string): Promise<EarlyFraudWarning> {
+    return this.call('GET', `/v1/radar/early_fraud_warnings/${encodeURIComponent(id)}`) as unknown as Promise<EarlyFraudWarning>;
   }
 
   /** Every line item of a session, paged (review C F6), with our order item id from the product's metadata. */
@@ -176,7 +221,7 @@ export class StripeClient {
 }
 
 function route(path: string): string {
-  return path.replace(/\?.*$/, '').replace(/\/(cs|cus|pi|ch|re)_[A-Za-z0-9_]+/g, '/$1_…');
+  return path.replace(/\?.*$/, '').replace(/\/(cs|cus|pi|ch|re|dp|issfr)_[A-Za-z0-9_]+/g, '/$1_…');
 }
 
 /**

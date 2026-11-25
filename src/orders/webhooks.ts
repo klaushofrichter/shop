@@ -41,8 +41,11 @@ export function webhookRouter(d: WebhookDeps): Router {
   return r;
 }
 
-/** The job behind each stored event (05 §4). Refunds, disputes and fraud warnings arrive with step 7. */
-export function registerStripeEventJob(runner: JobRunner, d: PaymentDeps): void {
+/**
+ * The job behind each stored event (05 §4). `more` handles refunds, disputes
+ * and early fraud warnings (src/orders/refunds.ts).
+ */
+export function registerStripeEventJob(runner: JobRunner, d: PaymentDeps, more?: (type: string, objectId: string) => Promise<string | undefined>): void {
   runner.register('stripe.event', {
     maxAttempts: 10,
     async run(ctx) {
@@ -66,9 +69,11 @@ export function registerStripeEventJob(runner: JobRunner, d: PaymentDeps): void 
           }
           break;
         }
-        default:
-          outcome = 'not handled yet';
-          d.log({ level: 'warn', msg: 'stripe event not handled yet', type: ev.type });
+        default: {
+          const handled = more ? await more(ev.type, ev.object_id) : undefined;
+          outcome = handled ?? 'not handled';
+          if (handled === undefined) d.log({ level: 'warn', msg: 'stripe event not handled', type: ev.type });
+        }
       }
       d.orders.prepare(`UPDATE inbound_events SET processed_at = ?, outcome = ? WHERE provider = 'stripe' AND event_id = ?`).run(iso(d.clock), outcome, eventId);
     },
