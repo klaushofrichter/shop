@@ -8,6 +8,26 @@ import type { Db } from '../db';
 
 export type HoldKind = 'approval' | 'attention' | 'provider' | 'fraud';
 
+/** One row of an order's history (07 §2.10), written in the transaction of the change it records. */
+export interface OrderEvent {
+  orderId: string;
+  part: 'payment' | 'fulfilment' | 'dispute' | 'hold' | 'refund' | 'email' | 'note';
+  from?: string | null;
+  to?: string | null;
+  cause: string;
+  causeRef?: string | null;
+  note?: string | null;
+  attempt?: number | null;
+  /** When the change shares a timestamp with other rows; otherwise now. */
+  at?: string;
+}
+
+export function recordEvent(db: Db, clock: Clock, e: OrderEvent): void {
+  db.prepare('INSERT INTO order_events (order_id, part, attempt, from_value, to_value, cause, cause_ref, note, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    e.orderId, e.part, e.attempt ?? null, e.from ?? null, e.to ?? null, e.cause, e.causeRef ?? null, e.note ?? null, e.at ?? iso(clock),
+  );
+}
+
 const H = 60 * 60_000;
 export const REASONS: Record<string, { kind: HoldKind; deadlineMs: number; action: 'refund' | 'alert' }> = {
   amount: { kind: 'approval', deadlineMs: 72 * H, action: 'refund' },
@@ -46,6 +66,22 @@ export function openHold(db: Db, clock: Clock, orderId: string, reasons: string[
   const res = db
     .prepare('INSERT INTO holds (order_id, kind, reasons_json, since, deadline_at, deadline_action) VALUES (?, ?, ?, ?, ?, ?)')
     .run(orderId, kind, JSON.stringify(reasons), now, iso(clock, deadline), action);
-  db.prepare("INSERT INTO order_events (order_id, part, to_value, cause, note, at) VALUES (?, 'hold', ?, ?, ?, ?)").run(orderId, kind, cause, reasons.join(','), now);
+  recordEvent(db, clock, { orderId, part: 'hold', to: kind, cause, note: reasons.join(','), at: now });
   return Number(res.lastInsertRowid);
+}
+
+export const reasonsOf = (h: { reasons_json: string }): string[] => JSON.parse(h.reasons_json) as string[];
+
+/**
+ * Resolve the open holds of an order: one hold, one kind, or all of them.
+ * Returns how many it resolved; only the winner of the conditional update acts.
+ */
+export function resolveHolds(db: Db, clock: Clock, which: { orderId: string; holdId?: number; kind?: HoldKind }, resolution: string, by: string): number {
+  const r = db
+    .prepare(
+      `UPDATE holds SET resolved_at = ?, resolved_by = ?, resolution = ?
+       WHERE order_id = ? AND resolved_at IS NULL AND (? IS NULL OR id = ?) AND (? IS NULL OR kind = ?)`,
+    )
+    .run(iso(clock), by, resolution, which.orderId, which.holdId ?? null, which.holdId ?? null, which.kind ?? null, which.kind ?? null);
+  return Number(r.changes);
 }

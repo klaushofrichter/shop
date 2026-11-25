@@ -14,6 +14,7 @@ import { iso, type Clock } from '../clock';
 import type { Config, Mode } from '../config';
 import { setSetting, type Db } from '../db';
 import { enqueue, PermanentJobError, type JobRunner } from '../jobs';
+import { recordEvent } from '../orders/holds';
 import { statusToken } from '../orders/ids';
 import { ALERT_ACCEPTED_KEY, ALERT_FAILED_KEY } from '../worker-health';
 import { SesError, type SesClient } from './ses';
@@ -145,7 +146,7 @@ export async function sendCustomerEmail(d: EmailDeps, p: Payload): Promise<'sent
     throw e;
   }
   d.orders.prepare('UPDATE emails SET sent_at = ?, last_error = NULL WHERE order_id = ? AND kind = ? AND ref = ?').run(iso(d.clock), p.orderId, kind, ref);
-  d.orders.prepare("INSERT INTO order_events (order_id, part, to_value, cause, note, at) VALUES (?, 'email', ?, 'job', ?, ?)").run(p.orderId, kind, ref || null, iso(d.clock));
+  recordEvent(d.orders, d.clock, { orderId: p.orderId, part: 'email', to: kind, cause: 'job', note: ref || null });
   return 'sent';
 }
 

@@ -16,7 +16,7 @@ import { transaction, type Db } from '../db';
 import { enqueue, RetryLater, type JobRunner } from '../jobs';
 import { chargeOf, StripeError, type Charge, type StripeClient } from '../payments/stripe';
 import { ProviderError, type FulfilmentProvider } from '../providers/types';
-import { openHold } from './holds';
+import { openHold, reasonsOf, recordEvent, resolveHolds, type OrderEvent } from './holds';
 import { moveFulfilment, newestAttempt, QUIET_PERIOD_MS, type AttemptRow } from './submit';
 
 export interface RefundDeps {
@@ -46,8 +46,8 @@ const H = 60 * 60_000;
 const orderOf = (db: Db, id: string) => db.prepare('SELECT * FROM orders WHERE id = ?').get(id) as OrderPay | undefined;
 const attemptsOf = (db: Db, id: string) =>
   db.prepare("SELECT * FROM provider_orders WHERE order_id = ? AND provider = 'printful' AND kind = 'order' ORDER BY attempt").all(id) as unknown as AttemptRow[];
-const event = (db: Db, clock: Clock, orderId: string, part: string, from: string | null, to: string | null, cause: string, note?: string) =>
-  db.prepare('INSERT INTO order_events (order_id, part, from_value, to_value, cause, note, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(orderId, part, from, to, cause, note ?? null, iso(clock));
+const event = (db: Db, clock: Clock, orderId: string, part: OrderEvent['part'], from: string | null, to: string | null, cause: string, note?: string) =>
+  recordEvent(db, clock, { orderId, part, from, to, cause, note });
 
 async function orderCharge(d: RefundDeps, o: OrderPay): Promise<Charge | undefined> {
   if (!o.stripe_session_id) return undefined;
@@ -159,7 +159,7 @@ export async function syncPayment(d: RefundDeps, orderId: string, cause: string)
       event(d.orders, d.clock, orderId, 'refund', null, 'succeeded', cause, 'made in the Stripe Dashboard');
     }
     if (!full || cur.payment_state === 'refunded') return false;
-    d.orders.prepare("UPDATE holds SET resolved_at = ?, resolved_by = 'refund', resolution = 'refunded' WHERE order_id = ? AND resolved_at IS NULL").run(now, orderId);
+    resolveHolds(d.orders, d.clock, { orderId }, 'refunded', 'refund');
     return true;
   });
   if (becameFull) {
@@ -276,7 +276,7 @@ export async function runDeadlines(d: RefundDeps): Promise<number> {
   const soon = d.orders
     .prepare("SELECT id, order_id, reasons_json FROM holds WHERE resolved_at IS NULL AND deadline_action = 'refund' AND deadline_at > ? AND deadline_at <= ?")
     .all(iso(d.clock), iso(d.clock, 24 * H)) as Array<{ id: number; order_id: string; reasons_json: string }>;
-  for (const h of soon) d.log({ level: 'alert', msg: 'hold refunds automatically within 24 h', order: h.order_id, reasons: JSON.parse(h.reasons_json), alertKey: `hold-${h.id}-reminder` });
+  for (const h of soon) d.log({ level: 'alert', msg: 'hold refunds automatically within 24 h', order: h.order_id, reasons: reasonsOf(h), alertKey: `hold-${h.id}-reminder` });
   // "Delayed" to the customer: a hold older than DELAY_NOTICE_HOURS, only before the first shipment (09 §1); once per order.
   if (d.delayNoticeMs) {
     const late = d.orders
@@ -291,7 +291,7 @@ export async function runDeadlines(d: RefundDeps): Promise<number> {
   }
   const due = d.orders.prepare('SELECT * FROM holds WHERE resolved_at IS NULL AND deadline_at <= ? ORDER BY deadline_at').all(iso(d.clock)) as unknown as HoldRow[];
   for (const h of due) {
-    const reasons = JSON.parse(h.reasons_json) as string[];
+    const reasons = reasonsOf(h);
     if (h.deadline_action === 'alert') {
       // Repeated daily; a failed refund's next reminder comes twice as late (07 §2.5).
       const last = Date.parse(h.deadline_at) - Date.parse(h.since);
@@ -310,10 +310,7 @@ export async function runDeadlines(d: RefundDeps): Promise<number> {
       continue;
     }
     // Only the winner of the conditional update acts (Klaus's Approve can't also proceed).
-    const won = d.orders
-      .prepare("UPDATE holds SET resolved_at = ?, resolved_by = 'deadline', resolution = 'expired' WHERE id = ? AND resolved_at IS NULL")
-      .run(iso(d.clock), h.id);
-    if (!Number(won.changes)) continue;
+    if (!resolveHolds(d.orders, d.clock, { orderId: h.order_id, holdId: h.id }, 'expired', 'deadline')) continue;
     requestFullRefund(d, h.order_id, 'deadline', 'deadline');
     d.log({ level: 'info', msg: 'hold expired: refunding', order: h.order_id, reasons });
   }
@@ -349,7 +346,7 @@ export async function onEarlyFraudWarning(d: RefundDeps, efwId: string): Promise
   // Not yet confirmed: delete the draft and refund at once. Confirmed: cancel if possible, then refund. Otherwise alert.
   const proof = await makeNothingLive(d, o.id, true);
   if (proof === 'nothing_live') {
-    d.orders.prepare("UPDATE holds SET resolved_at = ?, resolved_by = 'fraud', resolution = 'refunded' WHERE order_id = ? AND kind = 'fraud' AND resolved_at IS NULL").run(iso(d.clock), o.id);
+    resolveHolds(d.orders, d.clock, { orderId: o.id, kind: 'fraud' }, 'refunded', 'fraud');
     requestFullRefund(d, o.id, 'fraud', 'stripe');
     return 'refunding';
   }
@@ -387,7 +384,7 @@ export async function onDispute(d: RefundDeps, disputeId: string, closed: boolea
       event(d.orders, d.clock, o.id, 'dispute', cur.dispute_state, outcome, 'stripe_webhook');
     }
     if (outcome === 'lost') {
-      d.orders.prepare("UPDATE holds SET resolved_at = ?, resolved_by = 'stripe', resolution = 'cleared' WHERE order_id = ? AND kind = 'fraud' AND resolved_at IS NULL").run(iso(d.clock), o.id);
+      resolveHolds(d.orders, d.clock, { orderId: o.id, kind: 'fraud' }, 'cleared', 'stripe');
       maybeComplete(d.orders, d.clock, o.id);
     }
     // Won: the fraud hold stays open for Klaus to decide on fulfilment (07 §2.2).

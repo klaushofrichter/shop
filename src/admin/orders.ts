@@ -12,8 +12,8 @@ import { iso, type Clock } from '../clock';
 import type { Mode, QuoteSettings } from '../config';
 import { setSetting, transaction, type Db } from '../db';
 import { enqueue } from '../jobs';
-import { formatCents } from '../money';
-import { REASONS } from '../orders/holds';
+import { usd } from '../money';
+import { REASONS, reasonsOf, recordEvent, resolveHolds } from '../orders/holds';
 import { ORDER_ID } from '../orders/ids';
 import { requestFullRefund } from '../orders/refunds';
 import { customerStatus } from '../orders/status';
@@ -74,7 +74,7 @@ export function holdsSection(d: AdminOrderDeps, csrf: string): string {
   const list = rows.length
     ? `<ul class="holds">${rows
         .map((h) => {
-          const reasons = (JSON.parse(h.reasons_json) as string[]).map((r) => REASON_TEXT[r] ?? r).join(', ');
+          const reasons = reasonsOf(h).map((r) => REASON_TEXT[r] ?? r).join(', ');
           const left = Date.parse(h.deadline_at) - d.clock.now();
           const next = h.deadline_action === 'refund' ? `refunds automatically ${when(left)}` : `reminds again ${when(left)}`;
           return `<li><a href="/admin/orders/${esc(h.order_id)}">Order ${esc(h.number)}</a>: ${esc(h.kind)} hold, ${esc(reasons)}; ${esc(next)}.</li>`;
@@ -109,7 +109,7 @@ export function registerOrderRoutes(r: Router, d: AdminOrderDeps, page: Page, au
     const body = rows
       .map((o) => {
         const st = customerStatus({ payment_state: o.payment_state, fulfilment_state: o.fulfilment_state, refunded_cents: o.refunded_cents, shippedSomething: o.fulfilment_state.includes('shipped') || o.fulfilment_state === 'delivered' });
-        return `<tr><th scope="row"><a href="/admin/orders/${esc(o.id)}">${esc(o.number)}</a></th><td>${esc(String(o.created_at).slice(0, 16).replace('T', ' '))}</td><td>${esc(st.text)}</td><td>${o.paid_cents != null ? `$${formatCents(o.paid_cents)}` : '—'}</td><td>${o.holds ? `<strong>${o.holds} open</strong>` : ''}</td></tr>`;
+        return `<tr><th scope="row"><a href="/admin/orders/${esc(o.id)}">${esc(o.number)}</a></th><td>${esc(String(o.created_at).slice(0, 16).replace('T', ' '))}</td><td>${esc(st.text)}</td><td>${o.paid_cents != null ? `${usd(o.paid_cents)}` : '—'}</td><td>${o.holds ? `<strong>${o.holds} open</strong>` : ''}</td></tr>`;
       })
       .join('');
     page(
@@ -140,11 +140,10 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
     const costs = newest?.costs_json ? (JSON.parse(newest.costs_json) as { totalCents?: number }) : undefined;
     const revenue = o.items_cents + o.shipping_cents;
     const margin = fee !== undefined && costs?.totalCents !== undefined ? revenue - fee - costs.totalCents - o.refunded_cents : undefined;
-    const money = (c: number | null | undefined) => (c == null ? '—' : `$${formatCents(c)}`);
+    const money = (c: number | null | undefined) => (c == null ? '—' : `${usd(c)}`);
 
     // Actions by hold (08 §3).
     const open = holds.filter((h) => !h.resolved_at);
-    const reasonsOf = (h: HoldRow) => JSON.parse(h.reasons_json) as string[];
     const holdActions = (h: HoldRow) => {
       const rs = reasonsOf(h);
       const out: string[] = [];
@@ -197,7 +196,7 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
 <li>Created ${esc(String(o.created_at).slice(0, 16).replace('T', ' '))} UTC; ${esc(o.email ?? '(purged)')}; ships to ${esc(o.ship_name ?? '')}, ${esc(o.ship_city ?? '')}, ${esc(o.ship_state ?? '')} ${esc(o.ship_zip ?? '')} by ${esc(o.shipping_method)}</li>
 <li>Paid ${money(o.paid_cents)} (tax ${money(o.tax_cents)}); refunded ${money(o.refunded_cents)}; Stripe fee about ${money(fee)}; Printful ${money(costs?.totalCents)}; margin ${money(margin)} ${stripeLink}</li>
 </ul>
-<h2>Items</h2><table class="lines"><tbody>${items.map((i) => `<tr><th scope="row">${esc(i.name)}</th><td>${i.quantity} × $${formatCents(i.unit_cents)}</td><td>${esc(i.source_id)}/${esc(i.work_id)}</td></tr>`).join('')}</tbody></table>
+<h2>Items</h2><table class="lines"><tbody>${items.map((i) => `<tr><th scope="row">${esc(i.name)}</th><td>${i.quantity} × ${usd(i.unit_cents)}</td><td>${esc(i.source_id)}/${esc(i.work_id)}</td></tr>`).join('')}</tbody></table>
 <h2>Holds</h2>${holds.length ? `<ul class="holds">${holdRows}</ul>` : '<p>None.</p>'}
 <h2>Actions</h2>${orderActions.length ? orderActions.join('\n') : '<p>None available.</p>'}
 <h2>Refunds</h2>${refunds.length ? `<ul>${refunds.map((x) => `<li>${esc(x.purpose)} ${money(x.amount_cents)}: ${esc(x.state)}${x.last_error ? ` (${esc(x.last_error)})` : ''}, by ${esc(x.requested_by)}</li>`).join('')}</ul>` : '<p>None.</p>'}
@@ -216,13 +215,10 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
   const back = (res: Response, id: string) => res.redirect(303, `/admin/orders/${id}`);
   const params = (req: AdminRequest) => ({ id: String(req.params.id), holdId: Number(req.params.hold) });
   /** Resolve one open hold of this order; only the first action wins. */
-  const resolve = (id: string, holdId: number, resolution: string, by: string) =>
-    Number(
-      d.orders.prepare('UPDATE holds SET resolved_at = ?, resolved_by = ?, resolution = ? WHERE id = ? AND order_id = ? AND resolved_at IS NULL').run(iso(d.clock), by, resolution, holdId, id).changes,
-    ) > 0;
+  const resolve = (id: string, holdId: number, resolution: string, by: string) => resolveHolds(d.orders, d.clock, { orderId: id, holdId }, resolution, by) > 0;
   const holdOf = (id: string, holdId: number) => d.orders.prepare('SELECT * FROM holds WHERE id = ? AND order_id = ?').get(holdId, id) as HoldRow | undefined;
   const note = (id: string, to: string, by: string, what: string) =>
-    d.orders.prepare("INSERT INTO order_events (order_id, part, to_value, cause, cause_ref, note, at) VALUES (?, 'hold', ?, 'admin', ?, ?, ?)").run(id, to, by, what, iso(d.clock));
+    recordEvent(d.orders, d.clock, { orderId: id, part: 'hold', to, cause: 'admin', causeRef: by, note: what });
   const submit = (id: string) => enqueue(d.orders, d.clock, 'order.submit', id, { orderId: id });
 
   const holdAction = (name: string, allowed: (h: HoldRow, o: Record<string, any>) => boolean, apply: (id: string, h: HoldRow, by: string) => void) =>
@@ -245,21 +241,21 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
     });
 
   const REFUND_REASONS = new Set(Object.entries(REASONS).filter(([, v]) => v.kind === 'attention').map(([k]) => k));
-  holdAction('approve', (h, o) => h.kind === 'approval' || (h.kind === 'fraud' && o.dispute_state === 'won') || (h.kind === 'attention' && (JSON.parse(h.reasons_json) as string[]).every((x) => REFUND_REASONS.has(x) && x !== 'refund_failed' && x !== 'cost_guard')), (id) => submit(id));
+  holdAction('approve', (h, o) => h.kind === 'approval' || (h.kind === 'fraud' && o.dispute_state === 'won') || (h.kind === 'attention' && reasonsOf(h).every((x) => REFUND_REASONS.has(x) && x !== 'refund_failed' && x !== 'cost_guard')), (id) => submit(id));
   holdAction('false-alarm', (h, o) => h.kind === 'fraud' && o.dispute_state === 'warning', (id) => {
     d.orders.prepare("UPDATE orders SET dispute_state = 'none', updated_at = ? WHERE id = ? AND dispute_state = 'warning'").run(iso(d.clock), id);
-    d.orders.prepare("INSERT INTO order_events (order_id, part, from_value, to_value, cause, at) VALUES (?, 'dispute', 'warning', 'none', 'admin', ?)").run(id, iso(d.clock));
+    recordEvent(d.orders, d.clock, { orderId: id, part: 'dispute', from: 'warning', to: 'none', cause: 'admin' });
     submit(id);
   });
-  holdAction('confirm-anyway', (h) => (JSON.parse(h.reasons_json) as string[]).includes('cost_guard'), (id, _h, by) => {
+  holdAction('confirm-anyway', (h) => reasonsOf(h).includes('cost_guard'), (id, _h, by) => {
     const a = newestAttempt(d.orders, id);
     if (a) d.orders.prepare("UPDATE provider_orders SET override_by = ?, override_at = ? WHERE order_id = ? AND provider = 'printful' AND attempt = ?").run(by, iso(d.clock), id, a.attempt);
     submit(id);
   });
-  holdAction('retry-refund', (h) => (JSON.parse(h.reasons_json) as string[]).includes('refund_failed'), (id, _h, by) => {
+  holdAction('retry-refund', (h) => reasonsOf(h).includes('refund_failed'), (id, _h, by) => {
     requestFullRefund(d, id, 'cancel', by);
   });
-  holdAction('fulfil-anyway', (h) => (JSON.parse(h.reasons_json) as string[]).includes('refund_failed'), (id) => submit(id));
+  holdAction('fulfil-anyway', (h) => reasonsOf(h).includes('refund_failed'), (id) => submit(id));
 
   r.post('/orders/:id/refund', (req: AdminRequest, res) => refundAction(req, res, 'cancel'));
   r.post('/orders/:id/refund-anyway', (req: AdminRequest, res) => refundAction(req, res, 'anyway'));
@@ -293,7 +289,7 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
       const o = d.orders.prepare('SELECT payment_state FROM orders WHERE id = ?').get(id) as { payment_state: string } | undefined;
       if (!a || !o || !['canceled', 'deleted'].includes(a.state) || a.attempt >= MAX_ATTEMPTS || !['paid', 'partially_refunded'].includes(o.payment_state)) return 0;
       const now = iso(d.clock);
-      d.orders.prepare("UPDATE holds SET resolved_at = ?, resolved_by = ?, resolution = 'approved' WHERE order_id = ? AND resolved_at IS NULL").run(now, by, id);
+      resolveHolds(d.orders, d.clock, { orderId: id }, 'approved', by);
       const next = a.attempt + 1;
       d.orders.prepare("INSERT INTO provider_orders (order_id, provider, attempt, external_id, state, updated_at) VALUES (?, 'printful', ?, ?, 'submitting', ?)").run(id, next, `${id}-${next}`, now);
       moveFulfilment(d.orders, d.clock, id, 'submitting', 'admin', next, `retry by ${by}`);

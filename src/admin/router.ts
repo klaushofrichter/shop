@@ -16,7 +16,7 @@ import type { SkuCatalog } from '../catalog-config';
 import { anchorOf, previewPlan, readiness, type OfferRow } from '../catalog/offers';
 import type { WorkRow } from '../catalog/works';
 import { ANCHORS, type Anchor } from '../images/printfile';
-import { formatCents, parseCents } from '../money';
+import { formatCents, parseCents, usd } from '../money';
 import { adminLayout, postButton } from './views';
 import { holdsSection, registerOrderRoutes } from './orders';
 import type { QuoteSettings } from '../config';
@@ -174,7 +174,7 @@ ${o?.mockup_sha && o.print_file_sha ? `<img class="preview" src="/mockups/${esc(
 <form method="post" action="/admin/works/${esc(source)}/${esc(work)}/offers/${esc(sku.id)}">
 <input type="hidden" name="_csrf" value="${esc(req.csrf!)}">
 <label><input type="checkbox" name="enabled"${o?.enabled ? ' checked' : ''}> Offer this product</label>
-<span>Price $${formatCents(price)} <span class="muted">(per product, set in skus.json; ADR-0040)</span></span>
+<span>Price ${usd(price)} <span class="muted">(per product, set in skus.json; ADR-0040)</span></span>
 ${sku.kind === 'paper' || sku.kind === 'mug' ? `<fieldset><legend>Crop anchor</legend>${anchors}</fieldset>` : ''}
 <button type="submit">Save</button>
 </form>

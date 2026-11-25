@@ -14,7 +14,7 @@ import type { FailSafeLimits } from '../config';
 import { getSetting, transaction, type Db } from '../db';
 import { enqueue } from '../jobs';
 import { chargeOf, type StripeClient } from '../payments/stripe';
-import { openHold } from './holds';
+import { openHold, recordEvent } from './holds';
 
 export interface PaymentDeps {
   orders: Db;
@@ -84,7 +84,7 @@ export async function applyPayment(d: PaymentDeps, sessionId: string): Promise<A
       const again = d.orders.prepare('SELECT payment_state, failsafe_checked_at FROM orders WHERE id = ?').get(order.id) as { payment_state: string; failsafe_checked_at: string | null };
       if (again.failsafe_checked_at || again.payment_state !== 'paid') return 'already';
     } else {
-      d.orders.prepare("INSERT INTO order_events (order_id, part, from_value, to_value, cause, cause_ref, at) VALUES (?, 'payment', ?, 'paid', 'stripe', ?, ?)").run(order.id, order.payment_state, sessionId, now);
+      recordEvent(d.orders, d.clock, { orderId: order.id, part: 'payment', from: order.payment_state, to: 'paid', cause: 'stripe', causeRef: sessionId, at: now });
     }
     const setTax = d.orders.prepare('UPDATE order_items SET tax_cents = ? WHERE id = ? AND order_id = ?');
     for (const [itemId, t] of lineTax) setTax.run(t, itemId, order.id);
@@ -139,7 +139,7 @@ export function closeUnpaid(orders: Db, clock: Clock, orderId: string, cause: st
     const now = iso(clock);
     const r = orders.prepare("UPDATE orders SET payment_state = 'closed_unpaid', updated_at = ? WHERE id = ? AND payment_state = 'checkout_open'").run(now, orderId);
     if (!Number(r.changes)) return false;
-    orders.prepare("INSERT INTO order_events (order_id, part, from_value, to_value, cause, at) VALUES (?, 'payment', 'checkout_open', 'closed_unpaid', ?, ?)").run(orderId, cause, now);
+    recordEvent(orders, clock, { orderId, part: 'payment', from: 'checkout_open', to: 'closed_unpaid', cause, at: now });
     orders.prepare('UPDATE carts SET open_order_id = NULL WHERE open_order_id = ?').run(orderId);
     return true;
   });

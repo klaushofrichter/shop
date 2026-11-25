@@ -24,7 +24,7 @@ import { RetryLater, type JobRunner } from '../jobs';
 import { chargeOf, type StripeClient } from '../payments/stripe';
 import { placementFor } from '../providers/checks';
 import { ProviderError, type DraftOrder, type FulfilmentProvider, type ProviderOrder, type ProviderOrderStatus } from '../providers/types';
-import { openHold } from './holds';
+import { openHold, recordEvent } from './holds';
 
 export interface SubmitDeps {
   orders: Db;
@@ -123,9 +123,7 @@ export function moveFulfilment(db: Db, clock: Clock, orderId: string, to: string
   const now = iso(clock);
   const r = db.prepare('UPDATE orders SET fulfilment_state = ?, updated_at = ? WHERE id = ? AND fulfilment_state = ?').run(to, now, orderId, o.fulfilment_state);
   if (!Number(r.changes)) return false;
-  db.prepare("INSERT INTO order_events (order_id, part, attempt, from_value, to_value, cause, note, at) VALUES (?, 'fulfilment', ?, ?, ?, ?, ?, ?)").run(
-    orderId, attempt, o.fulfilment_state, to, cause, note ?? null, now,
-  );
+  recordEvent(db, clock, { orderId, part: 'fulfilment', attempt, from: o.fulfilment_state, to, cause, note, at: now });
   return true;
 }
 

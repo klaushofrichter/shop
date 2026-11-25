@@ -14,6 +14,7 @@ import type { FailSafeLimits } from '../config';
 import { transaction, type Db } from '../db';
 import { StripeError, type StripeClient } from '../payments/stripe';
 import { itemsOfCart, shippingLabel, type AddressInput, type QuoteItem, type QuoteOption } from '../public/quote';
+import { recordEvent } from './holds';
 import { drawOrderNumber, newOrderId, statusToken } from './ids';
 import { applyPayment, closeUnpaid, type PaymentDeps } from './payment';
 
@@ -131,7 +132,7 @@ export async function startCheckout(d: CheckoutDeps, cartId: string, quoteId: st
       if (!pf) throw new Error('print file missing at checkout');
       ins.run(`${orderId}-${k + 1}`, orderId, i.sourceId, i.workId, i.skuId, `${i.name} — ${i.title}`, i.variantId, i.unitCents, i.quantity, pf.print_file_sha, pf.orientation);
     });
-    d.orders.prepare("INSERT INTO order_events (order_id, part, to_value, cause, at) VALUES (?, 'payment', 'checkout_open', 'storefront', ?)").run(orderId, ts);
+    recordEvent(d.orders, d.clock, { orderId, part: 'payment', to: 'checkout_open', cause: 'storefront', at: ts });
     d.orders.prepare('UPDATE carts SET open_order_id = ?, updated_at = ? WHERE id = ?').run(orderId, ts, cartId);
     return n;
   });
