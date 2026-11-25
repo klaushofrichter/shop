@@ -64,7 +64,7 @@ describe('customer e-mails (09 §1)', () => {
     expect(m.from).toBe('localhost:8080 <orders@example.com>');
     expect(m.feedbackTo).toBe('bounces@example.com');
     expect(m.subject).toBe(`Your order ${order(id).number}`);
-    expect(m.text).toContain(`See your order: http://localhost:8080/order/${id}?t=`);
+    expect(m.text).toContain(`See your order (http://localhost:8080/order/${id}?t=`);
     expect(m.text).toContain('Ships to Jane Doe, Austin, TX.');
     expect(m.text).not.toContain('1 Main St'); // city and state only
     expect(m.html).toContain('<html lang="en">');
