@@ -150,7 +150,9 @@ export async function renderPrintFile(
         { input: side, left: plan.outW - half, top: 0 },
       ]);
     }
-    data = await canvas.withIccProfile('srgb').jpeg({ quality: 92, chromaSubsampling: '4:4:4', mozjpeg: false }).toBuffer();
+    // No optimised Huffman coding: it keeps every coefficient of the image in memory (about 190 MiB for
+    // 3600 × 4800 px) for a file only ~7 % smaller (11 §1).
+    data = await canvas.withIccProfile('srgb').jpeg({ quality: 92, chromaSubsampling: '4:4:4', mozjpeg: false, optimiseCoding: false }).toBuffer();
     ext = 'jpg';
   }
 
