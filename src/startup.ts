@@ -132,6 +132,7 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
       publicUrl: config.publicUrl,
       skus,
       storeLabel: config.mode,
+      quote: config.quote,
     },
     webhooks: { orders: dbs.orders, clock, stripeWebhookSecret: config.stripe.webhookSecret, log },
     printfulWebhooks: {

@@ -18,6 +18,8 @@ import type { WorkRow } from '../catalog/works';
 import { ANCHORS, type Anchor } from '../images/printfile';
 import { formatCents, parseCents } from '../money';
 import { adminLayout, postButton } from './views';
+import { holdsSection, registerOrderRoutes } from './orders';
+import type { QuoteSettings } from '../config';
 
 export interface AdminDeps {
   catalog: Db;
@@ -30,6 +32,8 @@ export interface AdminDeps {
   skus: SkuCatalog;
   /** Whose file registrations count for readiness: the mode. */
   storeLabel: string;
+  /** Stripe's fee estimate on the order page. */
+  quote?: QuoteSettings;
 }
 
 const ANCHOR_LABELS: Record<Anchor, string> = {
@@ -75,7 +79,9 @@ export function adminRouter(d: AdminDeps): Router {
       .prepare('INSERT INTO admin_audit (at, actor, action, target, details_json) VALUES (?, ?, ?, ?, ?)')
       .run(iso(d.clock), req.session!.email, action, target, details === undefined ? null : JSON.stringify(details));
 
-  r.get('/', (_req, res) => {
+  registerOrderRoutes(r, { orders: d.orders, clock: d.clock, mode: d.mode, quote: d.quote }, page, audit);
+
+  r.get('/', (req: AdminRequest, res) => {
     const count = (db: Db, sql: string) => (db.prepare(sql).get() as { n: number }).n;
     const works = count(d.catalog, 'SELECT COUNT(*) n FROM works WHERE listed = 1');
     const enabled = count(d.catalog, 'SELECT COUNT(*) n FROM works WHERE listed = 1 AND enabled = 1');
@@ -90,6 +96,7 @@ export function adminRouter(d: AdminDeps): Router {
 <li>Works listed by the sources: ${works}; prints allowed: ${allowed}; enabled: ${enabled}. <a href="/admin/works">Works</a></li>
 <li>Failed jobs: ${failedJobs}</li>
 </ul>
+${holdsSection({ orders: d.orders, clock: d.clock, mode: d.mode }, req.csrf!)}
 ${skuBad.length ? `<h2>Products switched off by the catalog check</h2><ul>${skuBad.map((s) => `<li>${esc(s.sku_id)}: ${esc(s.problem ?? '')}</li>`).join('')}</ul>` : ''}`,
     );
   });

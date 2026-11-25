@@ -7,7 +7,7 @@ import { esc } from '../pages';
 export function adminLayout(o: { title: string; body: string; mode?: string; signedIn?: boolean }): string {
   const banner = o.mode ? `<p class="mode mode-${esc(o.mode)}">${esc(o.mode.toUpperCase())}</p>` : '';
   const nav = o.signedIn
-    ? `<nav aria-label="Admin"><a href="/admin">Dashboard</a> <a href="/admin/works">Works</a> <a href="/auth/logout">Sign out</a></nav>`
+    ? `<nav aria-label="Admin"><a href="/admin">Dashboard</a> <a href="/admin/orders">Orders</a> <a href="/admin/works">Works</a> <a href="/auth/logout">Sign out</a></nav>`
     : '';
   return `<!doctype html>
 <html lang="en">
