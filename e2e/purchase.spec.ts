@@ -7,7 +7,8 @@ import { E2E_COOKIE_SECRET } from '../playwright.config';
 // mode, against the mock services of mocks/server.ts (fake art, mock Printful,
 // mock Stripe, whose checkout page the shop passes through under
 // /__mock-pages/). Klaus's part first (enable a work, offer a print), then a
-// customer's: picture page, cart, address, quote, Stripe, order page.
+// customer's: picture page, cart, address, quote, Stripe, order page; then the
+// order reaches mock Printful and is confirmed (step 7).
 // Desktop Chromium only; only where the mocks run (E2E_MOCKS=1).
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
@@ -99,13 +100,22 @@ test('Klaus offers a print, a customer buys it, the order page shows the payment
   await expect(page.getByText(/Order \d{5}/).first()).toBeVisible();
   await expect(async () => {
     await page.reload();
-    await expect(page.getByText("Payment received — we're checking your order")).toBeVisible({ timeout: 1_000 });
+    // Submission runs in the background: the order may already be with (mock) Printful.
+    await expect(page.getByText(/Payment received — we're checking your order|In preparation/)).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 30_000 });
   expect((await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze()).violations.map((v) => v.id)).toEqual([]);
+
+  const orderUrl = page.url();
 
   // The cart is empty after the payment.
   await page.goto('/cart');
   await expect(page.getByText('Art print 8 × 10 in')).toHaveCount(0);
+
+  // The job runner submits the order to (mock) Printful and confirms it: "In preparation".
+  await expect(async () => {
+    await page.goto(orderUrl);
+    await expect(page.getByText('In preparation')).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 60_000 });
   expect(problems).toEqual([]);
   await customer.close();
 });

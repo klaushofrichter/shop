@@ -1,7 +1,7 @@
 /**
- * Mock Printful, stage 1 (docs/design/14 §4, §10): identity, catalog, shipping
- * rates, the file library, rate-limit headers, the control API skeleton.
- * Orders, mockups and webhooks follow with the shop's steps 4 and 7.
+ * Mock Printful (docs/design/14 §4, §10): identity, catalog, shipping rates,
+ * the file library, mockups, orders (draft, costs, confirm, delete, cancel),
+ * rate-limit headers and the control API. Webhooks follow with step 7b.
  *
  * Shapes follow the 2026-11-24 captures; requests are validated against the
  * pinned v2 spec and unknown fields are refused (14 §7.1). Mock tokens start
@@ -34,6 +34,30 @@ export interface Scenario {
   failFilesMatching?: string;
   /** Mockup tasks end `failed`. */
   failMockups?: boolean;
+  /** The next order create is refused like a bad address (400 "Recipient: …"). */
+  refuseNextOrder?: boolean;
+  /** The next order create is made, but the answer is a 500 (the shop must look it up). */
+  loseNextCreateAnswer?: boolean;
+  /** The next confirm is made, but the answer is a 500. */
+  loseNextConfirmAnswer?: boolean;
+  /** Cost calculation of new orders ends `failed`. */
+  failCosts?: boolean;
+  /** Multiply the item costs of new orders (to trip the shop's cost guard). */
+  costFactor?: number;
+}
+
+export interface MockOrder {
+  id: number;
+  externalId: string | null;
+  status: string;
+  created: number;
+  shipping: string;
+  body: Record<string, unknown>;
+  itemsCents: number;
+  shippingCents: number;
+  costsFail: boolean;
+  confirmedAt?: number;
+  canceledBy?: 'shop' | 'printful';
 }
 
 interface MockMockup {
@@ -51,6 +75,9 @@ export interface MockPrintful {
   /** Every request received, for assertions. */
   requests: Array<{ method: string; path: string; body: unknown }>;
   files: Map<number, MockFile>;
+  orders: Map<number, MockOrder>;
+  /** Move an order along as Printful would (the webhooks follow with step 7b). */
+  setOrderStatus(id: number, status: string): void;
 }
 
 let spec: PrintfulSpec | undefined;
@@ -66,6 +93,8 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     remaining: 120,
     mockups: new Map<number, MockMockup>(),
     nextMockupId: 700000001,
+    orders: new Map<number, MockOrder>(),
+    nextOrderId: 150000001,
   };
   const variants = new Map(MOCK_VARIANTS.map((v) => [v.id, v]));
   const app = express();
@@ -84,6 +113,13 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     state.scenario = { ...state.scenario, ...(req.body as Scenario) };
     res.json({ ok: true });
   });
+  app.post('/__mock/orders/:id/status', (req, res) => {
+    const o = state.orders.get(Number(req.params.id));
+    if (!o) return res.status(404).json({ error: 'no such order' });
+    o.status = String((req.body as { status?: string }).status);
+    res.json({ ok: true });
+  });
+  app.get('/__mock/orders', (_req, res) => res.json([...state.orders.values()].map((o) => ({ id: o.id, external_id: o.externalId, status: o.status }))));
   app.post('/__mock/clock/advance', (req, res) => {
     if (!opts.clock.advance) return res.status(409).json({ error: 'this clock cannot be moved' });
     opts.clock.advance(Number((req.body as { ms?: number }).ms) || 0);
@@ -310,6 +346,100 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     send(res, 200, { data: m ? [mockupBody(req, m)] : [], extra: [], paging: { total: m ? 1 : 0, limit: 20, offset: 0 }, _links: {} });
   });
 
+  // ---- orders (06 §3, 14 §4 stage 3): draft → costs after ~2 s → confirm → pending ----
+  const COSTS_MS = 2_000;
+  const money = (c: number) => (c / 100).toFixed(2);
+  const orderBody = (o: MockOrder) => {
+    const done = clock.now() - o.created >= COSTS_MS;
+    const cs = !done ? 'calculating' : o.costsFail ? 'failed' : 'done';
+    const tax = Math.round(o.itemsCents * 0.0825);
+    const n = (c: number) => (cs === 'done' ? money(c) : null);
+    const b = o.body as { recipient: unknown; order_items: Array<Record<string, unknown>>; customization?: unknown; retail_costs?: Record<string, string> };
+    return {
+      id: o.id, external_id: o.externalId, store_id: MOCK_STORE.id, shipping: o.shipping, status: o.status,
+      created_at: new Date(o.created).toISOString(), updated_at: new Date(clock.now()).toISOString(),
+      recipient: b.recipient,
+      costs: {
+        calculation_status: cs, currency: 'USD', subtotal: n(o.itemsCents), discount: n(0), shipping: n(o.shippingCents), digitization: n(0),
+        additional_fee: n(0), fulfillment_fee: n(0), retail_delivery_fee: n(0), vat: n(0), tax: n(tax), total: n(o.itemsCents + o.shippingCents + tax),
+      },
+      retail_costs: { calculation_status: cs, currency: 'USD', subtotal: null, discount: null, shipping: b.retail_costs?.shipping ?? null, tax: b.retail_costs?.tax ?? null, vat: null, total: null },
+      order_items: b.order_items.map((i, k) => ({ id: o.id * 10 + k, ...i })),
+      customization: b.customization ?? null,
+      _links: { self: { href: `https://api.printful.com/v2/orders/${o.id}` } },
+    };
+  };
+  const findOrder = (ref: string) =>
+    ref.startsWith('@') ? [...state.orders.values()].find((o) => o.externalId === decodeURIComponent(ref.slice(1))) : state.orders.get(Number(ref));
+
+  app.post('/v2/orders', (req, res) => {
+    const b = req.body as { external_id?: string; shipping?: string; recipient: Record<string, string>; order_items: Array<{ catalog_variant_id: number; quantity: number }> };
+    if (b.external_id && [...state.orders.values()].some((o) => o.externalId === b.external_id)) {
+      return fail(res, 400, 'BadRequest', 'External ID validation error: Order with this external ID already exists.');
+    }
+    if (state.scenario.refuseNextOrder) {
+      state.scenario.refuseNextOrder = false;
+      return fail(res, 400, 'BadRequest', 'Recipient: The address could not be verified.');
+    }
+    if (!US_STATES.has(b.recipient?.state_code)) return fail(res, 400, 'BadRequest', `Recipient: Invalid state \`${b.recipient?.state_code}\``);
+    let items = 0;
+    let shipping = 0;
+    for (const [k, i] of b.order_items.entries()) {
+      const v = variants.get(i.catalog_variant_id);
+      if (!v) return fail(res, 404, 'NotFound', `Variant with ID: ${i.catalog_variant_id} does not exist.`);
+      items += Math.round(Number(v.price) * 100 * (state.scenario.costFactor ?? 1)) * i.quantity;
+      const [first, extra] = SHIP_RATES[v.ship];
+      shipping += k === 0 ? first + extra * (i.quantity - 1) : extra * i.quantity;
+    }
+    const o: MockOrder = {
+      id: state.nextOrderId++, externalId: b.external_id ?? null, status: 'draft', created: clock.now(), shipping: b.shipping ?? 'STANDARD',
+      body: req.body as Record<string, unknown>, itemsCents: items, shippingCents: shipping, costsFail: !!state.scenario.failCosts,
+    };
+    state.orders.set(o.id, o);
+    if (state.scenario.loseNextCreateAnswer) {
+      state.scenario.loseNextCreateAnswer = false;
+      return fail(res, 500, 'InternalServerError', 'mock scenario: answer lost');
+    }
+    send(res, 200, { data: orderBody(o), extra: [] });
+  });
+  app.get('/v2/orders/:ref', (req, res) => {
+    const o = findOrder(String(req.params.ref));
+    if (!o) return fail(res, 404, 'NotFound', 'Order not found');
+    send(res, 200, { data: orderBody(o), extra: [] });
+  });
+  app.post('/v2/orders/:ref/confirmation', (req, res) => {
+    const o = findOrder(String(req.params.ref));
+    if (!o) return fail(res, 404, 'NotFound', 'Order not found');
+    if (o.status !== 'draft') return fail(res, 400, 'BadRequest', `Order with status ${o.status} cannot be confirmed`);
+    if (clock.now() - o.created < COSTS_MS || o.costsFail) return fail(res, 400, 'BadRequest', 'Order costs are not calculated');
+    o.status = 'pending';
+    o.confirmedAt = clock.now();
+    if (state.scenario.loseNextConfirmAnswer) {
+      state.scenario.loseNextConfirmAnswer = false;
+      return fail(res, 500, 'InternalServerError', 'mock scenario: answer lost');
+    }
+    send(res, 200, { data: orderBody(o), extra: [] });
+  });
+  // v2 delete: only orders that were never charged (draft, failed, canceled before a charge).
+  app.delete('/v2/orders/:ref', (req, res) => {
+    const o = findOrder(String(req.params.ref));
+    if (!o) return fail(res, 404, 'NotFound', 'Order not found');
+    if (!['draft', 'failed', 'canceled'].includes(o.status) || o.confirmedAt) return fail(res, 400, 'BadRequest', 'This order cannot be deleted');
+    state.orders.delete(o.id);
+    res.status(204).end();
+  });
+  // v1 cancel: confirmed orders not yet in production; they stay visible as canceled.
+  app.delete('/orders/:ref', (req, res) => {
+    const o = findOrder(String(req.params.ref));
+    if (!o) return res.status(404).json({ code: 404, result: 'Order not found', error: { reason: 'NotFound', message: 'Order not found' } });
+    if (!['draft', 'pending', 'inreview', 'failed', 'onhold'].includes(o.status)) {
+      return res.status(400).json({ code: 400, result: 'Order cannot be canceled', error: { reason: 'BadRequest', message: 'Order cannot be canceled' } });
+    }
+    o.status = 'canceled';
+    o.canceledBy = 'shop';
+    res.json({ code: 200, result: { id: o.id, status: 'canceled' } });
+  });
+
   app.use((req, res) => fail(res, 404, 'NotFound', `mock: no route for ${req.method} ${req.path}`));
 
   function reset() {
@@ -317,6 +447,8 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     state.nextFileId = 900000001;
     state.mockups.clear();
     state.nextMockupId = 700000001;
+    state.orders.clear();
+    state.nextOrderId = 150000001;
     state.scenario = {};
     state.requests.length = 0;
     state.remaining = 120;
@@ -328,5 +460,10 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     scenario: (s) => (state.scenario = { ...state.scenario, ...s }),
     requests: state.requests,
     files: state.files,
+    orders: state.orders,
+    setOrderStatus(id, status) {
+      const o = state.orders.get(id);
+      if (o) o.status = status;
+    },
   };
 }

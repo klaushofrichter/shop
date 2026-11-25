@@ -26,6 +26,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 - **Step 5** (PRs #16, #17): preview gate, picture pages, cart, `/api/offers`; address form with the ZIP ↔ state table, the quote (one Printful call) with the pre-payment cost check.
 - **Step 6 done**: (a) Stripe client, webhook signatures, mock Stripe (PR #18); (b) `/checkout`, orders, the payment transaction with the fail-safes, the Stripe webhook and event job, the order status page, find my order (PR #19); (c) the mocks as one process (`mocks/server.ts`: mock Printful, mock Stripe, a fake art), the mock-mode passthrough of `/__mock-pages/stripe/`, and a browser e2e of a whole purchase in CI (`e2e/purchase.spec.ts`: enable a work, offer a print, buy it, see it paid).
+- **Step 7 in progress**: (a) submission (`src/orders/submit.ts`): preconditions I2, attempt claim, look-up before create, draft, costs, cost guard, test-mode stop, confirm with a fresh Stripe refund read and the quiet period (I3); mock Printful orders (draft, costs, confirm, v2 delete, v1 cancel, lost-answer scenarios); new hold reasons `provider_refused`, `costs_failed`, `provider_failed`, `confirm_failed`. Still to come in step 7: Printful webhooks and shipments (7b), hold deadlines, refunds, disputes and completion (7c), reconciliation and purge (7d).
 
 ## Waiting for Klaus
 

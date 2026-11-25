@@ -84,6 +84,66 @@ export interface FulfilmentProvider {
   getMockup(taskId: string): Promise<MockupTask>;
   /** A finished mockup image (a temporary provider URL), at most `maxBytes`. */
   downloadMockup(url: string, maxBytes: number): Promise<Buffer>;
+  // ---- orders (06 §2–4, step 7) ----
+  /** Look an order up by its external id; null when there is none (404). */
+  findOrder(externalId: string): Promise<ProviderOrder | null>;
+  createDraft(order: DraftOrder): Promise<ProviderOrder>;
+  getOrder(providerOrderId: string): Promise<ProviderOrder>;
+  /** Absent in test mode: the test store never confirms (07 §2.9). */
+  confirm?(providerOrderId: string): Promise<ProviderOrder>;
+  /** v2 DELETE: allowed only for uncharged draft, failed or canceled orders, so success is I4's proof. */
+  deleteOrder(providerOrderId: string): Promise<'deleted' | 'refused'>;
+  /** v1 cancel of a confirmed order not yet in production. */
+  cancel(providerOrderId: string): Promise<'canceled' | 'not_cancellable'>;
+}
+
+/** Normalised order status (06 §2). */
+export type ProviderOrderStatus =
+  | 'draft'
+  | 'pending'
+  | 'inreview'
+  | 'on_hold'
+  | 'in_production'
+  | 'partially_shipped'
+  | 'fulfilled'
+  | 'canceled'
+  | 'failed';
+
+export interface ProviderOrder {
+  id: string;
+  externalId: string | null;
+  storeId: string;
+  status: ProviderOrderStatus;
+  costs: {
+    status: 'calculating' | 'done' | 'failed';
+    /** What Printful charges the store: items, shipping and its taxes. */
+    totalCents?: number;
+  };
+}
+
+export interface DraftItem {
+  /** The shop's order_items id. */
+  externalId: string;
+  variantId: number;
+  quantity: number;
+  retailCents: number;
+  name: string;
+  orientation?: 'horizontal' | 'vertical';
+  placement: string;
+  technique: string;
+  fileUrl: string;
+}
+
+export interface DraftOrder {
+  /** `<order id>-<attempt>` (07 §2.4). */
+  externalId: string;
+  shipping: string;
+  /** ADR-0031: name and address only; no e-mail, no phone. */
+  recipient: Required<Pick<Address, 'name' | 'address1' | 'city' | 'stateCode' | 'zip' | 'countryCode'>> & { address2?: string };
+  items: DraftItem[];
+  retail: { shippingCents: number; taxCents: number };
+  /** The shop's own contact on the slip (06 §3), never the customer's. */
+  packingSlip: { storeName: string; email?: string; phone?: string; customOrderId: string };
 }
 
 /**

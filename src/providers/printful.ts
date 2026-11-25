@@ -9,10 +9,13 @@ import {
   ProviderError,
   type Address,
   type FulfilmentProvider,
+  type DraftOrder,
   type ItemRef,
   type MockupRequest,
   type MockupTask,
   type ProviderFile,
+  type ProviderOrder,
+  type ProviderOrderStatus,
   type ShippingRate,
   type StoreIdentity,
   type VariantSpec,
@@ -21,6 +24,8 @@ import {
 export interface PrintfulOptions {
   baseUrl: string;
   token: string;
+  /** Mock and live only: test mode never confirms an order (07 §2.9). */
+  mayConfirm?: boolean;
   fetch?: typeof fetch;
   timeoutMs?: number;
 }
@@ -43,6 +48,7 @@ export class PrintfulClient implements FulfilmentProvider {
     this.fetch = opts.fetch ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? 15_000;
     this.base = opts.baseUrl.replace(/\/+$/, '');
+    if (opts.mayConfirm) this.confirm = (id) => this.confirmOrder(id);
   }
 
   async identity(): Promise<StoreIdentity> {
@@ -150,12 +156,81 @@ export class PrintfulClient implements FulfilmentProvider {
     return buf;
   }
 
+  // ---- orders (06 §3–4) ----
+
+  async findOrder(externalId: string): Promise<ProviderOrder | null> {
+    try {
+      return toOrder((await this.call('GET', `/v2/orders/@${encodeURIComponent(externalId)}`)).data as Json);
+    } catch (e) {
+      if (e instanceof ProviderError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
+  async createDraft(o: DraftOrder): Promise<ProviderOrder> {
+    const r = o.recipient;
+    const recipient: Json = { name: r.name, address1: r.address1, city: r.city, state_code: r.stateCode, zip: r.zip, country_code: r.countryCode };
+    if (r.address2) recipient.address2 = r.address2;
+    const slip: Json = { store_name: o.packingSlip.storeName, custom_order_id: o.packingSlip.customOrderId };
+    if (o.packingSlip.email) slip.email = o.packingSlip.email;
+    if (o.packingSlip.phone) slip.phone = o.packingSlip.phone;
+    const body = {
+      external_id: o.externalId,
+      shipping: o.shipping,
+      recipient,
+      order_items: o.items.map((i) => ({
+        source: 'catalog',
+        catalog_variant_id: i.variantId,
+        external_id: i.externalId,
+        quantity: i.quantity,
+        retail_price: (i.retailCents / 100).toFixed(2),
+        name: i.name,
+        ...(i.orientation ? { orientation: i.orientation } : {}),
+        placements: [{ placement: i.placement, technique: i.technique, layers: [{ type: 'file', url: i.fileUrl }] }],
+      })),
+      customization: { packing_slip: slip },
+      retail_costs: { currency: 'USD', shipping: (o.retail.shippingCents / 100).toFixed(2), tax: (o.retail.taxCents / 100).toFixed(2) },
+    };
+    return toOrder((await this.call('POST', '/v2/orders', body)).data as Json);
+  }
+
+  async getOrder(providerOrderId: string): Promise<ProviderOrder> {
+    return toOrder((await this.call('GET', `/v2/orders/${encodeURIComponent(providerOrderId)}`)).data as Json);
+  }
+
+  /** Present only when the mode may confirm (mock and live); a test-mode client has none (07 §2.9). */
+  readonly confirm?: (providerOrderId: string) => Promise<ProviderOrder>;
+
+  private async confirmOrder(providerOrderId: string): Promise<ProviderOrder> {
+    return toOrder((await this.call('POST', `/v2/orders/${encodeURIComponent(providerOrderId)}/confirmation`)).data as Json);
+  }
+
+  async deleteOrder(providerOrderId: string): Promise<'deleted' | 'refused'> {
+    try {
+      await this.call('DELETE', `/v2/orders/${encodeURIComponent(providerOrderId)}`);
+      return 'deleted';
+    } catch (e) {
+      if (e instanceof ProviderError && e.kind === 'permanent') return 'refused';
+      throw e;
+    }
+  }
+
+  async cancel(providerOrderId: string): Promise<'canceled' | 'not_cancellable'> {
+    try {
+      await this.call('DELETE', `/orders/${encodeURIComponent(providerOrderId)}`);
+      return 'canceled';
+    } catch (e) {
+      if (e instanceof ProviderError && e.kind === 'permanent') return 'not_cancellable';
+      throw e;
+    }
+  }
+
   /**
    * One request. `idempotent` marks a POST that is safe to repeat; any other
    * POST without an answer is `unknown`.
    */
-  private async call(method: 'GET' | 'POST', path: string, body?: unknown, opts: { idempotent?: boolean } = {}): Promise<Json> {
-    const reading = method === 'GET' || opts.idempotent;
+  private async call(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown, opts: { idempotent?: boolean } = {}): Promise<Json> {
+    const reading = method === 'GET' || method === 'DELETE' || opts.idempotent;
     let res: Response;
     try {
       res = await this.fetch(this.base + path, {
@@ -181,6 +256,7 @@ export class PrintfulClient implements FulfilmentProvider {
       json = undefined;
     }
     if (res.ok && json) return json;
+    if (res.ok && method === 'DELETE') return {};
     const message = errorMessage(json) ?? `HTTP ${res.status}`;
     if (res.status === 429) {
       const after = Number(res.headers.get('retry-after'));
@@ -210,6 +286,25 @@ function errorMessage(json: Json | undefined): string | undefined {
 /** Paths in errors without ids that could be long or odd. */
 function route(path: string): string {
   return path.replace(/\?.*$/, '').replace(/\/\d+/g, '/{id}');
+}
+
+const ORDER_STATUS: Record<string, ProviderOrderStatus> = {
+  draft: 'draft', pending: 'pending', inreview: 'inreview', onhold: 'on_hold', inprocess: 'in_production',
+  partial: 'partially_shipped', fulfilled: 'fulfilled', canceled: 'canceled', failed: 'failed',
+};
+
+function toOrder(d: Json): ProviderOrder {
+  const status = ORDER_STATUS[String(d.status)];
+  if (!status) throw new ProviderError('unavailable', `printful: unknown order status ${String(d.status).slice(0, 30)}`);
+  const c = (d.costs ?? {}) as Json;
+  const cs = c.calculation_status === 'done' || c.calculation_status === 'failed' ? c.calculation_status : 'calculating';
+  return {
+    id: String(d.id),
+    externalId: typeof d.external_id === 'string' ? d.external_id : null,
+    storeId: String(d.store_id),
+    status,
+    costs: { status: cs, totalCents: cs === 'done' && typeof c.total === 'string' ? parseCents(c.total) : undefined },
+  };
 }
 
 function toMockupTask(d: Json): MockupTask {

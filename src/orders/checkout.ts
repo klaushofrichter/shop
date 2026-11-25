@@ -121,15 +121,15 @@ export async function startCheckout(d: CheckoutDeps, cartId: string, quoteId: st
       )
       .run(orderId, n, cartId, quote.email, address.name, address.line1, address.line2 ?? null, address.city, address.state, address.zip, shippingId, option.cents, itemsCents, idemKey, quoteId, ts, ts);
     const ins = d.orders.prepare(
-      `INSERT INTO order_items (id, order_id, source_id, work_id, sku_id, name, provider, provider_variant_id, unit_cents, quantity, print_file_sha)
-       VALUES (?, ?, ?, ?, ?, ?, 'printful', ?, ?, ?, ?)`,
+      `INSERT INTO order_items (id, order_id, source_id, work_id, sku_id, name, provider, provider_variant_id, unit_cents, quantity, print_file_sha, orientation)
+       VALUES (?, ?, ?, ?, ?, ?, 'printful', ?, ?, ?, ?, ?)`,
     );
     quoted.forEach((i, k) => {
       const pf = d.catalog
-        .prepare(`SELECT o.print_file_sha FROM offers o JOIN print_files p ON p.sha256 = o.print_file_sha AND p.deleted_at IS NULL WHERE o.source_id = ? AND o.work_id = ? AND o.sku_id = ?`)
-        .get(i.sourceId, i.workId, i.skuId) as { print_file_sha: string } | undefined;
+        .prepare(`SELECT o.print_file_sha, o.orientation FROM offers o JOIN print_files p ON p.sha256 = o.print_file_sha AND p.deleted_at IS NULL WHERE o.source_id = ? AND o.work_id = ? AND o.sku_id = ?`)
+        .get(i.sourceId, i.workId, i.skuId) as { print_file_sha: string; orientation: string | null } | undefined;
       if (!pf) throw new Error('print file missing at checkout');
-      ins.run(`${orderId}-${k + 1}`, orderId, i.sourceId, i.workId, i.skuId, `${i.name} — ${i.title}`, i.variantId, i.unitCents, i.quantity, pf.print_file_sha);
+      ins.run(`${orderId}-${k + 1}`, orderId, i.sourceId, i.workId, i.skuId, `${i.name} — ${i.title}`, i.variantId, i.unitCents, i.quantity, pf.print_file_sha, pf.orientation);
     });
     d.orders.prepare("INSERT INTO order_events (order_id, part, to_value, cause, at) VALUES (?, 'payment', 'checkout_open', 'storefront', ?)").run(orderId, ts);
     d.orders.prepare('UPDATE carts SET open_order_id = ?, updated_at = ? WHERE id = ?').run(orderId, ts, cartId);

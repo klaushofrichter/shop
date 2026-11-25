@@ -23,6 +23,11 @@ export const REASONS: Record<string, { kind: HoldKind; deadlineMs: number; actio
   early_fraud_warning: { kind: 'fraud', deadlineMs: 0, action: 'refund' },
   dispute: { kind: 'fraud', deadlineMs: 24 * H, action: 'alert' },
   refund_failed: { kind: 'attention', deadlineMs: 24 * H, action: 'alert' },
+  // Submission (06 §4, §7):
+  provider_refused: { kind: 'attention', deadlineMs: 0, action: 'refund' }, // Permanent at draft creation: refund the whole cart
+  costs_failed: { kind: 'attention', deadlineMs: 24 * H, action: 'refund' },
+  provider_failed: { kind: 'attention', deadlineMs: 24 * H, action: 'alert' }, // order_failed; the deadline tries a delete (7c)
+  confirm_failed: { kind: 'attention', deadlineMs: 24 * H, action: 'alert' }, // three confirms without a confirmed order
 };
 
 /** Open a hold with all its reasons (they must share a kind). Returns the hold id. */
