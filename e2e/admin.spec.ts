@@ -18,7 +18,7 @@ test.beforeEach(async ({ context, baseURL }, info) => {
   ]);
 });
 
-test('the admin dashboard and works page load signed in, no-store, accessible', async ({ page }) => {
+test('the admin dashboard, orders and works pages load signed in, no-store, accessible', async ({ page }) => {
   const res = await page.goto('/admin');
   expect(res?.status()).toBe(200);
   expect(res?.headers()['cache-control']).toBe('no-store');
@@ -26,6 +26,11 @@ test('the admin dashboard and works page load signed in, no-store, accessible', 
   await expect(page.getByText('MOCK', { exact: true })).toBeVisible();
   const axe = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
   expect(axe.violations.map((v) => v.id)).toEqual([]);
+
+  await page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: 'Orders' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Orders' })).toBeVisible();
+  const axeOrders = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+  expect(axeOrders.violations.map((v) => v.id)).toEqual([]);
 
   await page.getByRole('navigation', { name: 'Admin' }).getByRole('link', { name: 'Works' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Works' })).toBeVisible();
