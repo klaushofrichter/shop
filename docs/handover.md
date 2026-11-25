@@ -37,6 +37,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 - Every work of art, every product (ADR-0040); prices per product, the launch prices accepted (ADR-0041).
 - Packing-slip contact: Klaus gave the e-mail and phone. They go into the cluster's configuration (`PACKING_SLIP_EMAIL`, `PACKING_SLIP_PHONE`), not into this public repository.
 - `STATUS_TOKEN_SECRET` is in the node's `.env` (Cluster). `scripts/create-secrets.sh` (step 9) must list it for `shop-env`.
+- AWS (Klaus, checked by Cluster): the backup bucket and two IAM users exist; their keys are in the node's `.env` as `SHOP_BACKUP_AWS_*` (→ `shop-litestream` Secret) and `SHOP_SES_AWS_*` (→ `shop-env`). SES may send only as `orders@shop.klaushofrichter.net`. Still open: the SES domain identity and its DKIM records at Squarespace (Klaus), SES production access (the account is in the sandbox; before go-live), and which mailbox gets bounce and complaint notices (Klaus).
 
 ## Next
 
