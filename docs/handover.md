@@ -42,7 +42,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 ## Next
 
-1. Step 9 (secrets script, first deployment in test mode, art's link) in the order of `docs/design/13-plan-and-open-questions.md` §1.
+1. Step 9 (secrets script, first deployment in test mode, art's link; measure a render's peak memory in the pod with real originals, the CI test measures 360 MiB of 384 on glibc) in the order of `docs/design/13-plan-and-open-questions.md` §1.
 
 ## Keys
 
