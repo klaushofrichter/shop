@@ -111,7 +111,10 @@ export async function checkOriginal(
   const dl = await store.download(body, MAX_ORIGINAL_BYTES);
   try {
     const hasImages = db.prepare('SELECT 1 FROM display_images WHERE source_id = ? AND work_id = ? LIMIT 1').get(sourceId, workId);
-    if (row.original_sha256 === dl.sha256 && hasImages) return { changed: false, sha256: dl.sha256 };
+    if (row.original_sha256 === dl.sha256 && hasImages) {
+      store.keep(dl.file, 'originals', dl.sha256);
+      return { changed: false, sha256: dl.sha256 };
+    }
     const { width, height } = await probe(dl.file, limits);
     const images = await renderDisplayImages(dl.file, store, limits);
     transaction(db, () => {
@@ -128,6 +131,8 @@ export async function checkOriginal(
         workId,
       );
     });
+    // Kept by its hash: the offer renders that follow use it instead of downloading it again.
+    store.keep(dl.file, 'originals', dl.sha256);
     return { changed: row.original_sha256 !== dl.sha256, sha256: dl.sha256 };
   } finally {
     store.discard(dl.file);

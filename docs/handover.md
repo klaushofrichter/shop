@@ -42,7 +42,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 ## Next
 
-- Milestone 12, Claude as operator (ADR-0043, Proposed): an ops API, an MCP server and a Claude Dashboard; four open questions for Klaus in the ADR.
+- Milestone 12, Claude as operator (ADR-0043, Accepted): read, diagnose and act through tools inside the shop process, used by a Claude session on the node; prices by pull request and deploy for now; a token API for Claude in the cloud is optional.
 
 1. Step 9 (secrets script, first deployment in test mode, art's link; measure a render's peak memory in the pod with real originals; the CI test measures about 200 MiB of 384) in the order of `docs/design/13-plan-and-open-questions.md` §1.
 

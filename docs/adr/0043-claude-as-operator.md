@@ -1,8 +1,8 @@
 # ADR-0043: Claude as the shop's operator
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-25
-- Decided by: (Klaus, once accepted; he asked for the milestone on 2026-11-25)
+- Decided by: Klaus, 2026-11-25, answering the four open questions: "1: Claude should be able to read and diagnose the system, and also act. 2: at this time, certain changes like pricing can be depending on a new deployment. But eventually we want this dynamic - it is not needed for now 3: I have no strong opinion about the MCP server design. I think it can be part of the shop process, if that is easier. 4: The requirement is that I can talk to Claude, which can run locally on the node, just like the cluster agent. An API that is protected by a token is useful to use Claude in the Cloud, so that's good to have, but not mandatory as long as I can interact with Claude and do not need to do everything manually."
 
 ## Context
 
@@ -40,14 +40,17 @@ Option 2, built as milestone 12:
 - **MCP server:** a small MCP server Klaus adds as a connector, wrapping the API. Tools: `list_orders`, `order`, `stats`, `holds`, `breaker`, `reset_breaker`, `set_price`, … Read and act tools are separate, so a read-only connection is possible.
 - **Dashboard:** a Claude Dashboard artifact fed by the read API: orders today and this week, open holds, the breaker, sales by product, alerts. Actions stay in chat, where Claude asks before acting.
 
-## Open questions for Klaus
+## Decision (Klaus's answers, 2026-11-25)
 
-1. Actions through Claude, or reads only at first?
-2. Price changes at runtime (this amends ADR-0022), or still a commit and a deploy that Claude prepares?
-3. Where the MCP server runs: in the shop's pod (one more route), or as its own small service.
-4. Exposure: the API on `shop.klaushofrichter.net` behind tokens, or reachable only on the cluster's network (Cluster's decision on exposure).
+1. **Read, diagnose and act.** Claude gets the reads and the audited actions above.
+2. **Prices change by deploy for now.** Claude prepares the change to `config/skus.json` as a pull request; it goes live with the next deployment. A runtime `price_overrides` table is deferred until Klaus wants dynamic prices; ADR-0022 stays as it is.
+3. **The MCP server runs inside the shop process.** It is one more route or entry point, with no separate service.
+4. **The primary path is Claude running locally on the node,** as the Cluster agent does. It reaches the shop over the cluster network or `kubectl`, not the internet. A token-protected API for Claude in the cloud is good to have, not required; if it is built, it sits behind the same separate read and act tokens.
+
+So the first build is: a read and act tool set inside the shop, reachable by a Claude session on the node, every action through the admin's audited code path. Price changes are prepared as a pull request. The Claude Dashboard is fed by the same reads.
 
 ## Consequences
 
 - One more authenticated surface: tokens, a rate limit and an audit for each.
-- Prices can change without a deploy. The cost check still protects every sale.
+- Prices still change by deploy; a runtime override is a later ADR.
+- How the node's Claude reaches the shop (a local port, `kubectl port-forward`, or a stdio MCP command run in the pod) is settled with Cluster when the milestone starts.

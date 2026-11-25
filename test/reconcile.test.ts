@@ -147,5 +147,14 @@ describe('purge (07 §6)', () => {
     expect(existsSync(store.pathOf('files', `${unused}.jpg`))).toBe(false);
     expect(c.prepare('SELECT deleted_at FROM print_files WHERE sha256 = ?').get(unused)).toEqual({ deleted_at: expect.any(String) });
     expect(c.prepare('SELECT deleted_at FROM print_files WHERE sha256 = ?').get(used)).toEqual({ deleted_at: null });
+    // A kept original no work points at goes; one that a work uses stays.
+    const stale = 'b'.repeat(64);
+    writeFileSync(store.pathOf('originals', stale), 'x');
+    c.prepare("UPDATE works SET original_sha256 = ? WHERE work_id = 'w1'").run('c'.repeat(64));
+    writeFileSync(store.pathOf('originals', 'c'.repeat(64)), 'x');
+    const again = await purge({ orders: db(), catalog: c, clock: h.clock, mode: 'live', store, log: () => {} });
+    expect(again.originals).toBe(1);
+    expect(existsSync(store.pathOf('originals', stale))).toBe(false);
+    expect(existsSync(store.pathOf('originals', 'c'.repeat(64)))).toBe(true);
   });
 });

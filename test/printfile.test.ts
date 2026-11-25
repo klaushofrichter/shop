@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -155,7 +155,11 @@ describe('offers through the admin and the render job', { timeout: 30_000 }, () 
     const o = t.offer('print-12x16');
     expect(o).toMatchObject({ orientation: 'portrait', effective_dpi: 252, cut_pct: 0, render_error: null });
     expect(o.print_file_sha).toMatch(/^[0-9a-f]{64}$/);
-    expect(t.fetches()).toBe(before + 1);
+    // The checked original is kept: the render doesn't download it again.
+    expect(t.fetches()).toBe(before);
+    // Without the kept copy, one download; then kept again.
+    const kept = t.s.pathOf('originals', t.row().original_sha256!);
+    expect(existsSync(kept)).toBe(true);
     expect(t.orders.prepare("SELECT kind, key FROM jobs WHERE kind = 'printfile.register'").all()).toEqual([{ kind: 'printfile.register', key: o.print_file_sha }]);
     const pf = t.catalog.prepare('SELECT path, preview_path, width_px, height_px FROM print_files').get() as Record<string, unknown>;
     expect(pf).toMatchObject({ path: `/files/${o.print_file_sha}.jpg`, width_px: 3600, height_px: 4800 });
@@ -177,6 +181,14 @@ describe('offers through the admin and the render job', { timeout: 30_000 }, () 
     expect(page.text).toContain(pf.preview_path as string);
     expect(page.text).toContain('Sellable');
     expect((await request(t.app).get(pf.preview_path as string)).status).toBe(200);
+
+    // Without the kept copy, the next render downloads it once and keeps it again.
+    const fetched = t.fetches();
+    rmSync(kept);
+    await t.post('print-8x10', { enabled: 'on', anchor: 'c' });
+    await t.runner.tick();
+    expect(t.fetches()).toBe(fetched + 1);
+    expect(existsSync(kept)).toBe(true);
   });
 
   it('refuses a crop below the floor, a bad price, and a work whose source does not allow prints', async () => {

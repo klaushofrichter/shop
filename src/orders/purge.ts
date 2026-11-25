@@ -9,7 +9,7 @@
  * - live mode only: print files no offer and no order item of the last 12
  *   months uses (the row stays, `deleted_at` set).
  */
-import { rmSync } from 'node:fs';
+import { readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { DAY, iso, type Clock } from '../clock';
 import type { Mode } from '../config';
@@ -41,6 +41,7 @@ export interface PurgeReport {
   jobs: number;
   testDrafts: number;
   printFiles: number;
+  originals: number;
   errors: string[];
 }
 
@@ -60,7 +61,7 @@ async function deleteCustomer(d: PurgeDeps, customerId: string | null, errors: s
 export async function purge(d: PurgeDeps): Promise<PurgeReport> {
   const now = d.clock.now();
   const ago = (days: number) => new Date(now - days * DAY).toISOString();
-  const rep: PurgeReport = { personalData: 0, unpaid: 0, payloads: 0, carts: 0, quotes: 0, jobs: 0, testDrafts: 0, printFiles: 0, errors: [] };
+  const rep: PurgeReport = { personalData: 0, unpaid: 0, payloads: 0, carts: 0, quotes: 0, jobs: 0, testDrafts: 0, printFiles: 0, originals: 0, errors: [] };
 
   // Personal data, 180 days after completion.
   const old = d.orders
@@ -127,6 +128,17 @@ export async function purge(d: PurgeDeps): Promise<PurgeReport> {
         }
       } catch (e) {
         rep.errors.push(`test draft: ${(e as Error).message.slice(0, 120)}`);
+      }
+    }
+  }
+
+  // Kept originals that no work points at any more (a new version replaced them, or the work is gone).
+  if (d.store) {
+    const current = new Set((d.catalog.prepare('SELECT original_sha256 s FROM works WHERE original_sha256 IS NOT NULL').all() as Array<{ s: string }>).map((r) => r.s));
+    for (const name of readdirSync(d.store.dir('originals'))) {
+      if (/^[0-9a-f]{64}$/.test(name) && !current.has(name)) {
+        rmSync(d.store.pathOf('originals', name), { force: true });
+        rep.originals++;
       }
     }
   }
