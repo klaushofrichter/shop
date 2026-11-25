@@ -7,7 +7,8 @@
  * - `shop_preview`: proof of the preview key while the gate is on (ADR-0039);
  *   it holds an HMAC of the key, never the key.
  */
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
+import { mac, sameString } from '../crypto';
 import type { Request, Response } from 'express';
 import { readCookie, setCookie } from '../admin/session';
 
@@ -16,12 +17,6 @@ export const CSRF_COOKIE = 'shop_csrf';
 export const PREVIEW_COOKIE = 'shop_preview';
 export const CART_TTL_MS = 30 * 24 * 60 * 60_000;
 
-const mac = (secret: string, data: string) => createHmac('sha256', secret).update(data).digest('base64url');
-const same = (a: string, b: string) => {
-  const x = Buffer.from(a);
-  const y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-};
 const ID = /^[A-Za-z0-9_-]{22,64}$/;
 
 export function newId(): string {
@@ -42,7 +37,7 @@ export function formToken(req: Request, res: Response, secret: string): string {
 
 export function formTokenOk(req: Request, secret: string, token: unknown): boolean {
   const v = readCookie(req, CSRF_COOKIE);
-  return typeof token === 'string' && !!v && ID.test(v) && same(token, mac(secret, `form:${v}`));
+  return typeof token === 'string' && !!v && ID.test(v) && sameString(token, mac(secret, `form:${v}`));
 }
 
 export function cartId(req: Request): string | undefined {
@@ -56,9 +51,9 @@ export function previewProof(secret: string, key: string): string {
 
 export function previewOk(req: Request, secret: string, key: string): boolean {
   const v = readCookie(req, PREVIEW_COOKIE);
-  return !!v && same(v, previewProof(secret, key));
+  return !!v && sameString(v, previewProof(secret, key));
 }
 
 export function keyMatches(given: unknown, key: string): boolean {
-  return typeof given === 'string' && same(createHmac('sha256', 'k').update(given).digest('hex'), createHmac('sha256', 'k').update(key).digest('hex'));
+  return typeof given === 'string' && sameString(createHmac('sha256', 'k').update(given).digest('hex'), createHmac('sha256', 'k').update(key).digest('hex'));
 }

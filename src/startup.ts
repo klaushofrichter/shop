@@ -3,11 +3,11 @@
  * files, both databases, the job runner, the app. Any configuration error
  * stops the start with the list of problems (variable names, never values).
  *
- * Checks against Printful and Stripe (store, scopes, catalog) arrive with the
- * adapters in step 3; they refuse to start only on a wrong answer, never on no
- * answer (docs/design/06 §3).
+ * The checks against Printful (store, scopes, catalog) run in `ready()`; they
+ * refuse to start only on a wrong answer, never on no answer (docs/design/06 §3).
  */
 import type { Express } from 'express';
+import sharp from 'sharp';
 import { createApp } from './app';
 import { loadSkus, loadSources, type SkuCatalog, type SourceConfig } from './catalog-config';
 import { systemClock, type Clock } from './clock';
@@ -60,6 +60,9 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
   const skus = loadSkus(config.skusConfig, config.mode);
   const sources = loadSources(config.sourcesConfig);
   const dbs = openDatabases(config.dataDir, config.mode);
+  // One image at a time and no cache of decoded pixels (docs/design/11 §1): the pod has 512 MiB.
+  sharp.concurrency(1);
+  sharp.cache(false);
   // Every `alert` line also queues an e-mail to Klaus (09 §2).
   const log = alertingLog(baseLog, dbs.orders, clock, { alertNewOrders: config.email.alertNewOrders });
   const runner = new JobRunner(dbs.orders, clock, log);
@@ -93,35 +96,32 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
   const stripe = config.stripe.secretKey ? new StripeClient({ apiBase: config.stripe.apiBase, secretKey: config.stripe.secretKey }) : undefined;
   // Status links (ADR-0037); mock mode without a secret gets a per-process one (links end with the process).
   const statusSecret = config.statusTokenSecret ?? randomBytes(32).toString('hex');
+  // Everything about payments needs Stripe: refunds, deadlines, reconciliation, its events.
   const paymentDeps = stripe ? { orders: dbs.orders, clock, stripe, limits: config.limits, log } : undefined;
-  const refundDeps = stripe ? { orders: dbs.orders, clock, stripe, provider, delayNoticeMs: config.email.delayNoticeMs, log } : undefined;
-  if (refundDeps) {
+  if (stripe && paymentDeps) {
+    const refundDeps = { orders: dbs.orders, clock, stripe, provider, delayNoticeMs: config.email.delayNoticeMs, log };
     registerRefundJobs(runner, refundDeps);
     scheduleDeadlines(dbs.orders, clock);
-  }
-  if (paymentDeps && refundDeps && stripe) {
     registerReconcileJob(runner, {
       orders: dbs.orders, clock, stripe, provider, payment: paymentDeps, refunds: refundDeps,
       completeAfterShippedDays: config.fulfilment.completeAfterShippedDays, log,
     });
     scheduleReconcile(dbs.orders, clock);
+    registerStripeEventJob(runner, paymentDeps, (type, id) => onStripeEvent(refundDeps, type, id));
   }
   registerPurgeJob(runner, { orders: dbs.orders, catalog: dbs.catalog, clock, mode: config.mode, stripe, provider, store, log });
   schedulePurge(dbs.orders, clock);
-  if (paymentDeps) registerStripeEventJob(runner, paymentDeps, refundDeps ? (type, id) => onStripeEvent(refundDeps, type, id) : undefined);
   // Submission (06 §4) needs Printful and Stripe; without them the job waits.
   if (provider && stripe) {
     registerSubmitJob(runner, {
       orders: dbs.orders, catalog: dbs.catalog, clock, provider, stripe, mode: config.mode, publicUrl: config.publicUrl,
       skus, quote: config.quote, fulfilment: config.fulfilment, log,
     });
-  }
-  if (provider) registerPrintfulEventJob(runner, { orders: dbs.orders, clock, provider, log });
-  // Without Printful or Stripe the submit job waits.
-  if (!(provider && stripe)) {
+  } else {
     runner.register('order.submit', { maxAttempts: 1_000_000, run: async () => { throw new RetryLater(6 * 60 * 60_000, 'Printful or Stripe is not configured'); } });
   }
-  const ses = config.email.ses ? new SesClient(config.email.ses) : undefined;
+  if (provider) registerPrintfulEventJob(runner, { orders: dbs.orders, clock, provider, log });
+  const ses = config.email.ses ? new SesClient({ ...config.email.ses, clock }) : undefined;
   registerEmailJobs(runner, {
     orders: dbs.orders, clock, mode: config.mode, publicUrl: config.publicUrl, shopName: config.fulfilment.shopName,
     statusSecret, email: config.email, ses, log,

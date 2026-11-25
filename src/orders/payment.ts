@@ -12,6 +12,7 @@
 import { iso, type Clock } from '../clock';
 import type { FailSafeLimits } from '../config';
 import { getSetting, transaction, type Db } from '../db';
+import { queueEmail } from '../email/jobs';
 import { enqueue } from '../jobs';
 import { chargeOf, type StripeClient } from '../payments/stripe';
 import { openHold, recordEvent } from './holds';
@@ -126,7 +127,7 @@ export async function applyPayment(d: PaymentDeps, sessionId: string): Promise<A
       d.orders.prepare('DELETE FROM cart_items WHERE cart_id = ?').run(order.cart_id);
       d.orders.prepare('UPDATE carts SET open_order_id = NULL, quote_id = NULL, updated_at = ? WHERE id = ? AND open_order_id = ?').run(now, order.cart_id, order.id);
     }
-    enqueue(d.orders, d.clock, 'email.send', `${order.id}/confirmation`, { orderId: order.id, kind: 'confirmation' });
+    queueEmail(d.orders, d.clock, order.id, 'confirmation');
     return 'paid';
   });
   if (result === 'paid') d.log({ level: 'info', msg: 'payment applied', order: order.id });

@@ -212,8 +212,7 @@ export type SubmitOutcome =
   | 'blocked'
   | 'held'
   | 'test_draft_ok'
-  | 'submitted'
-  | 'waiting';
+  | 'submitted';
 
 export async function submitOrder(d: SubmitDeps, orderId: string): Promise<SubmitOutcome> {
   const o = getOrder(d.orders, orderId);
@@ -377,8 +376,7 @@ export function registerSubmitJob(runner: JobRunner, d: SubmitDeps): void {
     backoffMs: (n) => Math.min(30_000 * 2 ** (n - 1), 30 * 60_000),
     async run(ctx) {
       const { orderId } = ctx.payload as { orderId: string };
-      const outcome = await submitOrder(d, orderId);
-      if (outcome === 'waiting') throw new RetryLater(COSTS_POLL_MS);
+      await submitOrder(d, orderId);
     },
   });
 }

@@ -15,7 +15,7 @@ import { transaction, type Db } from '../db';
 import { StripeError, type StripeClient } from '../payments/stripe';
 import { itemsOfCart, shippingLabel, type AddressInput, type QuoteItem, type QuoteOption } from '../public/quote';
 import { recordEvent } from './holds';
-import { drawOrderNumber, newOrderId, statusToken } from './ids';
+import { drawOrderNumber, newOrderId, statusUrl } from './ids';
 import { applyPayment, closeUnpaid, type PaymentDeps } from './payment';
 
 export const SESSION_TTL_S = 30 * 60;
@@ -43,10 +43,6 @@ interface QuoteRow {
   address_json: string;
   options_json: string;
   expires_at: string;
-}
-
-export function statusUrl(d: Pick<CheckoutDeps, 'publicUrl' | 'statusSecret'>, orderId: string, from?: string): string {
-  return `${d.publicUrl}/order/${orderId}?t=${statusToken(d.statusSecret, orderId)}${from ? `&from=${from}` : ''}`;
 }
 
 export async function startCheckout(d: CheckoutDeps, cartId: string, quoteId: string, shippingId: string): Promise<CheckoutResult> {

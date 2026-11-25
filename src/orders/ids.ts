@@ -5,7 +5,8 @@
  * - Status token: HMAC(STATUS_TOKEN_SECRET, order id), first 128 bits,
  *   base64url; never stored, recomputed for every e-mail (ADR-0037).
  */
-import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomInt } from 'node:crypto';
+import { sameString } from '../crypto';
 import type { Clock } from '../clock';
 import type { Db } from '../db';
 
@@ -36,11 +37,13 @@ export function statusToken(secret: string, orderId: string): string {
   return createHmac('sha256', secret).update(`status:${orderId}`).digest().subarray(0, 16).toString('base64url');
 }
 
+/** The order's status link, as e-mailed and as Stripe's return address (03 §7). */
+export function statusUrl(d: { publicUrl: string; statusSecret: string }, orderId: string, from?: string): string {
+  return `${d.publicUrl}/order/${orderId}?t=${statusToken(d.statusSecret, orderId)}${from ? `&from=${from}` : ''}`;
+}
+
 export function statusTokenOk(secret: string, orderId: string, token: unknown): boolean {
-  if (typeof token !== 'string') return false;
-  const a = Buffer.from(token);
-  const b = Buffer.from(statusToken(secret, orderId));
-  return a.length === b.length && timingSafeEqual(a, b);
+  return typeof token === 'string' && sameString(token, statusToken(secret, orderId));
 }
 
 export const ORDER_ID = /^[a-z2-7]{26}$/;

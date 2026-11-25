@@ -132,18 +132,18 @@ export async function renderPrintFile(
     ext = 'png';
   } else {
     const half = sku.kind === 'mug' ? Math.round(plan.outW / 2) : plan.outW;
-    const crop = await sharp(upright.data, raw)
+    const crop = sharp(upright.data, raw)
       .extract({ left: plan.left, top: plan.top, width: plan.width, height: plan.height })
-      .resize({ width: half, height: plan.outH, fit: 'fill', kernel: 'lanczos3' })
-      .png()
-      .toBuffer();
-    const canvas =
-      sku.kind === 'mug'
-        ? sharp({ create: { width: plan.outW, height: plan.outH, channels: 3, background: '#ffffff' } }).composite([
-            { input: crop, left: 0, top: 0 },
-            { input: crop, left: plan.outW - half, top: 0 },
-          ])
-        : sharp(crop);
+      .resize({ width: half, height: plan.outH, fit: 'fill', kernel: 'lanczos3' });
+    let canvas = crop; // paper: the crop is the file, encoded once
+    if (sku.kind === 'mug') {
+      // The crop twice, left and right of the handle, on white.
+      const side = await crop.png().toBuffer();
+      canvas = sharp({ create: { width: plan.outW, height: plan.outH, channels: 3, background: '#ffffff' } }).composite([
+        { input: side, left: 0, top: 0 },
+        { input: side, left: plan.outW - half, top: 0 },
+      ]);
+    }
     data = await canvas.withIccProfile('srgb').jpeg({ quality: 92, chromaSubsampling: '4:4:4', mozjpeg: false }).toBuffer();
     ext = 'jpg';
   }

@@ -15,7 +15,7 @@ import type { Config, Mode } from '../config';
 import { setSetting, type Db } from '../db';
 import { enqueue, PermanentJobError, type JobRunner } from '../jobs';
 import { recordEvent } from '../orders/holds';
-import { statusToken } from '../orders/ids';
+import { statusUrl } from '../orders/ids';
 import { ALERT_ACCEPTED_KEY, ALERT_FAILED_KEY } from '../worker-health';
 import { SesError, type SesClient } from './ses';
 import { confirmationEmail, delayedEmail, linkEmail, refundedEmail, shippedEmail, type Email, type OrderView } from './templates';
@@ -69,7 +69,7 @@ function view(db: Db, orderId: string): (OrderView & { email: string | null }) |
 export function composeEmail(d: Pick<EmailDeps, 'orders' | 'publicUrl' | 'shopName' | 'statusSecret'>, p: Payload): (Email & { to: string | null }) | undefined {
   const o = view(d.orders, p.orderId);
   if (!o) return undefined;
-  const url = `${d.publicUrl}/order/${p.orderId}?t=${statusToken(d.statusSecret, p.orderId)}`;
+  const url = statusUrl(d, p.orderId);
   const kind = p.kind === 'shipment' ? 'shipped' : p.kind;
   let mail: Email;
   switch (kind) {

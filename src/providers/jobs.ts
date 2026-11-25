@@ -56,15 +56,19 @@ export interface ProviderJobDeps {
   log: (line: Record<string, unknown>) => void;
 }
 
+/** Jobs that call Printful wait until its identity is verified. */
+function needVerified(d: Pick<ProviderJobDeps, 'status'>): void {
+  if (!d.status.verified) throw new RetryLater(VERIFY_RETRY_MS, 'provider unverified');
+}
+
+/** A provider error as the runner understands it: later, never, or as it is. */
+function retryable(e: unknown): never {
+  if (e instanceof ProviderError && e.kind === 'rate_limited') throw new RetryLater(e.retryAfterMs ?? 60_000, 'rate limited');
+  if (e instanceof ProviderError && (e.kind === 'permanent' || e.kind === 'auth')) throw new PermanentJobError(e.message);
+  throw e;
+}
+
 export function registerProviderJobs(runner: JobRunner, d: ProviderJobDeps): void {
-  const needVerified = () => {
-    if (!d.status.verified) throw new RetryLater(VERIFY_RETRY_MS, 'provider unverified');
-  };
-  const retryable = (e: unknown) => {
-    if (e instanceof ProviderError && e.kind === 'rate_limited') throw new RetryLater(e.retryAfterMs ?? 60_000, 'rate limited');
-    if (e instanceof ProviderError && (e.kind === 'permanent' || e.kind === 'auth')) throw new PermanentJobError(e.message);
-    throw e;
-  };
 
   runner.register('printful.verify', {
     maxAttempts: 1_000_000,
@@ -97,7 +101,7 @@ export function registerProviderJobs(runner: JobRunner, d: ProviderJobDeps): voi
     repeatEveryMs: CATALOG_CHECK_EVERY_MS,
     maxAttempts: 5,
     async run() {
-      needVerified();
+      needVerified(d);
       const results: SkuCheck[] = [];
       for (const sku of d.skus.skus) {
         const ids = [...new Set([sku.variants.any, sku.variants.portrait, sku.variants.landscape].filter((v): v is number => !!v))];
@@ -133,7 +137,7 @@ export function registerProviderJobs(runner: JobRunner, d: ProviderJobDeps): voi
   runner.register('printfile.register', {
     maxAttempts: 20,
     async run(ctx) {
-      needVerified();
+      needVerified(d);
       const { sha } = ctx.payload as { sha: string };
       if (!/^[0-9a-f]{64}$/.test(sha)) throw new PermanentJobError('malformed print file hash');
       const pf = d.catalog.prepare('SELECT path FROM print_files WHERE sha256 = ? AND deleted_at IS NULL').get(sha) as { path: string } | undefined;
@@ -181,7 +185,7 @@ export function registerMockupJob(runner: JobRunner, d: ProviderJobDeps): void {
   runner.register('mockup.create', {
     maxAttempts: 10,
     async run(ctx) {
-      if (!d.status.verified) throw new RetryLater(VERIFY_RETRY_MS, 'provider unverified');
+      needVerified(d);
       if (!d.store) return;
       const { sourceId, workId, skuId } = ctx.payload as { sourceId: string; workId: string; skuId: string };
       const sku = d.skus.byId.get(skuId);
@@ -243,12 +247,8 @@ export function registerMockupJob(runner: JobRunner, d: ProviderJobDeps): void {
           .run(sha, sourceId, workId, skuId, o.print_file_sha);
         d.log({ level: 'info', msg: 'mockup stored', sku: skuId });
       } catch (e) {
-        if (e instanceof ProviderError && e.kind === 'rate_limited') throw new RetryLater(e.retryAfterMs ?? 60_000, 'rate limited');
-        if (e instanceof ProviderError && (e.kind === 'permanent' || e.kind === 'auth')) {
-          dropTask();
-          throw new PermanentJobError(e.message);
-        }
-        throw e;
+        if (e instanceof ProviderError && (e.kind === 'permanent' || e.kind === 'auth')) dropTask();
+        retryable(e);
       }
     },
   });

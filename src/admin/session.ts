@@ -4,7 +4,7 @@
  * removes the cookie in this browser; rotating COOKIE_SECRET ends every
  * session. ALLOWED_EMAILS is checked at sign-in and on every request.
  */
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { mac, sameString } from '../crypto';
 import type { Request, Response } from 'express';
 import type { Clock } from '../clock';
 
@@ -17,7 +17,6 @@ export interface Session {
 }
 
 const b64 = (s: string) => Buffer.from(s).toString('base64url');
-const mac = (secret: string, data: string) => createHmac('sha256', secret).update(data).digest('base64url');
 
 export function signSession(secret: string, s: Session): string {
   const payload = b64(JSON.stringify({ email: s.email, exp: s.exp }));
@@ -28,10 +27,7 @@ export function verifySession(secret: string, value: string | undefined, clock: 
   if (!value) return undefined;
   const [payload, sig] = value.split('.');
   if (!payload || !sig) return undefined;
-  const expected = mac(secret, `session:${payload}`);
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return undefined;
+  if (!sameString(sig, mac(secret, `session:${payload}`))) return undefined;
   try {
     const s = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Session;
     if (typeof s.email !== 'string' || typeof s.exp !== 'number' || s.exp <= clock.now()) return undefined;
@@ -47,10 +43,7 @@ export function csrfToken(secret: string, s: Session): string {
 }
 
 export function csrfOk(secret: string, s: Session, token: unknown): boolean {
-  if (typeof token !== 'string') return false;
-  const a = Buffer.from(token);
-  const b = Buffer.from(csrfToken(secret, s));
-  return a.length === b.length && timingSafeEqual(a, b);
+  return typeof token === 'string' && sameString(token, csrfToken(secret, s));
 }
 
 /** Cookies from the request header, without a parser dependency. */

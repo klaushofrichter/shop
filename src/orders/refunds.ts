@@ -13,6 +13,7 @@
  */
 import { iso, type Clock } from '../clock';
 import { transaction, type Db } from '../db';
+import { queueEmail } from '../email/jobs';
 import { enqueue, RetryLater, type JobRunner } from '../jobs';
 import { chargeOf, StripeError, type Charge, type StripeClient } from '../payments/stripe';
 import { ProviderError, type FulfilmentProvider } from '../providers/types';
@@ -163,7 +164,7 @@ export async function syncPayment(d: RefundDeps, orderId: string, cause: string)
     return true;
   });
   if (becameFull) {
-    enqueue(d.orders, d.clock, 'email.send', `${orderId}/refunded`, { orderId, kind: 'refunded' });
+    queueEmail(d.orders, d.clock, orderId, 'refunded');
     const anyway = d.orders.prepare("SELECT 1 FROM refunds WHERE order_id = ? AND purpose = 'anyway'").get(orderId);
     if (!anyway) enqueue(d.orders, d.clock, 'order.cancel', orderId, { orderId });
     else maybeComplete(d.orders, d.clock, orderId);
@@ -287,7 +288,7 @@ export async function runDeadlines(d: RefundDeps): Promise<number> {
            AND NOT EXISTS (SELECT 1 FROM emails e WHERE e.order_id = o.id AND e.kind = 'delayed')`,
       )
       .all(iso(d.clock, -d.delayNoticeMs)) as Array<{ order_id: string }>;
-    for (const r of late) enqueue(d.orders, d.clock, 'email.send', `${r.order_id}/delayed`, { orderId: r.order_id, kind: 'delayed' });
+    for (const r of late) queueEmail(d.orders, d.clock, r.order_id, 'delayed');
   }
   const due = d.orders.prepare('SELECT * FROM holds WHERE resolved_at IS NULL AND deadline_at <= ? ORDER BY deadline_at').all(iso(d.clock)) as unknown as HoldRow[];
   for (const h of due) {

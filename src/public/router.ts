@@ -20,7 +20,7 @@ import { startCheckout, type CheckoutDeps } from '../orders/checkout';
 import { ORDER_ID, statusTokenOk } from '../orders/ids';
 import { applyPayment } from '../orders/payment';
 import { customerStatus } from '../orders/status';
-import { enqueue } from '../jobs';
+import { queueEmail } from '../email/jobs';
 import { CART_COOKIE, CART_TTL_MS, cartId, formToken, formTokenOk, keyMatches, newId, PREVIEW_COOKIE, previewOk, previewProof } from './session';
 
 export interface PublicDeps {
@@ -544,7 +544,7 @@ ${sent ? '<p role="status">If the order number and e-mail match an order, the li
     if (/^\d{5,6}$/.test(number) && recent.length < 3) {
       perNumber.set(number, [...recent, now]);
       const o = d.orders.prepare(`SELECT id FROM orders WHERE number = ? AND email = ? AND payment_state != 'checkout_open'`).get(number, email) as { id: string } | undefined;
-      if (o) enqueue(d.orders, d.clock, 'email.send', `${o.id}/link/${now}`, { orderId: o.id, kind: 'link', ref: String(now) });
+      if (o) queueEmail(d.orders, d.clock, o.id, 'link', String(now));
     }
     findPage(req, res, true);
   });

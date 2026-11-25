@@ -4,6 +4,7 @@
  * complaints (ADR-0038); it is never the From or Reply-To.
  */
 import { createHash, createHmac } from 'node:crypto';
+import { iso, type Clock } from '../clock';
 
 export interface SesOptions {
   region: string;
@@ -13,7 +14,8 @@ export interface SesOptions {
   endpoint?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
-  now?: () => number;
+  /** Signs the request's date; the shop's one clock (07 §4). */
+  clock: Clock;
 }
 
 export interface Message {
@@ -84,7 +86,7 @@ export class SesClient {
       ...(m.feedbackTo ? { FeedbackForwardingEmailAddress: m.feedbackTo } : {}),
     });
     const url = new URL(this.base + path);
-    const amzDate = new Date((this.opts.now ?? Date.now)()).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+    const amzDate = iso(this.opts.clock).replace(/[-:]/g, '').replace(/\.\d{3}/, '');
     const headers: Record<string, string> = { host: url.host, 'content-type': 'application/json', 'x-amz-date': amzDate };
     headers.authorization = signV4({
       method: 'POST', path, headers: { host: headers.host, 'content-type': headers['content-type'], 'x-amz-date': amzDate }, body,
