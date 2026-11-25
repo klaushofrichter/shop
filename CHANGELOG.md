@@ -5,6 +5,7 @@ then empties it on `main`.
 
 ## [Unreleased]
 
+- Launch prices set: postcards $4, prints $25–45, framed prints $59–79, mugs $18, t-shirts $26.
 - Hourly reconciliation repairs what a lost message or a restart left behind and raises an alarm for anything it can't explain; personal data is removed 180 days after an order is complete.
 - Admin: an Orders page and an order page with everything about one order, the open holds on the dashboard, and buttons to approve, refund, confirm anyway, retry or cancel (each asks "I'm sure").
 - Refunds: an order that can't be fulfilled is refunded automatically once nothing is left at Printful; a refund cancels what Printful hasn't started; fraud warnings refund before production; disputes never refund automatically.

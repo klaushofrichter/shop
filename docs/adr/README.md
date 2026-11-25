@@ -59,3 +59,4 @@ Copy [template.md](template.md). Keep a record short: context, the decision, the
 | [0038](0038-ses-bounces-by-email.md) | SES bounce and complaint notices forwarded by e-mail | Accepted (2026-11-26) |
 | [0039](0039-go-live-behind-the-preview-gate.md) | Go live behind the preview gate; record Printful only | Accepted (2026-11-26) |
 | [0040](0040-every-work-every-product-by-default.md) | Every work and every product by default; prices per product | Accepted (2026-11-25) |
+| [0041](0041-launch-prices.md) | Launch prices | Accepted (2026-11-25) |

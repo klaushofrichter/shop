@@ -9,8 +9,16 @@ describe('config/skus.json', () => {
     expect(c.skus.filter((s) => s.kind === 'apparel')).toHaveLength(4);
   });
 
-  it('refuses placeholder prices in live mode', () => {
-    expect(() => loadSkus('config/skus.json', 'live')).toThrow(/placeholder price in live mode/);
+  it("carries Klaus's launch prices, accepted in live mode (ADR-0041)", () => {
+    const c = loadSkus('config/skus.json', 'live');
+    expect(c.skus.every((s) => !s.placeholderPrice)).toBe(true);
+    expect(c.byId.get('print-8x10')?.priceCents).toBe(3200);
+  });
+
+  it('refuses a placeholder price in live mode', () => {
+    const raw = { minDpiPaper: 180, skus: [{ id: 'p', name: 'P', kind: 'paper', provider: 'printful', productId: 1, variants: { any: 1 }, printAreaIn: [8, 10], dpi: 300, taxCode: 'txcd_99999999', priceCents: 100, placeholderPrice: true }] };
+    expect(() => parseSkus(raw, 'live')).toThrow(/placeholder price in live mode/);
+    expect(parseSkus(raw, 'test').skus).toHaveLength(1);
   });
 
   it('reports every problem of a bad SKU', () => {
