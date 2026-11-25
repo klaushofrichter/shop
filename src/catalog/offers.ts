@@ -6,6 +6,7 @@
  * and validated; its registration at the provider is `ok`; the SKU passed the
  * last catalog check.
  */
+import { existsSync } from 'node:fs';
 import sharp from 'sharp';
 import { iso, type Clock } from '../clock';
 import type { SkuCatalog, Sku } from '../catalog-config';
@@ -135,21 +136,31 @@ export function registerOfferJobs(runner: JobRunner, d: OfferJobDeps): void {
       const cutPct = Math.round(plan.cut * 100);
 
       if (!sha) {
-        const { body, contentType } = await source.fetchOriginal({ original: { url: w.original_url, version: w.source_version ?? '' } });
-        if (contentType !== 'image/jpeg' && contentType !== 'image/png') {
-          body.destroy();
-          throw new Error(`original has type ${contentType || 'none'}`);
-        }
-        const dl = await d.store.download(body, MAX_ORIGINAL_BYTES);
-        try {
+        // The checked original, kept by its hash (one download per work, not one per product);
+        // fetched and verified again only if it is missing.
+        const kept = d.store.pathOf('originals', w.original_sha256);
+        let original = kept;
+        let downloaded: string | undefined;
+        if (!existsSync(kept)) {
+          const { body, contentType } = await source.fetchOriginal({ original: { url: w.original_url, version: w.source_version ?? '' } });
+          if (contentType !== 'image/jpeg' && contentType !== 'image/png') {
+            body.destroy();
+            throw new Error(`original has type ${contentType || 'none'}`);
+          }
+          const dl = await d.store.download(body, MAX_ORIGINAL_BYTES);
           if (dl.sha256 !== w.original_sha256) {
+            d.store.discard(dl.file);
             // The source changed since the last check: check it first, render after.
             enqueue(d.orders, d.clock, 'work.original', `${sourceId}/${workId}`, { sourceId, workId });
             throw new RetryLater(60_000, 'original changed');
           }
+          downloaded = dl.file;
+          original = dl.file;
+        }
+        try {
           let r;
           try {
-            r = await renderPrintFile(dl.file, sku, anchor, { ...d.limits, minDpiPaper: d.skus.minDpiPaper, store: d.store });
+            r = await renderPrintFile(original, sku, anchor, { ...d.limits, minDpiPaper: d.skus.minDpiPaper, store: d.store });
           } catch (e) {
             if (e instanceof DpiTooLow) {
               d.catalog.prepare('UPDATE offers SET render_error = ?, effective_dpi = ? WHERE source_id = ? AND work_id = ? AND sku_id = ?').run(e.message, e.effectiveDpi, sourceId, workId, skuId);
@@ -173,7 +184,7 @@ export function registerOfferJobs(runner: JobRunner, d: OfferJobDeps): void {
             )
             .run(sha, renderKey, `/files/${sha}.${r.ext}`, r.widthPx, r.heightPx, r.bytes, iso(d.clock), `/img/${previewSha}.jpg`);
         } finally {
-          d.store.discard(dl.file);
+          if (downloaded) d.store.keep(downloaded, 'originals', w.original_sha256);
         }
       }
 
