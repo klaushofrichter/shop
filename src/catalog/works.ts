@@ -51,8 +51,8 @@ export async function refreshSource(db: Db, clock: Clock, config: SourceConfig, 
   return transaction(db, () => {
     const upsert = db.prepare(`
       INSERT INTO works (source_id, work_id, title, creator, year, kind, canonical_url, original_url,
-                         source_version, prints_allowed, seen_at, listed)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                         source_version, prints_allowed, seen_at, listed, enabled)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
       ON CONFLICT (source_id, work_id) DO UPDATE SET
         title = excluded.title, creator = excluded.creator, year = excluded.year, kind = excluded.kind,
         canonical_url = excluded.canonical_url, original_url = excluded.original_url,
@@ -66,9 +66,10 @@ export async function refreshSource(db: Db, clock: Clock, config: SourceConfig, 
     const toCheck: RefreshResult['toCheck'] = [];
     for (const w of works) {
       const allowed = printsAllowed(config, w.workId, w.printsAllowedBySource) ? 1 : 0;
-      upsert.run(w.sourceId, w.workId, w.title, w.creator ?? null, w.year ?? null, w.kind, w.canonicalUrl, w.original.url, w.original.version, allowed, now);
+      // A new work starts enabled when it may be printed (ADR-0040); the admin's switch-off sticks.
+      upsert.run(w.sourceId, w.workId, w.title, w.creator ?? null, w.year ?? null, w.kind, w.canonicalUrl, w.original.url, w.original.version, allowed, now, allowed);
       const old = before.get(w.workId);
-      if (old?.enabled && (old.source_version !== w.original.version || !old.original_sha256)) {
+      if (old ? old.enabled && (old.source_version !== w.original.version || !old.original_sha256) : allowed) {
         toCheck.push({ sourceId: w.sourceId, workId: w.workId });
       }
     }

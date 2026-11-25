@@ -167,7 +167,7 @@ ${o?.mockup_sha && o.print_file_sha ? `<img class="preview" src="/mockups/${esc(
 <form method="post" action="/admin/works/${esc(source)}/${esc(work)}/offers/${esc(sku.id)}">
 <input type="hidden" name="_csrf" value="${esc(req.csrf!)}">
 <label><input type="checkbox" name="enabled"${o?.enabled ? ' checked' : ''}> Offer this product</label>
-<label>Price in USD <input name="price" inputmode="decimal" size="8" value="${formatCents(price)}"></label>${o?.price_cents == null ? ' <span class="muted">(default)</span>' : ''}
+<span>Price $${formatCents(price)} <span class="muted">(per product, set in skus.json; ADR-0040)</span></span>
 ${sku.kind === 'paper' || sku.kind === 'mug' ? `<fieldset><legend>Crop anchor</legend>${anchors}</fieldset>` : ''}
 <button type="submit">Save</button>
 </form>

@@ -64,6 +64,7 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
     sourceConfigs: sources,
     store,
     limits: { maxInputPixels: config.maxInputPixels },
+    skus,
     log,
   });
   registerOfferJobs(runner, {

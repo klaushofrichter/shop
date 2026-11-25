@@ -86,7 +86,9 @@ Consent per work, in this order: the source's own per-work flag (a feed, once it
 otherwise **`printsAllowedWorks`**, a per-work allow-list in this file filled from the
 source owner's decision (for art: Klaus's; review B F5, ADR-0035); otherwise
 `printsAllowedDefault`. A second gallery by another artist needs that artist's decision
-in its own list; the seller is still Klaus (A3).
+in its own list; the seller is still Klaus (A3). For art, `printsAllowedDefault` is `true`:
+every work, and once its original is checked every product that reaches the DPI floor,
+is offered by default; the admin's switches are for exceptions (ADR-0040).
 
 ### 4.3 The art adapter
 

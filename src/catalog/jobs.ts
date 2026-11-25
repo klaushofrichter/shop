@@ -10,6 +10,8 @@ import type { ImageLimits } from '../images/display';
 import type { FileStore } from '../images/store';
 import { enqueue, PermanentJobError, type JobRunner } from '../jobs';
 import type { ContentSource } from '../sources/types';
+import type { SkuCatalog } from '../catalog-config';
+import { offerEverySku } from './offers';
 import { checkOriginal, refreshSource } from './works';
 
 export const SOURCES_REFRESH_EVERY_MS = 10 * 60_000;
@@ -22,6 +24,8 @@ export interface CatalogJobDeps {
   sourceConfigs: SourceConfig[];
   store: FileStore;
   limits: ImageLimits;
+  /** Offer every SKU once a work's original is checked (ADR-0040). */
+  skus?: SkuCatalog;
   log: (line: Record<string, unknown>) => void;
 }
 
@@ -50,7 +54,8 @@ export function registerCatalogJobs(runner: JobRunner, d: CatalogJobDeps): void 
       const source = d.sources.get(sourceId);
       if (!source) throw new PermanentJobError(`unknown source ${sourceId}`);
       const r = await checkOriginal(d.catalog, source, d.store, d.limits, sourceId, workId);
-      d.log({ level: 'info', msg: 'original checked', source: sourceId, work: workId, changed: r.changed });
+      const offered = d.skus ? offerEverySku(d.catalog, d.orders, d.clock, d.skus, sourceId, workId) : [];
+      d.log({ level: 'info', msg: 'original checked', source: sourceId, work: workId, changed: r.changed, offered: offered.length });
     },
   });
 }
