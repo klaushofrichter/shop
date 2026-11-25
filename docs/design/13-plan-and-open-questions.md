@@ -38,7 +38,7 @@ Klaus's, outside the ADRs:
 | SES domain records at Squarespace; production access | step 8 / go-live |
 | S3 bucket and IAM user for backups | step 9 |
 | The private repository `shop-private` (with Cluster) and deletion of the public capture branches | before step 3 |
-| Which of art's works may be sold: the allow-list in `config/sources.json` (ADR-0035) | step 10 |
+| ~~Which of art's works may be sold~~: all of them, every product (ADR-0040, 2026-11-25) | done |
 | `STATUS_TOKEN_SECRET` in the shop's `.env` (Cluster can generate it unseen) | step 8 |
 | The shop's orders address for the packing slip and contact page (decided 2026-11-26 that it is a shop address; which one is Klaus's) | step 7 |
 | SES bounce and complaint forwarding to that mailbox | step 8 |

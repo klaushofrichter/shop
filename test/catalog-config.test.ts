@@ -26,9 +26,9 @@ describe('config/skus.json', () => {
 });
 
 describe('config/sources.json', () => {
-  it('loads art as the default source, nothing allowed yet', () => {
+  it('loads art as the default source, every work allowed (ADR-0040)', () => {
     const [art] = loadSources('config/sources.json');
-    expect(art).toMatchObject({ id: 'art', default: true, printsAllowedDefault: false, printsAllowedWorks: [] });
+    expect(art).toMatchObject({ id: 'art', default: true, printsAllowedDefault: true, printsAllowedWorks: [] });
   });
 
   it('needs exactly one default source', () => {

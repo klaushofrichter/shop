@@ -65,6 +65,30 @@ export function readiness(catalog: Db, storeLabel: string, w: WorkRow, sku: Sku,
   return { sellable: missing.length === 0, missing };
 }
 
+/**
+ * Every product for every work by default (ADR-0040): once a work's original
+ * is checked, each SKU whose print reaches its DPI floor gets an enabled offer
+ * (centre crop, the SKU's price) and a render. Existing offers are left alone,
+ * so the admin's switch-off sticks. Returns the SKUs newly offered.
+ */
+export function offerEverySku(catalog: Db, orders: Db, clock: Clock, skus: SkuCatalog, sourceId: string, workId: string): string[] {
+  const w = catalog.prepare('SELECT * FROM works WHERE source_id = ? AND work_id = ?').get(sourceId, workId) as WorkRow | undefined;
+  if (!w?.enabled || !w.prints_allowed || !w.original_px_w) return [];
+  const added: string[] = [];
+  transaction(catalog, () => {
+    const insert = catalog.prepare(
+      `INSERT OR IGNORE INTO offers (source_id, work_id, sku_id, enabled, price_cents, crop_json) VALUES (?, ?, ?, 1, NULL, '{"anchor":"c"}')`,
+    );
+    for (const sku of skus.skus) {
+      const plan = previewPlan(w, sku, 'c', skus.minDpiPaper);
+      if (!plan || plan.effectiveDpi < plan.floor) continue;
+      if (Number(insert.run(sourceId, workId, sku.id).changes) > 0) added.push(sku.id);
+    }
+  });
+  for (const skuId of added) enqueue(orders, clock, 'offer.render', `${sourceId}/${workId}/${skuId}`, { sourceId, workId, skuId });
+  return added;
+}
+
 /** Before rendering: the DPI and the cut this crop would give, from the original's size. */
 export function previewPlan(w: WorkRow, sku: Sku, anchor: Anchor, minDpiPaper: number) {
   if (!w.original_px_w || !w.original_px_h) return undefined;

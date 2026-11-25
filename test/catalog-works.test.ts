@@ -8,7 +8,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { registerCatalogJobs, scheduleSourceRefresh, SOURCES_REFRESH_EVERY_MS } from '../src/catalog/jobs';
 import { checkOriginal, refreshSource, type WorkRow } from '../src/catalog/works';
-import { parseSources } from '../src/catalog-config';
+import { loadSkus, parseSources } from '../src/catalog-config';
+import { offerEverySku } from '../src/catalog/offers';
 import { FakeClock } from '../src/clock';
 import { getSetting, memoryDatabases } from '../src/db';
 import { FileStore } from '../src/images/store';
@@ -70,11 +71,12 @@ describe('refreshSource', () => {
     const clock = new FakeClock();
     const src = new FakeSource([work('w1'), work('w2')], Buffer.alloc(0));
     const r1 = await refreshSource(catalog, clock, ART, src);
-    expect(r1).toMatchObject({ listed: 2, hidden: 0, toCheck: [] });
-    expect(row(catalog, 'w1')).toMatchObject({ prints_allowed: 1, enabled: 0, listed: 1, source_version: 'v1' });
-    expect(row(catalog, 'w2').prints_allowed).toBe(0);
+    // A new work that may be printed starts enabled and needs its original checked (ADR-0040).
+    expect(r1).toMatchObject({ listed: 2, hidden: 0, toCheck: [{ sourceId: 'art', workId: 'w1' }] });
+    expect(row(catalog, 'w1')).toMatchObject({ prints_allowed: 1, enabled: 1, listed: 1, source_version: 'v1' });
+    expect(row(catalog, 'w2')).toMatchObject({ prints_allowed: 0, enabled: 0 });
 
-    // Klaus enables w1; a new version of w1 needs a check; w2 disappears.
+    // A new version of w1 needs a check; w2 disappears.
     catalog.exec("UPDATE works SET enabled = 1, original_sha256 = 'x' WHERE work_id = 'w1'");
     src.works = [work('w1', 'v2')];
     const r2 = await refreshSource(catalog, clock, ART, src);
@@ -86,6 +88,35 @@ describe('refreshSource', () => {
     src.works = [work('w1', 'v2'), work('w2')];
     expect((await refreshSource(catalog, clock, ART, src)).toCheck).toEqual([]);
     expect(row(catalog, 'w2').listed).toBe(1);
+
+    // Klaus switches w1 off: a refresh doesn't switch it back on.
+    catalog.exec("UPDATE works SET enabled = 0 WHERE work_id = 'w1'");
+    await refreshSource(catalog, clock, ART, src);
+    expect(row(catalog, 'w1').enabled).toBe(0);
+  });
+});
+
+describe('every product for every work (ADR-0040)', () => {
+  it('offers each SKU that reaches its DPI floor, queues its render, and leaves the admin\'s choices alone', async () => {
+    const { catalog, orders } = memoryDatabases();
+    const clock = new FakeClock();
+    const skus = loadSkus('config/skus.json', 'mock');
+    await refreshSource(catalog, clock, ART, new FakeSource([work('w1')], Buffer.alloc(0)));
+    // 8 × 10 in gets 187 DPI (floor 180); 12 × 16 in only 125.
+    catalog.exec("UPDATE works SET original_px_w = 1500, original_px_h = 1875, original_sha256 = 'x' WHERE work_id = 'w1'");
+    catalog.exec("INSERT INTO offers (source_id, work_id, sku_id, enabled, crop_json) VALUES ('art', 'w1', 'print-6x8', 0, '{\"anchor\":\"n\"}')");
+    const added = offerEverySku(catalog, orders, clock, skus, 'art', 'w1');
+    expect(added).toContain('print-8x10');
+    expect(added).not.toContain('print-12x16');
+    expect(added).not.toContain('print-6x8'); // switched off by the admin: stays off
+    const o = catalog.prepare("SELECT enabled, price_cents, crop_json FROM offers WHERE sku_id = 'print-8x10'").get() as Record<string, unknown>;
+    expect(o).toEqual({ enabled: 1, price_cents: null, crop_json: '{"anchor":"c"}' });
+    const renders = (orders.prepare("SELECT key FROM jobs WHERE kind = 'offer.render'").all() as Array<{ key: string }>).map((j) => j.key);
+    expect(renders).toEqual(added.map((s) => `art/w1/${s}`));
+    expect(offerEverySku(catalog, orders, clock, skus, 'art', 'w1')).toEqual([]);
+    catalog.exec("UPDATE works SET enabled = 0 WHERE work_id = 'w1'");
+    catalog.exec("DELETE FROM offers");
+    expect(offerEverySku(catalog, orders, clock, skus, 'art', 'w1')).toEqual([]);
   });
 });
 
@@ -146,15 +177,14 @@ describe('catalog jobs', () => {
       store: new FileStore(tmp()), limits: LIMITS, log: () => {},
     });
     scheduleSourceRefresh(orders, clock, ['art']);
-    expect(await runner.tick()).toBe(1);
+    expect(await runner.tick()).toBe(2); // the refresh, then the original check of the new work it queued
     expect(getSetting(orders, 'source_problems:art')).toEqual(['room x: drift']);
-    expect(src.fetches).toBe(0); // nothing enabled yet
-
-    catalog.exec("UPDATE works SET enabled = 1 WHERE work_id = 'w1'");
-    clock.advance(SOURCES_REFRESH_EVERY_MS);
-    expect(await runner.tick()).toBe(2); // the refresh, then the original check it queued
     expect(src.fetches).toBe(1);
     expect(row(catalog, 'w1').original_sha256).toMatch(/^[0-9a-f]{64}$/);
+
+    clock.advance(SOURCES_REFRESH_EVERY_MS);
+    expect(await runner.tick()).toBe(1); // unchanged: no new check
+    expect(src.fetches).toBe(1);
   });
 });
 

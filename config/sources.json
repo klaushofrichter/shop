@@ -1,5 +1,5 @@
 {
-  "_comment": "Content sources (docs/design/04 §4, ADR-0035). printsAllowedWorks: the works their owner allows to be printed, until the source publishes its own per-work flag. Empty until Klaus names art's works.",
+  "_comment": "Content sources (docs/design/04 §4, ADR-0035, ADR-0040). Every work of art may be printed (Klaus, 2026-11-25); the admin can switch a work or a product off.",
   "sources": [
     {
       "id": "art",
@@ -8,7 +8,7 @@
       "publicUrl": "https://art.klaushofrichter.net",
       "clusterUrl": "http://art.art.svc.cluster.local",
       "creator": "Klaus Hofrichter",
-      "printsAllowedDefault": false,
+      "printsAllowedDefault": true,
       "printsAllowedWorks": []
     }
   ]
