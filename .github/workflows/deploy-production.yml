@@ -1,9 +1,10 @@
 name: Deploy production
 
-# Scaffolding until kube-setup has the shop namespaces, the runner and the
-# Deployment (made by the Cluster session). The first push to `production` is
-# the first deploy; `production` is created and protected then. Adapted from
-# klaushofrichter/cams-admin, the other plain-Deployment service with SQLite.
+# Pushes to `production` (Cluster merges main into it) build the image, point
+# kube-setup's manifest at its digest and roll it out from the shop-runner.
+# The deploy job gets KUBE_SETUP_DEPLOY_TOKEN only through the `production`
+# environment; an admission policy lets the runner change only the image, and
+# only to the @sha256 form. Adapted from klaushofrichter/cams-admin.
 
 on:
   push:
