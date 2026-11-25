@@ -8,7 +8,7 @@
  * with `mock_printful_`; anything else gets Printful's 401.
  */
 import express, { type Express, type Request, type Response } from 'express';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import sharp from 'sharp';
 import type { Clock } from '../../src/clock';
 import { MOCK_VARIANTS, SHIP_RATES, US_STATES, type MockVariant } from './catalog';
@@ -118,6 +118,8 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     nextMockupId: 700000001,
     orders: new Map<number, MockOrder>(),
     nextOrderId: 150000001,
+    /** The store's webhook configuration (06 §5); keys only in the answer to POST. */
+    webhookConfig: { default_url: null as string | null, expires_at: null as string | null, events: [] as Array<{ type: string }>, public_key: null as string | null },
   };
   const variants = new Map(MOCK_VARIANTS.map((v) => [v.id, v]));
   const app = express();
@@ -199,6 +201,19 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
       }
     }
     next();
+  });
+
+  // ---- webhook configuration (06 §5) ----
+  app.get('/v2/webhooks', (_req, res) => send(res, 200, { data: state.webhookConfig }));
+  app.post('/v2/webhooks', (req, res) => {
+    const b = req.body as { default_url?: string | null; expires_at?: string | null; events?: Array<{ type?: string }> };
+    const known = new Set(spec!.webhookEventTypes());
+    const bad = (b.events ?? []).map((e) => e.type ?? '').filter((t) => !known.has(t));
+    if (bad.length) return fail(res, 400, 'BadRequest', `Unknown event type: ${bad.join(', ')}`);
+    const secret = randomBytes(64).toString('hex');
+    const publicKey = `pk_${randomBytes(12).toString('hex')}`;
+    state.webhookConfig = { default_url: b.default_url ?? null, expires_at: b.expires_at ?? null, events: (b.events ?? []).map((e) => ({ type: e.type! })), public_key: publicKey };
+    send(res, 200, { data: { ...state.webhookConfig, secret_key: secret } });
   });
 
   // ---- identity ----

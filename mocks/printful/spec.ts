@@ -116,4 +116,10 @@ export class PrintfulSpec {
     if (valuePosition && this.objectLike(s) && s.additionalProperties === undefined) out.unevaluatedProperties = false;
     return out;
   }
+
+  /** Webhook event types the spec lists (EventConfigurationRequest's discriminator). */
+  webhookEventTypes(): string[] {
+    const schemas = (this.doc as unknown as { components: { schemas: Record<string, { discriminator?: { mapping?: Record<string, string> } }> } }).components.schemas;
+    return Object.keys(schemas.EventConfigurationRequest?.discriminator?.mapping ?? {});
+  }
 }
