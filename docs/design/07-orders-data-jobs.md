@@ -55,9 +55,11 @@ submit (I11).
 #### 2.1.1 A lost session id
 
 If the process dies after Stripe created the session and before the shop stored its id,
-the order is `checkout_open` without `stripe_session_id`. Reconciliation repeats the
-create with the same idempotency key (valid 24 h at Stripe), which returns the same
-session; after 24 h, or if that fails, `closed_unpaid` with a note. The reverse sweep
+the order is `checkout_open` without `stripe_session_id`. The customer's next **Pay** repeats
+the create for that order with the same idempotency keys and identical parameters (the
+session expiry is stored with the order), which returns the same session (code review
+2026-11-25, F1); past the session's expiry it closes the order and starts a new one.
+Reconciliation closes such an order after 24 h (`closed_unpaid`, with a note). The reverse sweep
 (§5) still catches a payment on such a session.
 
 ### 2.2 Disputes: `dispute_state`

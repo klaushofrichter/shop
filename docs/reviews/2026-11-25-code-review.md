@@ -156,3 +156,19 @@ Not bugs. Listed so they aren't lost; none is urgent.
 | Code that matches on the shop's own message text. | `submit.ts` (`i2Failures` strings in `blocked`), `email/jobs.ts` (`'payment applied'`), `admin/orders.ts` (`reasons_json = '["breaker"]'`) |
 | `test/checkout.test.ts` copies about 80 lines of `test/helpers/harness.ts`. | `test/` |
 | The three mocks have three control styles; refund, dispute and SES scenarios have no HTTP route, so they can't be used when the mocks run as a container. | `mocks/` |
+
+## 5. Status (Shop session, 2026-11-25)
+
+| Finding | Status |
+|---|---|
+| F1 | Fixed: the next Pay repeats the create for the open order with its own keys and the stored session expiry (mode migration 5); 07 §2.1.1 updated. |
+| F2 | Fixed: an e-mail for every shipped parcel whose e-mail isn't sent; mock Printful lists a `pending` shipment from the confirmation on. |
+| F3 | Fixed: only a full refund blocks the confirm. |
+| F4 | Fixed: the window counts from the attempt's first failure (`failing_since`, migration 5) in every state before the confirm; a draft gone at Printful marks the attempt deleted and opens `provider_order_missing`; I10 counts a submit job failing for twice the window as nothing in progress. |
+| F5 | Open: Klaus decides between implementing the cost half and removing it, and whether the breaker latches. |
+| F6 | Fixed: covered refund requests and holds are settled even when the amount didn't change; no row when nothing is left; a warning on a refunded order is recorded and stops. |
+| F7 | Fixed: `req.body?._csrf`. |
+| F8 | Fixed: the cart is emptied only when it is still the one the order was made from. |
+
+Tests for each are in `test/review-fixes.test.ts`.
+

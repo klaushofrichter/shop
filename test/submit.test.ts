@@ -101,15 +101,24 @@ describe('submission (06 §4)', () => {
     expect(holds(id)[0].reasons_json).toBe('["costs_failed"]');
   });
 
-  it('a refund at Stripe before the confirm blocks it (I2, I3)', async () => {
+  it('a full refund at Stripe before the confirm blocks it (I2, I3); a partial one does not (review F3)', async () => {
     const id = await paidOrder(h);
     await h.shop.runner.tick();
-    for (const ch of h.stripe.control.charges.values()) ch.refunded = 100;
+    for (const ch of h.stripe.control.charges.values()) ch.refunded = ch.amount;
     h.clock.advance(5_000);
     await settle();
     expect(pfRequests('POST', /\/confirmation$/)).toHaveLength(0);
     expect(holds(id)[0].reasons_json).toBe('["fulfilment_blocked"]');
+
+    const b = await paidOrder(h);
+    await h.shop.runner.tick();
+    const charge = [...h.stripe.control.charges.values()].find((c) => c.pi === order(b).stripe_payment_intent)!;
+    charge.refunded = 300; // goodwill in the Dashboard
+    h.clock.advance(5_000);
+    await settle();
+    expect(order(b).fulfilment_state).toBe('submitted');
   });
+
 
   it('an order on hold is not submitted; I2 is checked before the claim', async () => {
     const id = await paidOrder(h);

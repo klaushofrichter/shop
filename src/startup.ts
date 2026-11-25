@@ -103,7 +103,7 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
     scheduleDeadlines(dbs.orders, clock);
     registerReconcileJob(runner, {
       orders: dbs.orders, clock, stripe, provider, payment: paymentDeps, refunds: refundDeps,
-      completeAfterShippedDays: config.fulfilment.completeAfterShippedDays, log,
+      completeAfterShippedDays: config.fulfilment.completeAfterShippedDays, providerRetryWindowMs: config.fulfilment.providerRetryWindowMs, log,
     });
     scheduleReconcile(dbs.orders, clock);
     registerStripeEventJob(runner, paymentDeps, (type, id) => onStripeEvent(refundDeps, type, id));

@@ -81,8 +81,8 @@ describe('order progress (06 §5)', () => {
     const html = await page.text();
     expect(html).toContain('Parcel 1: USPS (USPS Ground Advantage), tracking <a href="https://tools.usps.com/');
     expect(html).toContain('on its way, expected');
-    const mails = h.shop.dbs.orders.prepare("SELECT key FROM jobs WHERE kind = 'email.send' AND key LIKE '%/shipment/%'").all() as Array<{ key: string }>;
-    expect(mails).toEqual([{ key: `${id}/shipment/${sh}` }]);
+    const mails = h.shop.dbs.orders.prepare("SELECT key FROM jobs WHERE kind = 'email.send' AND key LIKE '%/shipped/%'").all() as Array<{ key: string }>;
+    expect(mails).toEqual([{ key: `${id}/shipped/${sh}` }]);
 
     await h.printful.deliver(sh);
     await settle();

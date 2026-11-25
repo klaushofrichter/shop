@@ -87,7 +87,7 @@ export function publicRouter(d: PublicDeps): Router {
 
   /** Every public form carries a token (03); placed after a route's limiter. */
   const csrf: RequestHandler = (req, res, next) => {
-    if (formTokenOk(req, d.secret, (req.body as Record<string, string | undefined>)._csrf)) return next();
+    if (formTokenOk(req, d.secret, (req.body as Record<string, string | undefined> | undefined)?._csrf)) return next();
     res.status(403).type('text').send('form expired; reload the page');
   };
 

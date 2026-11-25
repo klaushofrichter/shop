@@ -16,6 +16,7 @@ import { verifyPrintfulWebhook } from '../providers/printful-webhook';
 import { ProviderError, type FulfilmentProvider } from '../providers/types';
 import { openHold, reasonsOf, resolveHolds } from './holds';
 import { adoptProviderOrder, moveFulfilment, newestAttempt, type AttemptRow } from './submit';
+import { queueEmail } from '../email/jobs';
 
 export interface PrintfulWebhookDeps {
   orders: Db;
@@ -71,7 +72,7 @@ export async function syncShipments(d: FulfilmentEventDeps, a: AttemptRow): Prom
   const list = await d.provider.getShipments(a.provider_order_id!);
   return transaction(d.orders, () => {
     let added = 0;
-    const exists = d.orders.prepare("SELECT 1 FROM shipments WHERE provider = 'printful' AND id = ?");
+    const sentFor = d.orders.prepare("SELECT 1 FROM emails WHERE order_id = ? AND kind = 'shipped' AND ref = ? AND sent_at IS NOT NULL");
     const upsert = d.orders.prepare(`
       INSERT INTO shipments (provider, id, order_id, attempt, carrier, service, tracking_number, tracking_url, shipped_at, delivered_at,
                              estimated_from, estimated_to, shipment_status, delivery_status, is_reshipment, items_json)
@@ -81,12 +82,13 @@ export async function syncShipments(d: FulfilmentEventDeps, a: AttemptRow): Prom
         delivered_at = excluded.delivered_at, estimated_from = excluded.estimated_from, estimated_to = excluded.estimated_to,
         shipment_status = excluded.shipment_status, delivery_status = excluded.delivery_status, items_json = excluded.items_json`);
     for (const s of list) {
-      const isNew = !exists.get(s.id);
       upsert.run(s.id, a.order_id, a.attempt, s.carrier, s.service, s.trackingNumber, s.trackingUrl, s.shippedAt, s.deliveredAt,
         s.estimatedFrom, s.estimatedTo, s.shipmentStatus, s.deliveryStatus, s.isReshipment ? 1 : 0, JSON.stringify(s.items));
-      if (isNew && s.shipmentStatus === 'shipped') {
+      // Every shipped parcel whose e-mail isn't sent yet, however the row first arrived: a parcel the hourly
+      // sweep first saw as `pending` gets its e-mail when it ships (review F2). Key and job make it once per parcel.
+      if (s.shipmentStatus === 'shipped' && !sentFor.get(a.order_id, s.id)) {
         added++;
-        enqueue(d.orders, d.clock, 'email.send', `${a.order_id}/shipment/${s.id}`, { orderId: a.order_id, kind: 'shipment', shipmentId: s.id });
+        queueEmail(d.orders, d.clock, a.order_id, 'shipped', s.id);
       }
     }
     const live = list.filter((s) => s.shipmentStatus !== 'canceled');

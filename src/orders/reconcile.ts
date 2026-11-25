@@ -25,6 +25,8 @@ export interface ReconcileDeps {
   payment: PaymentDeps;
   refunds: RefundDeps;
   completeAfterShippedDays: number;
+  /** A submit job failing for longer than this counts as nothing in progress (I10, review F4). */
+  providerRetryWindowMs: number;
   log: (line: Record<string, unknown>) => void;
 }
 
@@ -145,10 +147,12 @@ export async function reconcile(d: ReconcileDeps): Promise<ReconcileReport> {
            AND NOT EXISTS (SELECT 1 FROM holds h WHERE h.order_id = o.id AND h.resolved_at IS NULL)
            AND NOT EXISTS (SELECT 1 FROM refunds r WHERE r.order_id = o.id AND r.state = 'requested')
            AND NOT EXISTS (SELECT 1 FROM provider_orders p WHERE p.order_id = o.id AND p.state IN ('confirmed', 'confirming'))
-           AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.kind IN ('order.submit', 'refund.run', 'order.cancel', 'order.fraud_retry') AND (j.key = o.id OR j.key LIKE o.id || '-%' OR j.key LIKE o.id || '/%') AND j.state IN ('queued', 'running'))
+           AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.kind IN ('order.submit', 'refund.run', 'order.cancel', 'order.fraud_retry') AND (j.key = o.id OR j.key LIKE o.id || '-%' OR j.key LIKE o.id || '/%') AND j.state IN ('queued', 'running')
+                         AND NOT (j.last_error IS NOT NULL AND j.created_at < ?))
            AND o.fulfilment_state NOT IN ('test_draft_ok')`,
       )
-      .all(before(30 * MINUTE)) as Array<{ id: string }>;
+      // Twice the window: the submit job opens its own, more specific hold first.
+      .all(before(30 * MINUTE), before(2 * d.providerRetryWindowMs)) as Array<{ id: string }>;
     for (const o of rows) {
       transaction(d.orders, () => openHold(d.orders, d.clock, o.id, ['fulfilment_blocked'], 'reconciliation'));
       rep.alarms.push(`${o.id}: paid and incomplete with nothing in progress (I10)`);

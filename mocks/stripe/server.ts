@@ -71,6 +71,8 @@ export function createMockStripe(opts: MockStripeOptions) {
     disputes: new Map<string, MockDispute>(),
     efws: new Map<string, MockEfw>(),
     /** The next refund ends `failed` (refund.failed). */
+    /** The next session create answers 503 without making a session. */
+    failNextSessionCreate: false,
     failNextRefund: false,
     /** The next refund stays `pending` until settled with settleRefund(). */
     pendingNextRefund: false,
@@ -153,7 +155,8 @@ ${ses.customText ? `<p>${esc(ses.customText)}</p>` : ''}
       }
       const json = res.json.bind(res);
       res.json = (body: unknown) => {
-        s.idem.set(key, { hash, status: res.statusCode, body });
+        // Like Stripe: a request that never executed (a 5xx) saves no idempotent result.
+        if (res.statusCode < 500) s.idem.set(key, { hash, status: res.statusCode, body });
         return json(body);
       };
     }
@@ -181,6 +184,10 @@ ${ses.customText ? `<p>${esc(ses.customText)}</p>` : ''}
 
   // ---- checkout sessions ----
   app.post('/v1/checkout/sessions', (req, res) => {
+    if (s.failNextSessionCreate) {
+      s.failNextSessionCreate = false;
+      return res.status(503).json({ error: { message: 'mock: service unavailable', type: 'api_error' } });
+    }
     const b = req.body as Json;
     const unknown = Object.keys(b).find((k) => !ALLOWED_SESSION_PARAMS.has(k));
     if (unknown) return fail(res, 400, `Received unknown parameter: ${unknown}`, { param: unknown });

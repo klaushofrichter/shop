@@ -241,4 +241,10 @@ CREATE INDEX refunds_order ON refunds(order_id);
 CREATE INDEX shipments_order ON shipments(order_id);
 CREATE INDEX orders_payment_intent ON orders(stripe_payment_intent);
 `,
+  // 5: code review 2026-11-25. F4: the retry window counts from an attempt's first failure, not its last
+  // successful read. F1: a checkout's session expiry, so a repeated create sends identical parameters.
+  `
+ALTER TABLE provider_orders ADD COLUMN failing_since TEXT;
+ALTER TABLE orders ADD COLUMN checkout_expires_at INTEGER;
+`,
 ];

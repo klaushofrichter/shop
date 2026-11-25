@@ -56,9 +56,18 @@ export async function startCheckout(d: CheckoutDeps, cartId: string, quoteId: st
 
   // ---- 1. one open checkout per cart ----
   if (cart.open_order_id) {
-    const open = d.orders.prepare('SELECT id, stripe_session_id, shipping_method, checkout_quote_id FROM orders WHERE id = ? AND payment_state = ?').get(cart.open_order_id, 'checkout_open') as
-      | { id: string; stripe_session_id: string | null; shipping_method: string; checkout_quote_id: string | null }
-      | undefined;
+    const openRow = () =>
+      d.orders.prepare('SELECT id, stripe_session_id, shipping_method, checkout_quote_id FROM orders WHERE id = ? AND payment_state = ?').get(cart.open_order_id, 'checkout_open') as
+        | { id: string; stripe_session_id: string | null; shipping_method: string; checkout_quote_id: string | null }
+        | undefined;
+    let open = openRow();
+    if (open && !open.stripe_session_id) {
+      // Stripe didn't answer last time (07 §2.1.1, review F1): repeat the create for that order with the same
+      // keys and parameters. Stripe returns the session it made, or makes it now; either way we learn its id.
+      const r = await createStripeSession(d, open.id);
+      if (r.kind === 'unavailable') return r;
+      open = openRow(); // the session id is stored now, or the order was closed
+    }
     if (open?.stripe_session_id) {
       let session;
       try {
@@ -88,9 +97,6 @@ export async function startCheckout(d: CheckoutDeps, cartId: string, quoteId: st
         }
       }
       closeUnpaid(d.orders, d.clock, open.id, 'checkout');
-    } else if (open) {
-      // A checkout whose session id was lost (07 §2.1.1) is resolved by reconciliation; don't start another.
-      return { kind: 'unavailable' };
     }
   }
 
@@ -107,16 +113,17 @@ export async function startCheckout(d: CheckoutDeps, cartId: string, quoteId: st
   // ---- 3. the order ----
   const orderId = newOrderId(d.clock);
   const idemKey = `checkout-${orderId}`;
-  const number = transaction(d.orders, () => {
+  transaction(d.orders, () => {
     const n = drawOrderNumber(d.orders);
     const ts = iso(d.clock);
     d.orders
       .prepare(
         `INSERT INTO orders (id, number, payment_state, cart_id, email, ship_name, ship_line1, ship_line2, ship_city, ship_state, ship_zip, ship_country,
-           shipping_method, shipping_cents, items_cents, checkout_idempotency_key, checkout_quote_id, created_at, updated_at)
-         VALUES (?, ?, 'checkout_open', ?, ?, ?, ?, ?, ?, ?, ?, 'US', ?, ?, ?, ?, ?, ?, ?)`,
+           shipping_method, shipping_cents, items_cents, checkout_idempotency_key, checkout_quote_id, checkout_expires_at, created_at, updated_at)
+         VALUES (?, ?, 'checkout_open', ?, ?, ?, ?, ?, ?, ?, ?, 'US', ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(orderId, n, cartId, quote.email, address.name, address.line1, address.line2 ?? null, address.city, address.state, address.zip, shippingId, option.cents, itemsCents, idemKey, quoteId, ts, ts);
+      .run(orderId, n, cartId, quote.email, address.name, address.line1, address.line2 ?? null, address.city, address.state, address.zip, shippingId, option.cents, itemsCents, idemKey, quoteId,
+        Math.floor(d.clock.now() / 1000) + SESSION_TTL_S, ts, ts);
     const ins = d.orders.prepare(
       `INSERT INTO order_items (id, order_id, source_id, work_id, sku_id, name, provider, provider_variant_id, unit_cents, quantity, print_file_sha, orientation)
        VALUES (?, ?, ?, ?, ?, ?, 'printful', ?, ?, ?, ?, ?)`,
@@ -134,6 +141,26 @@ export async function startCheckout(d: CheckoutDeps, cartId: string, quoteId: st
   });
 
   // ---- 4–6. Stripe ----
+  return createStripeSession(d, orderId);
+}
+
+/**
+ * The Customer and the Checkout Session for an order, with keys and parameters that depend only on the
+ * stored order and its quote, so a repeat after a lost answer is identical and Stripe returns the same
+ * objects (review F1). A refusal closes the order; no answer leaves it open for the next try.
+ */
+async function createStripeSession(d: CheckoutDeps, orderId: string): Promise<CheckoutResult> {
+  const o = d.orders.prepare('SELECT * FROM orders WHERE id = ?').get(orderId) as Record<string, any>;
+  const quote = o.checkout_quote_id ? (d.orders.prepare('SELECT * FROM quotes WHERE id = ?').get(o.checkout_quote_id) as QuoteRow | undefined) : undefined;
+  const expiresAt = Number(o.checkout_expires_at);
+  // Past the session's expiry, or without its quote, a repeat can't be identical: close and start afresh.
+  if (!quote || !expiresAt || expiresAt * 1000 <= d.clock.now() + 60_000) {
+    closeUnpaid(d.orders, d.clock, orderId, 'checkout');
+    return { kind: 'requote' };
+  }
+  const quoted = JSON.parse(quote.items_json) as QuoteItem[];
+  const option = (JSON.parse(quote.options_json) as QuoteOption[]).find((x) => x.id === o.shipping_method)!;
+  const address = JSON.parse(quote.address_json) as AddressInput;
   const stripeAddress = { line1: address.line1, line2: address.line2, city: address.city, state: address.state, postal_code: address.zip, country: 'US' };
   try {
     const customer = await d.stripe.createCustomer(
@@ -141,7 +168,7 @@ export async function startCheckout(d: CheckoutDeps, cartId: string, quoteId: st
       `customer-${orderId}`,
     );
     d.orders.prepare('UPDATE orders SET stripe_customer_id = ? WHERE id = ?').run(customer.id, orderId);
-    const session = await d.stripe.createCheckoutSession(sessionParams(d, orderId, number, customer.id, quoted, option, address), idemKey);
+    const session = await d.stripe.createCheckoutSession(sessionParams(d, orderId, o.number, customer.id, quoted, option, address, expiresAt), o.checkout_idempotency_key);
     d.orders.prepare('UPDATE orders SET stripe_session_id = ? WHERE id = ?').run(session.id, orderId);
     if (!session.url) return { kind: 'unavailable' };
     return { kind: 'redirect', url: session.url };
@@ -154,7 +181,7 @@ export async function startCheckout(d: CheckoutDeps, cartId: string, quoteId: st
       if (err.code === 'customer_tax_location_invalid') return { kind: 'address', message: 'Stripe could not use this address for sales tax. Please check it.' };
       return { kind: 'unavailable' };
     }
-    // No answer: the order stays checkout_open; reconciliation repeats the create with the same key (07 §2.1.1).
+    // No answer: the order stays checkout_open; the next Pay repeats the create with the same keys (07 §2.1.1).
     d.log({ level: 'warn', msg: 'checkout: no answer from Stripe', order: orderId });
     return { kind: 'unavailable' };
   }
@@ -165,7 +192,7 @@ function sameItems(a: QuoteItem[], b: QuoteItem[]): boolean {
   return a.length === b.length && a.map(key).sort().join() === b.map(key).sort().join();
 }
 
-function sessionParams(d: CheckoutDeps, orderId: string, number: string, customer: string, items: QuoteItem[], option: QuoteOption, a: AddressInput) {
+function sessionParams(d: CheckoutDeps, orderId: string, number: string, customer: string, items: QuoteItem[], option: QuoteOption, a: AddressInput, expiresAt: number) {
   const shipTo = `Ships to ${a.name}, ${a.line1}${a.line2 ? `, ${a.line2}` : ''}, ${a.city}, ${a.state} ${a.zip}`;
   return {
     mode: 'payment',
@@ -217,7 +244,7 @@ function sessionParams(d: CheckoutDeps, orderId: string, number: string, custome
     automatic_tax: { enabled: d.automaticTax },
     consent_collection: { terms_of_service: 'required' },
     allow_promotion_codes: false,
-    expires_at: Math.floor(d.clock.now() / 1000) + SESSION_TTL_S,
+    expires_at: expiresAt,
     success_url: statusUrl(d, orderId, 'checkout'),
     cancel_url: `${d.publicUrl}/cart?from=checkout`,
   };

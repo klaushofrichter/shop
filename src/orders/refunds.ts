@@ -64,8 +64,10 @@ export function requestFullRefund(d: Pick<RefundDeps, 'orders' | 'clock'>, order
   return transaction(d.orders, () => {
     const open = d.orders.prepare("SELECT id FROM refunds WHERE order_id = ? AND purpose != 'dashboard' AND state IN ('requested', 'succeeded')").get(orderId) as { id: string } | undefined;
     if (open) return open.id;
-    const n = (d.orders.prepare('SELECT COUNT(*) n FROM refunds WHERE order_id = ?').get(orderId) as { n: number }).n + 1;
     const o = orderOf(d.orders, orderId)!;
+    // Nothing left to refund: no row that would never finish (review F6).
+    if (o.payment_state === 'refunded' || (o.paid_cents ?? 0) - o.refunded_cents <= 0) return '';
+    const n = (d.orders.prepare('SELECT COUNT(*) n FROM refunds WHERE order_id = ?').get(orderId) as { n: number }).n + 1;
     const id = `${orderId}-r${n}`;
     d.orders
       .prepare("INSERT INTO refunds (id, order_id, purpose, amount_cents, state, requested_at, requested_by) VALUES (?, ?, ?, ?, 'requested', ?, ?)")
@@ -136,11 +138,14 @@ export async function syncPayment(d: RefundDeps, orderId: string, cause: string)
   const becameFull = transaction(d.orders, () => {
     const now = iso(d.clock);
     const cur = orderOf(d.orders, orderId)!;
-    if (charge.amount_refunded === cur.refunded_cents) return false;
-    const to = full ? 'refunded' : charge.amount_refunded > 0 ? 'partially_refunded' : cur.payment_state;
-    d.orders.prepare('UPDATE orders SET refunded_cents = ?, payment_state = ?, updated_at = ? WHERE id = ?').run(charge.amount_refunded, to, now, orderId);
-    if (to !== cur.payment_state) event(d.orders, d.clock, orderId, 'payment', cur.payment_state, to, cause);
-    // Shop refunds that are now covered succeed; any rest was made in the Dashboard.
+    const changed = charge.amount_refunded !== cur.refunded_cents;
+    if (changed) {
+      const to = full ? 'refunded' : charge.amount_refunded > 0 ? 'partially_refunded' : cur.payment_state;
+      d.orders.prepare('UPDATE orders SET refunded_cents = ?, payment_state = ?, updated_at = ? WHERE id = ?').run(charge.amount_refunded, to, now, orderId);
+      if (to !== cur.payment_state) event(d.orders, d.clock, orderId, 'payment', cur.payment_state, to, cause);
+    }
+    // Shop refunds that are now covered succeed; any rest was made in the Dashboard. This runs even when
+    // the amount didn't change, so a request made after the charge was already refunded isn't stranded (review F6).
     const asked = d.orders.prepare("SELECT id, amount_cents FROM refunds WHERE order_id = ? AND state = 'requested' AND purpose != 'dashboard'").all(orderId) as Array<{ id: string; amount_cents: number }>;
     let covered = cur.refunded_cents;
     for (const r of asked) {
@@ -150,7 +155,7 @@ export async function syncPayment(d: RefundDeps, orderId: string, cause: string)
         covered += r.amount_cents;
       }
     }
-    const rest = charge.amount_refunded - Math.max(covered, cur.refunded_cents);
+    const rest = changed ? charge.amount_refunded - Math.max(covered, cur.refunded_cents) : 0;
     if (rest > 0) {
       const n = (d.orders.prepare('SELECT COUNT(*) n FROM refunds WHERE order_id = ?').get(orderId) as { n: number }).n + 1;
       d.orders
@@ -158,8 +163,12 @@ export async function syncPayment(d: RefundDeps, orderId: string, cause: string)
         .run(`${orderId}-r${n}`, orderId, rest, now, now);
       event(d.orders, d.clock, orderId, 'refund', null, 'succeeded', cause, 'made in the Stripe Dashboard');
     }
-    if (!full || cur.payment_state === 'refunded') return false;
+    if (!full) return false;
     resolveHolds(d.orders, d.clock, { orderId }, 'refunded', 'refund');
+    if (cur.payment_state === 'refunded') {
+      maybeComplete(d.orders, d.clock, orderId);
+      return false;
+    }
     return true;
   });
   if (becameFull) {
@@ -334,13 +343,16 @@ export async function onEarlyFraudWarning(d: RefundDeps, efwId: string): Promise
   const before = transaction(d.orders, () => {
     const cur = orderOf(d.orders, o.id)!;
     if (cur.dispute_state === 'none') {
-      d.orders.prepare("UPDATE orders SET dispute_state = 'warning', updated_at = ? WHERE id = ?").run(iso(d.clock), o.id);
+      d.orders.prepare("UPDATE orders SET dispute_state = 'warning', updated_at = ? WHERE id = ? AND dispute_state = 'none'").run(iso(d.clock), o.id);
       event(d.orders, d.clock, o.id, 'dispute', 'none', 'warning', 'stripe_webhook');
     }
+    // Already refunded in full: the warning is recorded, nothing else to do (review F6).
+    if (cur.payment_state === 'refunded') return 'refunded';
     const open = d.orders.prepare("SELECT 1 FROM holds WHERE order_id = ? AND kind = 'fraud' AND resolved_at IS NULL").get(o.id);
     if (!open) openHold(d.orders, d.clock, o.id, ['early_fraud_warning'], 'stripe_webhook');
     return cur.dispute_state;
   });
+  if (before === 'refunded') return 'already refunded';
   if (before === 'open' || before === 'lost') return 'disputed already';
   d.log({ level: 'alert', msg: 'early fraud warning', order: o.id });
   // Not yet confirmed: delete the draft and refund at once. Confirmed: cancel if possible, then refund. Otherwise alert.
