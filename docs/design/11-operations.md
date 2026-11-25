@@ -19,7 +19,7 @@ Per the cluster's rules (ADR-0016); the workflows exist since PR #2.
   - the kube-setup deploy token as an **environment secret** of a GitHub environment `production` limited to the `production` branch, with the deploy job naming `environment: production`, so a job from any other ref never receives it (Cluster agrees, 2026-11-26; Klaus to approve).
 - **Cluster's part** (one request after this design is accepted):
   - namespaces `shop` and `shop-runner`; the runner as above;
-  - the Deployment: `replicas: 1`, `Recreate`, the non-root `securityContext`, readiness and liveness on `/health`, memory request 256 Mi and **limit 512 Mi** (rendering a 12 × 16 print file, 3600 × 4800 px, with `sharp.concurrency(1)` and the cache off; a test asserts peak memory below 384 MiB, about 200 MiB measured), CPU 0.5;
+  - the Deployment: `replicas: 1`, `Recreate`, the non-root `securityContext`, readiness and liveness on `/health`, memory request 256 Mi and **limit 512 Mi** (rendering a 12 × 16 print file, 3600 × 4800 px, with `sharp.concurrency(1)` and the cache off; a test asserts peak memory below 384 MiB, about 200 MiB measured for a 48 MP original; in the pod, 2026-11-25: 113 MiB for the largest original there, 10 MP, four products in 10 s at the CPU limit, the app idle at about 47 Mi), CPU 0.5;
   - a 10 Gi Retain PVC (Cluster, 2026-11-25; local-path doesn't enforce it, so the shop will cap its regenerable files itself); the Litestream sidecar (two database files); Ingress and Certificate for `shop.klaushofrichter.net`;
   - the NetworkPolicy below; the Secrets below; the version-exporter entry; UptimeRobot `HEAD /health` and `GET /health/worker`; `export.sh`/`bootstrap.sh`; Velero;
   - a ConfigMap with the fail-safe thresholds (kube-setup is private);
