@@ -166,8 +166,10 @@ export function registerOfferJobs(runner: JobRunner, d: OfferJobDeps): void {
           sha = r.sha256;
           d.catalog
             .prepare(
-              `INSERT OR IGNORE INTO print_files (sha256, render_key, path, width_px, height_px, bytes, created_at, preview_path)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              // A file the live purge removed comes back with its row (07 §6).
+              `INSERT INTO print_files (sha256, render_key, path, width_px, height_px, bytes, created_at, preview_path)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT DO UPDATE SET deleted_at = NULL, preview_path = excluded.preview_path`,
             )
             .run(sha, renderKey, `/files/${sha}.${r.ext}`, r.widthPx, r.heightPx, r.bytes, iso(d.clock), `/img/${previewSha}.jpg`);
         } finally {

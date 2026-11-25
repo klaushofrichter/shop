@@ -28,6 +28,8 @@ import { StripeClient } from './payments/stripe';
 import { registerStripeEventJob } from './orders/webhooks';
 import { registerSubmitJob } from './orders/submit';
 import { onStripeEvent, registerRefundJobs, scheduleDeadlines } from './orders/refunds';
+import { registerReconcileJob, scheduleReconcile } from './orders/reconcile';
+import { registerPurgeJob, schedulePurge } from './orders/purge';
 import { registerPrintfulEventJob } from './orders/fulfilment-events';
 import { RetryLater } from './jobs';
 
@@ -93,6 +95,15 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
     registerRefundJobs(runner, refundDeps);
     scheduleDeadlines(dbs.orders, clock);
   }
+  if (paymentDeps && refundDeps && stripe) {
+    registerReconcileJob(runner, {
+      orders: dbs.orders, clock, stripe, provider, payment: paymentDeps, refunds: refundDeps,
+      completeAfterShippedDays: config.fulfilment.completeAfterShippedDays, log,
+    });
+    scheduleReconcile(dbs.orders, clock);
+  }
+  registerPurgeJob(runner, { orders: dbs.orders, catalog: dbs.catalog, clock, mode: config.mode, stripe, provider, store, log });
+  schedulePurge(dbs.orders, clock);
   if (paymentDeps) registerStripeEventJob(runner, paymentDeps, refundDeps ? (type, id) => onStripeEvent(refundDeps, type, id) : undefined);
   // Submission (06 §4) needs Printful and Stripe; without them the job waits.
   if (provider && stripe) {
@@ -109,7 +120,7 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
   // Set once ready() has checked Printful's identity.
   let providerStatus: ProviderStatus | undefined;
   const app = createApp({
-    workerHealth: () => workerHealth(dbs.orders, clock, { checkReconciliation: false, checkAlerts: false, startedAtMs }),
+    workerHealth: () => workerHealth(dbs.orders, clock, { checkReconciliation: !!(stripe && provider), checkAlerts: false, startedAtMs }),
     dataDir: config.dataDir,
     mockStripePages: config.mockStripePages,
     auth: {
