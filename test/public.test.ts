@@ -84,6 +84,16 @@ describe('preview gate (03 §9, ADR-0039)', () => {
     expect(offers.body).toEqual({ source: 'art', works: [] });
   });
 
+  it('/preview shows the gate with 200 while the gate is on, and goes home when it is off', async () => {
+    const on = await request(setup({ gate: true, key: 'open-sesame' }).app).get('/preview');
+    expect(on.status).toBe(200);
+    expect(on.text).toContain('Preview key');
+    expect(on.headers['cache-control']).toBe('no-store');
+    const off = await request(setup({}).app).get('/preview');
+    expect(off.status).toBe(303);
+    expect(off.headers.location).toBe('/');
+  });
+
   it('a wrong key is refused; the right key sets a cookie that is not the key', async () => {
     const t = setup({ gate: true, key: 'open-sesame' });
     const tok = /name="_csrf" value="([^"]+)"/.exec((await t.agent.get('/')).text)![1];
