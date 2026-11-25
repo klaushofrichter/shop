@@ -31,9 +31,11 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 ## Waiting for Klaus
 
-- The return address in Printful's store settings (the packing slip itself carries only an e-mail, a phone, a message and a logo).
+- SES production access in us-east-1 before go-live (see Next steps).
 
 ## Settled on 2026-11-25
+
+- The return address is set in both Printful stores, live and test (Klaus, 2026-11-25). It lives only in Printful, not in this repository. The packing slip shows no phone number for now (Klaus); it carries the business e-mail.
 
 - Every work of art, every product (ADR-0040); prices per product, the launch prices accepted (ADR-0041).
 - Packing-slip contact: Klaus gave the e-mail and phone. They go into the cluster's configuration (`PACKING_SLIP_EMAIL`, `PACKING_SLIP_PHONE`), not into this public repository.
