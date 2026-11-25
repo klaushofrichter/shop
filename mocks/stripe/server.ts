@@ -73,6 +73,8 @@ export function createMockStripe(opts: MockStripeOptions) {
     /** The next refund ends `failed` (refund.failed). */
     /** The next session create answers 503 without making a session. */
     failNextSessionCreate: false,
+    /** The next session create is refused with this Stripe error (400). */
+    rejectNextSessionCreate: undefined as Json | undefined,
     failNextRefund: false,
     /** The next refund stays `pending` until settled with settleRefund(). */
     pendingNextRefund: false,
@@ -184,6 +186,11 @@ ${ses.customText ? `<p>${esc(ses.customText)}</p>` : ''}
 
   // ---- checkout sessions ----
   app.post('/v1/checkout/sessions', (req, res) => {
+    if (s.rejectNextSessionCreate) {
+      const error = s.rejectNextSessionCreate;
+      s.rejectNextSessionCreate = undefined;
+      return res.status(400).json({ error });
+    }
     if (s.failNextSessionCreate) {
       s.failNextSessionCreate = false;
       return res.status(503).json({ error: { message: 'mock: service unavailable', type: 'api_error' } });
