@@ -1,6 +1,7 @@
 /**
  * Content-addressed files under DATA_DIR: `files/` (print files), `img/`
- * (display images), `mockups/`, and `tmp/` for downloads in progress. A file is
+ * (display images), `mockups/`, `originals/` (the last checked original of each
+ * work, so its renders don't download it again), and `tmp/` for downloads in progress. A file is
  * written to tmp and renamed into place, so a crash never leaves half a file
  * under its final name.
  */
@@ -10,7 +11,7 @@ import path from 'node:path';
 import { Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
-export type Area = 'files' | 'img' | 'mockups';
+export type Area = 'files' | 'img' | 'mockups' | 'originals';
 
 export class FileStore {
   constructor(readonly dataDir: string) {}
@@ -57,6 +58,13 @@ export class FileStore {
       throw e;
     }
     return { file, sha256: hash.digest('hex'), bytes };
+  }
+
+  /** Move a downloaded file into an area under its name (a no-op if it is there already). */
+  keep(file: string, area: Area, name: string): string {
+    const target = this.pathOf(area, name);
+    renameSync(file, target);
+    return target;
   }
 
   discard(file: string): void {
