@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createMockPrintful, type MockPrintful } from '../../mocks/printful/server';
 import { createMockStripe, type MockStripe } from '../../mocks/stripe/server';
+import { createMockSes } from '../../mocks/ses/server';
 import { FakeClock } from '../../src/clock';
 import { startShop, type Shop } from '../../src/startup';
 
@@ -26,6 +27,7 @@ export interface Harness {
   clock: FakeClock;
   printful: MockPrintful;
   stripe: MockStripe;
+  ses: ReturnType<typeof createMockSes>;
   shop: Shop;
   shopUrl: string;
   close(): void;
@@ -39,6 +41,8 @@ export async function startHarness(env: Record<string, string> = {}): Promise<Ha
   const stripe = createMockStripe(stripeOpts);
   const pf = await listen(printful.app);
   const st = await listen(stripe.app);
+  const ses = createMockSes({ accessKeyId: 'mock_ses_h', secretAccessKey: 'mock-ses-secret' });
+  const se = await listen(ses.app);
   const dir = mkdtempSync(path.join(tmpdir(), 'shop-h-'));
   const shop = startShop(
     {
@@ -48,6 +52,8 @@ export async function startHarness(env: Record<string, string> = {}): Promise<Ha
       APPROVAL_OVER_CENTS: '20000', REPEAT_OVER_CENTS: '50000', REPEAT_ORDERS: '3', BREAKER_ORDERS_24H: '10',
       BREAKER_COST_CENTS_24H: '100000', MAX_ITEMS_PER_ORDER: '10', MAX_ORDER_CENTS: '100000', SKU_MAX_QUANTITY: '{"default":9}',
       PRINTFUL_WEBHOOK_SECRET: PF_SECRET, PRINTFUL_WEBHOOK_PUBLIC_KEY: PF_PUBLIC_KEY,
+      SES_ENDPOINT: se.url.replace('127.0.0.1', 'localhost'), SHOP_SES_AWS_ACCESS_KEY_ID: 'mock_ses_h', SHOP_SES_AWS_SECRET_ACCESS_KEY: 'mock-ses-secret',
+      EMAIL_ENABLED: 'on', EMAIL_ALLOWLIST: 'jane@example.com', ALERT_EMAIL: 'alerts@example.com', SES_FEEDBACK_ADDRESS: 'bounces@example.com',
       PACKING_SLIP_EMAIL: 'orders@example.com', PACKING_SLIP_PHONE: '+1 555 010 0000',
       ...env,
     },
@@ -68,11 +74,12 @@ export async function startHarness(env: Record<string, string> = {}): Promise<Ha
     c.prepare(`INSERT OR REPLACE INTO sku_checks (sku_id, ok, wholesale_cents, checked_at) VALUES (?, 1, ?, 'now')`).run(sku, wholesale);
   }
   return {
-    clock, printful, stripe, shop, shopUrl: s.url,
+    clock, printful, stripe, ses, shop, shopUrl: s.url,
     close() {
       s.s.close();
       pf.s.close();
       st.s.close();
+      se.s.close();
       shop.stop();
       rmSync(dir, { recursive: true, force: true });
     },

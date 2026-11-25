@@ -18,7 +18,7 @@ customer data in alerts.
 - Sent by the `email.send` job, at most once per key, retried up to 5 times. Every e-mail carries the status link, computed from the order id with `STATUS_TOKEN_SECRET` ([07 §1](07-orders-data-jobs.md#1-identifiers)); earlier links keep working. An admin resend uses a fresh key.
 - Plain, accessible HTML plus a text part; no tracking pixels, no marketing, no third-party images.
 - From an address on `shop.klaushofrichter.net` with SPF and DKIM (records at Squarespace: Klaus); SES production access requested before go-live.
-- **Bounces and complaints**: SES forwards its notices by e-mail to the shop's sending address, which reaches Klaus's mailbox (review C, Klaus 2026-11-26). No queue, no endpoint, no polling; Klaus fixes a mistyped address from the notice (the bounce names the order number in the subject). A queue is added only if bounces become frequent.
+- **Bounces and complaints**: SES forwards its notices by e-mail (`FeedbackForwardingEmailAddress`, set from `SES_FEEDBACK_ADDRESS`; never the From or Reply-To; built 2026-11-25) to the shop's business address, which reaches Klaus's mailbox (review C, Klaus 2026-11-26). No queue, no endpoint, no polling; Klaus fixes a mistyped address from the notice (the bounce names the order number in the subject). A queue is added only if bounces become frequent.
 - `EMAIL_ENABLED` is a kill switch. In `mock` and `test` mode, mail goes only to an allow-list.
 - Printful sends nothing to the customer: it gets no e-mail address (ADR-0031). Stripe sends its own payment receipt (turned on in the Dashboard), which names the order (`payment_intent_data.description`).
 

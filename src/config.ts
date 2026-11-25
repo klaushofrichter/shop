@@ -61,6 +61,20 @@ export interface Config {
   limits: FailSafeLimits;
   /** The pre-payment cost check and shipping (docs/design/05 §2). Not secret; defaults below. */
   quote: QuoteSettings;
+  /** E-mail via SES (09, ADR-0015, ADR-0038). Addresses come from the ConfigMap, never this repository. */
+  email: {
+    enabled: boolean;
+    from: string;
+    /** Klaus's address for alerts. */
+    alertTo?: string;
+    /** SES forwards bounces and complaints here (the Return-Path); never From or Reply-To. */
+    feedbackTo?: string;
+    /** Mock and test mode: customer e-mails only to these (09 §1). */
+    allowlist: string[];
+    delayNoticeMs: number;
+    alertNewOrders: boolean;
+    ses?: { region: string; accessKeyId: string; secretAccessKey: string; endpoint?: string };
+  };
   /** Submission (06 §3–4). The packing-slip contact is Klaus's and lives in the cluster's ConfigMap, not here. */
   fulfilment: {
     providerRetryWindowMs: number;
@@ -239,6 +253,47 @@ export function loadConfig(env: Env = process.env): Config {
     stripeFeeFixedCents: num('STRIPE_FEE_FIXED_CENTS', 30, 200),
   };
 
+  const onOff = (name: string, dflt: boolean): boolean => {
+    const v = get(name);
+    if (v === undefined) return dflt;
+    if (v !== 'on' && v !== 'off') problems.push(`${name} must be on or off`);
+    return v === 'on';
+  };
+  const isEmail = (v: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
+  const sesKey = get('SHOP_SES_AWS_ACCESS_KEY_ID');
+  const sesSecret = get('SHOP_SES_AWS_SECRET_ACCESS_KEY');
+  const sesEndpoint = get('SES_ENDPOINT');
+  if (!!sesKey !== !!sesSecret) problems.push('SHOP_SES_AWS_ACCESS_KEY_ID and SHOP_SES_AWS_SECRET_ACCESS_KEY go together');
+  if (mode === 'mock') {
+    if (sesKey && !sesKey.startsWith('mock_ses_')) problems.push('SHOP_SES_AWS_ACCESS_KEY_ID must start with mock_ses_ in mock mode');
+    if (sesKey && !sesEndpoint) problems.push('SES_ENDPOINT (the mock) is required with SES keys in mock mode');
+    if (sesEndpoint && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(sesEndpoint)) problems.push('SES_ENDPOINT must be a local http address');
+  } else {
+    if (sesEndpoint) problems.push('SES_ENDPOINT is for mock mode only');
+    if (sesKey?.startsWith('mock_')) problems.push(`SHOP_SES_AWS_ACCESS_KEY_ID is a mock key ${inMode}`);
+  }
+  const emailEnabled = onOff('EMAIL_ENABLED', false);
+  if (emailEnabled && !sesKey) problems.push('EMAIL_ENABLED=on needs the SES keys');
+  const publicHost = new URL(publicUrl).hostname;
+  const emailFrom = get('EMAIL_FROM') ?? `orders@${publicHost.includes('.') ? publicHost : 'example.com'}`;
+  if (!isEmail(emailFrom)) problems.push('EMAIL_FROM must be an e-mail address');
+  const alertTo = get('ALERT_EMAIL');
+  if (alertTo && !isEmail(alertTo)) problems.push('ALERT_EMAIL must be an e-mail address');
+  const feedbackTo = get('SES_FEEDBACK_ADDRESS');
+  if (feedbackTo && !isEmail(feedbackTo)) problems.push('SES_FEEDBACK_ADDRESS must be an e-mail address');
+  const allowlist = (get('EMAIL_ALLOWLIST') ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+  if (allowlist.some((x) => !isEmail(x))) problems.push('EMAIL_ALLOWLIST must be e-mail addresses separated by commas');
+  const email = {
+    enabled: emailEnabled,
+    from: emailFrom,
+    alertTo,
+    feedbackTo,
+    allowlist,
+    delayNoticeMs: num('DELAY_NOTICE_HOURS', 48, 720) * 60 * 60_000,
+    alertNewOrders: onOff('ALERT_NEW_ORDERS', true),
+    ses: sesKey && sesSecret ? { region: get('SES_REGION') ?? 'us-east-1', accessKeyId: sesKey, secretAccessKey: sesSecret, endpoint: mode === 'mock' ? sesEndpoint : undefined } : undefined,
+  };
+
   const pfSecret = get('PRINTFUL_WEBHOOK_SECRET');
   if (pfSecret && !/^([0-9a-f]{2})+$/i.test(pfSecret)) problems.push('PRINTFUL_WEBHOOK_SECRET must be hex (the secret_key Printful returns)');
   const slipEmail = get('PACKING_SLIP_EMAIL');
@@ -285,6 +340,7 @@ export function loadConfig(env: Env = process.env): Config {
     limits,
     quote,
     fulfilment,
+    email,
   };
 }
 
@@ -340,5 +396,7 @@ export function describeConfig(c: Config): string {
     `stripeWebhookSecret=${has(c.stripe.webhookSecret)}`,
     `printfulWebhookSecret=${has(c.printful.webhookSecret)}`,
     `statusTokenSecret=${has(c.statusTokenSecret)}`,
+    `email=${c.email.enabled ? 'on' : 'off'}`,
+    `ses=${has(c.email.ses?.accessKeyId)}`,
   ].join(' ');
 }

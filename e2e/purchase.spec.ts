@@ -129,6 +129,15 @@ test('Klaus offers a print, a customer buys it, the order page shows the payment
   }).toPass({ timeout: 60_000 });
   await expect(page.getByText(/Parcel 1: USPS/)).toBeVisible();
   expect((await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze()).violations.map((v) => v.id)).toEqual([]);
+
+  // The e-mails reached mock SES: the confirmation and the shipping notice, each with the status link.
+  const MOCK_SES = process.env.MOCK_SES_URL ?? 'http://localhost:9104';
+  await expect(async () => {
+    const mails = (await (await fetch(`${MOCK_SES}/__mock/emails`)).json()) as Array<{ to: string[]; subject: string; text: string }>;
+    const mine = mails.filter((m) => m.to.includes('jane@example.com'));
+    expect(mine.map((m) => m.subject.split(' ')[0])).toEqual(expect.arrayContaining(['Your', 'Shipped:']));
+    for (const m of mine) expect(m.text).toContain('/order/');
+  }).toPass({ timeout: 30_000 });
   expect(problems).toEqual([]);
   await customer.close();
 });

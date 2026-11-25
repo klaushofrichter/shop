@@ -24,6 +24,8 @@ export interface RefundDeps {
   clock: Clock;
   stripe: StripeClient;
   provider?: FulfilmentProvider;
+  /** The customer's "delayed" e-mail after a hold this old (09 §1); 0 = never. */
+  delayNoticeMs?: number;
   log: (line: Record<string, unknown>) => void;
 }
 
@@ -163,6 +165,7 @@ export async function syncPayment(d: RefundDeps, orderId: string, cause: string)
     return true;
   });
   if (becameFull) {
+    enqueue(d.orders, d.clock, 'email.send', `${orderId}/refunded`, { orderId, kind: 'refunded' });
     const anyway = d.orders.prepare("SELECT 1 FROM refunds WHERE order_id = ? AND purpose = 'anyway'").get(orderId);
     if (!anyway) enqueue(d.orders, d.clock, 'order.cancel', orderId, { orderId });
     else maybeComplete(d.orders, d.clock, orderId);
@@ -271,6 +274,23 @@ interface HoldRow {
 }
 
 export async function runDeadlines(d: RefundDeps): Promise<number> {
+  // A reminder to Klaus 24 h before a deadline that refunds (09 §2); once per hold.
+  const soon = d.orders
+    .prepare("SELECT id, order_id, reasons_json FROM holds WHERE resolved_at IS NULL AND deadline_action = 'refund' AND deadline_at > ? AND deadline_at <= ?")
+    .all(iso(d.clock), iso(d.clock, 24 * H)) as Array<{ id: number; order_id: string; reasons_json: string }>;
+  for (const h of soon) d.log({ level: 'alert', msg: 'hold refunds automatically within 24 h', order: h.order_id, reasons: JSON.parse(h.reasons_json), alertKey: `hold-${h.id}-reminder` });
+  // "Delayed" to the customer: a hold older than DELAY_NOTICE_HOURS, only before the first shipment (09 §1); once per order.
+  if (d.delayNoticeMs) {
+    const late = d.orders
+      .prepare(
+        `SELECT DISTINCT h.order_id FROM holds h JOIN orders o ON o.id = h.order_id
+         WHERE h.resolved_at IS NULL AND h.since <= ? AND o.payment_state IN ('paid', 'partially_refunded') AND o.completed_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM shipments s WHERE s.order_id = o.id)
+           AND NOT EXISTS (SELECT 1 FROM emails e WHERE e.order_id = o.id AND e.kind = 'delayed')`,
+      )
+      .all(iso(d.clock, -d.delayNoticeMs)) as Array<{ order_id: string }>;
+    for (const r of late) enqueue(d.orders, d.clock, 'email.send', `${r.order_id}/delayed`, { orderId: r.order_id, kind: 'delayed' });
+  }
   const due = d.orders.prepare('SELECT * FROM holds WHERE resolved_at IS NULL AND deadline_at <= ? ORDER BY deadline_at').all(iso(d.clock)) as unknown as HoldRow[];
   for (const h of due) {
     const reasons = JSON.parse(h.reasons_json) as string[];
