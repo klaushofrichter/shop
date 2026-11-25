@@ -166,3 +166,21 @@ describe('F5: the cost half of the circuit breaker (ADR-0042)', () => {
     expect(db().prepare('SELECT COUNT(*) n FROM holds WHERE order_id = ?').get(id)).toEqual({ n: 0 });
   });
 });
+
+describe('transitions write history (review §4)', () => {
+  it('completion and every hold resolution leave a line in the order history; a dispute change is conditional', async () => {
+    h.printful.scenario({ refuseNextOrder: true }); // a hold that refunds at once, then completion
+    const id = await paidOrder(h);
+    for (let i = 0; i < 12; i++) {
+      await h.shop.runner.tick();
+      h.clock.advance(61_000);
+    }
+    const ev = (db().prepare("SELECT part, to_value FROM order_events WHERE order_id = ? AND part IN ('hold', 'note') ORDER BY id").all(id) as Array<{ part: string; to_value: string }>).map((e) => `${e.part}:${e.to_value}`);
+    expect(ev).toContain('hold:attention');
+    expect(ev.some((e) => e === 'hold:expired' || e === 'hold:refunded')).toBe(true);
+    expect(ev).toContain('note:complete');
+    const { setDispute } = await import('../src/orders/holds.js');
+    expect(setDispute(db(), h.clock, id, ['open'], 'won', 'test')).toBe(false); // not open: nothing changes
+    expect(db().prepare('SELECT dispute_state FROM orders WHERE id = ?').get(id)).toEqual({ dispute_state: 'none' });
+  });
+});

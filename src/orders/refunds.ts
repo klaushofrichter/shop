@@ -17,7 +17,7 @@ import { queueEmail } from '../email/jobs';
 import { enqueue, RetryLater, type JobRunner } from '../jobs';
 import { chargeOf, StripeError, type Charge, type StripeClient } from '../payments/stripe';
 import { ProviderError, type FulfilmentProvider } from '../providers/types';
-import { openHold, reasonsOf, recordEvent, resolveHolds, type OrderEvent } from './holds';
+import { completeOrder, openHold, reasonsOf, recordEvent, resolveHolds, setDispute, type OrderEvent } from './holds';
 import { moveFulfilment, newestAttempt, QUIET_PERIOD_MS, type AttemptRow } from './submit';
 
 export interface RefundDeps {
@@ -252,8 +252,7 @@ export function maybeComplete(db: Db, clock: Clock, orderId: string): boolean {
   const done = o.payment_state === 'refunded' || o.dispute_state === 'lost';
   if (!done) return false;
   if (attemptsOf(db, orderId).some((a) => a.state !== 'canceled' && a.state !== 'deleted')) return false;
-  db.prepare('UPDATE orders SET completed_at = ? WHERE id = ? AND completed_at IS NULL').run(iso(clock), orderId);
-  return true;
+  return completeOrder(db, clock, orderId, 'job', o.payment_state === 'refunded' ? 'refunded, nothing live at Printful' : 'dispute lost, nothing live at Printful');
 }
 
 /** I7 after a full refund: cancel what is still cancellable, else tell Klaus. */
@@ -342,10 +341,7 @@ export async function onEarlyFraudWarning(d: RefundDeps, efwId: string): Promise
   if (!o) return 'unknown charge';
   const before = transaction(d.orders, () => {
     const cur = orderOf(d.orders, o.id)!;
-    if (cur.dispute_state === 'none') {
-      d.orders.prepare("UPDATE orders SET dispute_state = 'warning', updated_at = ? WHERE id = ? AND dispute_state = 'none'").run(iso(d.clock), o.id);
-      event(d.orders, d.clock, o.id, 'dispute', 'none', 'warning', 'stripe_webhook');
-    }
+    setDispute(d.orders, d.clock, o.id, ['none'], 'warning', 'stripe_webhook');
     // Already refunded in full: the warning is recorded, nothing else to do (review F6).
     if (cur.payment_state === 'refunded') return 'refunded';
     const open = d.orders.prepare("SELECT 1 FROM holds WHERE order_id = ? AND kind = 'fraud' AND resolved_at IS NULL").get(o.id);
@@ -373,11 +369,7 @@ export async function onDispute(d: RefundDeps, disputeId: string, closed: boolea
   if (!o) return 'unknown charge';
   if (!closed) {
     transaction(d.orders, () => {
-      const cur = orderOf(d.orders, o.id)!;
-      if (cur.dispute_state !== 'open') {
-        d.orders.prepare("UPDATE orders SET dispute_state = 'open', updated_at = ? WHERE id = ?").run(iso(d.clock), o.id);
-        event(d.orders, d.clock, o.id, 'dispute', cur.dispute_state, 'open', 'stripe_webhook');
-      }
+      setDispute(d.orders, d.clock, o.id, ['none', 'warning'], 'open', 'stripe_webhook');
       // Never a refund while disputed: open fraud holds turn into alerts.
       d.orders.prepare("UPDATE holds SET deadline_action = 'alert' WHERE order_id = ? AND resolved_at IS NULL").run(o.id);
       const open = d.orders.prepare("SELECT 1 FROM holds WHERE order_id = ? AND kind = 'fraud' AND resolved_at IS NULL").get(o.id);
@@ -390,11 +382,7 @@ export async function onDispute(d: RefundDeps, disputeId: string, closed: boolea
   const outcome = dp.status === 'won' ? 'won' : dp.status === 'lost' ? 'lost' : undefined;
   if (!outcome) return `dispute ${dp.status}`;
   transaction(d.orders, () => {
-    const cur = orderOf(d.orders, o.id)!;
-    if (cur.dispute_state !== outcome) {
-      d.orders.prepare('UPDATE orders SET dispute_state = ?, updated_at = ? WHERE id = ?').run(outcome, iso(d.clock), o.id);
-      event(d.orders, d.clock, o.id, 'dispute', cur.dispute_state, outcome, 'stripe_webhook');
-    }
+    setDispute(d.orders, d.clock, o.id, ['none', 'warning', 'open'], outcome, 'stripe_webhook');
     if (outcome === 'lost') {
       resolveHolds(d.orders, d.clock, { orderId: o.id, kind: 'fraud' }, 'cleared', 'stripe');
       maybeComplete(d.orders, d.clock, o.id);

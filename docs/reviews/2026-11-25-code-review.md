@@ -171,4 +171,5 @@ Not bugs. Listed so they aren't lost; none is urgent.
 | F8 | Fixed: the cart is emptied only when it is still the one the order was made from. |
 
 Tests for each are in `test/review-fixes.test.ts`.
+| §4 transitions | Done: `setDispute` and `completeOrder` in `src/orders/holds.ts` (conditional, with a history line naming the cause or rule); every hold resolution writes a history line. |
 
