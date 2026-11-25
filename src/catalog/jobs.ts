@@ -3,14 +3,13 @@
  * per source, and `work.original` for an enabled work whose original may have
  * changed.
  */
-import type { SourceConfig } from '../catalog-config';
+import type { SkuCatalog, SourceConfig } from '../catalog-config';
 import { iso, type Clock } from '../clock';
 import { setSetting, type Db } from '../db';
 import type { ImageLimits } from '../images/display';
 import type { FileStore } from '../images/store';
 import { enqueue, PermanentJobError, type JobRunner } from '../jobs';
 import type { ContentSource } from '../sources/types';
-import type { SkuCatalog } from '../catalog-config';
 import { offerEverySku } from './offers';
 import { checkOriginal, refreshSource } from './works';
 

@@ -3,7 +3,7 @@
  * The hold's action is `refund` only if every reason's action is `refund`;
  * its deadline is the earliest of its reasons'.
  */
-import { iso, type Clock } from '../clock';
+import { HOUR, iso, type Clock } from '../clock';
 import type { Db } from '../db';
 
 export type HoldKind = 'approval' | 'attention' | 'provider' | 'fraud';
@@ -28,26 +28,25 @@ export function recordEvent(db: Db, clock: Clock, e: OrderEvent): void {
   );
 }
 
-const H = 60 * 60_000;
 export const REASONS: Record<string, { kind: HoldKind; deadlineMs: number; action: 'refund' | 'alert' }> = {
-  amount: { kind: 'approval', deadlineMs: 72 * H, action: 'refund' },
-  quantity: { kind: 'approval', deadlineMs: 72 * H, action: 'refund' },
-  repeat: { kind: 'approval', deadlineMs: 72 * H, action: 'refund' },
-  breaker: { kind: 'approval', deadlineMs: 72 * H, action: 'refund' },
-  risk: { kind: 'approval', deadlineMs: 72 * H, action: 'refund' },
-  cost_guard: { kind: 'attention', deadlineMs: 24 * H, action: 'refund' },
-  provider_unavailable: { kind: 'attention', deadlineMs: 72 * H, action: 'refund' },
-  fulfilment_blocked: { kind: 'attention', deadlineMs: 24 * H, action: 'alert' },
-  amount_mismatch: { kind: 'attention', deadlineMs: 24 * H, action: 'alert' },
-  provider_hold: { kind: 'provider', deadlineMs: 24 * H, action: 'alert' },
+  amount: { kind: 'approval', deadlineMs: 72 * HOUR, action: 'refund' },
+  quantity: { kind: 'approval', deadlineMs: 72 * HOUR, action: 'refund' },
+  repeat: { kind: 'approval', deadlineMs: 72 * HOUR, action: 'refund' },
+  breaker: { kind: 'approval', deadlineMs: 72 * HOUR, action: 'refund' },
+  risk: { kind: 'approval', deadlineMs: 72 * HOUR, action: 'refund' },
+  cost_guard: { kind: 'attention', deadlineMs: 24 * HOUR, action: 'refund' },
+  provider_unavailable: { kind: 'attention', deadlineMs: 72 * HOUR, action: 'refund' },
+  fulfilment_blocked: { kind: 'attention', deadlineMs: 24 * HOUR, action: 'alert' },
+  amount_mismatch: { kind: 'attention', deadlineMs: 24 * HOUR, action: 'alert' },
+  provider_hold: { kind: 'provider', deadlineMs: 24 * HOUR, action: 'alert' },
   early_fraud_warning: { kind: 'fraud', deadlineMs: 0, action: 'refund' },
-  dispute: { kind: 'fraud', deadlineMs: 24 * H, action: 'alert' },
-  refund_failed: { kind: 'attention', deadlineMs: 24 * H, action: 'alert' },
+  dispute: { kind: 'fraud', deadlineMs: 24 * HOUR, action: 'alert' },
+  refund_failed: { kind: 'attention', deadlineMs: 24 * HOUR, action: 'alert' },
   // Submission (06 §4, §7):
   provider_refused: { kind: 'attention', deadlineMs: 0, action: 'refund' }, // Permanent at draft creation: refund the whole cart
-  costs_failed: { kind: 'attention', deadlineMs: 24 * H, action: 'refund' },
-  provider_failed: { kind: 'attention', deadlineMs: 24 * H, action: 'alert' }, // order_failed; the deadline tries a delete (7c)
-  confirm_failed: { kind: 'attention', deadlineMs: 24 * H, action: 'alert' }, // three confirms without a confirmed order
+  costs_failed: { kind: 'attention', deadlineMs: 24 * HOUR, action: 'refund' },
+  provider_failed: { kind: 'attention', deadlineMs: 24 * HOUR, action: 'alert' }, // order_failed; the deadline tries a delete (7c)
+  confirm_failed: { kind: 'attention', deadlineMs: 24 * HOUR, action: 'alert' }, // three confirms without a confirmed order
   provider_canceled: { kind: 'attention', deadlineMs: 0, action: 'refund' }, // Printful cancelled the newest attempt: refund if I4 holds
 };
 

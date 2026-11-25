@@ -5,7 +5,7 @@
  * unexplained is an alarm for Klaus. The report goes to `reconciliation_runs`;
  * a finished run is what `/health/worker` checks.
  */
-import { iso, type Clock } from '../clock';
+import { DAY, MINUTE, iso, type Clock } from '../clock';
 import { setSetting, transaction, type Db } from '../db';
 import { enqueue, type JobRunner } from '../jobs';
 import type { StripeClient } from '../payments/stripe';
@@ -35,8 +35,6 @@ export interface ReconcileReport {
   errors: string[];
 }
 
-const MIN = 60_000;
-const DAY = 24 * 60 * MIN;
 
 export async function reconcile(d: ReconcileDeps): Promise<ReconcileReport> {
   const rep: ReconcileReport = { startedAt: iso(d.clock), repaired: [], alarms: [], errors: [] };
@@ -52,7 +50,7 @@ export async function reconcile(d: ReconcileDeps): Promise<ReconcileReport> {
 
   // 1. checkout_open past expiry + 30 min (sessions live 30 min).
   await step('open checkouts', async () => {
-    const rows = d.orders.prepare("SELECT id, stripe_session_id, created_at FROM orders WHERE payment_state = 'checkout_open' AND created_at < ?").all(before(60 * MIN)) as Array<{ id: string; stripe_session_id: string | null; created_at: string }>;
+    const rows = d.orders.prepare("SELECT id, stripe_session_id, created_at FROM orders WHERE payment_state = 'checkout_open' AND created_at < ?").all(before(60 * MINUTE)) as Array<{ id: string; stripe_session_id: string | null; created_at: string }>;
     for (const o of rows) {
       if (!o.stripe_session_id) {
         // A lost session id (07 §2.1.1): after the 24 h the idempotency key lives, the reverse pass alone can still find a payment.
@@ -81,7 +79,7 @@ export async function reconcile(d: ReconcileDeps): Promise<ReconcileReport> {
            AND NOT EXISTS (SELECT 1 FROM refunds r WHERE r.order_id = o.id AND r.state IN ('requested', 'succeeded') AND r.purpose != 'dashboard')
            AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.kind = 'order.submit' AND j.key = o.id AND j.state IN ('queued', 'running'))`,
       )
-      .all(before(15 * MIN)) as Array<{ id: string }>;
+      .all(before(15 * MINUTE)) as Array<{ id: string }>;
     for (const o of idle) {
       if (enqueue(d.orders, d.clock, 'order.submit', o.id, { orderId: o.id })) rep.repaired.push(`${o.id}: submit queued`);
     }
@@ -114,7 +112,7 @@ export async function reconcile(d: ReconcileDeps): Promise<ReconcileReport> {
 
   // 5. Refunds: old `requested` ones re-run; every paid order of the last 90 days re-read at Stripe (fewer than 10 orders a week).
   await step('refunds', async () => {
-    const stuck = d.orders.prepare("SELECT id FROM refunds WHERE state = 'requested' AND requested_at < ?").all(before(60 * MIN)) as Array<{ id: string }>;
+    const stuck = d.orders.prepare("SELECT id FROM refunds WHERE state = 'requested' AND requested_at < ?").all(before(60 * MINUTE)) as Array<{ id: string }>;
     for (const r of stuck) if (enqueue(d.orders, d.clock, 'refund.run', r.id, { refundId: r.id })) rep.repaired.push(`${r.id}: refund re-run`);
     const paid = d.orders
       .prepare("SELECT id, refunded_cents FROM orders WHERE payment_state IN ('paid', 'partially_refunded') AND paid_at >= ?")
@@ -133,7 +131,7 @@ export async function reconcile(d: ReconcileDeps): Promise<ReconcileReport> {
 
   // 7. Inbound events not processed after 10 min.
   await step('inbound events', async () => {
-    const rows = d.orders.prepare('SELECT provider, event_id FROM inbound_events WHERE processed_at IS NULL AND received_at < ?').all(before(10 * MIN)) as Array<{ provider: string; event_id: string }>;
+    const rows = d.orders.prepare('SELECT provider, event_id FROM inbound_events WHERE processed_at IS NULL AND received_at < ?').all(before(10 * MINUTE)) as Array<{ provider: string; event_id: string }>;
     for (const e of rows) {
       if (enqueue(d.orders, d.clock, `${e.provider}.event`, e.event_id, { eventId: e.event_id })) rep.repaired.push(`${e.provider} event ${e.event_id}: re-run`);
     }
@@ -150,7 +148,7 @@ export async function reconcile(d: ReconcileDeps): Promise<ReconcileReport> {
            AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.kind IN ('order.submit', 'refund.run', 'order.cancel', 'order.fraud_retry') AND (j.key = o.id OR j.key LIKE o.id || '-%' OR j.key LIKE o.id || '/%') AND j.state IN ('queued', 'running'))
            AND o.fulfilment_state NOT IN ('test_draft_ok')`,
       )
-      .all(before(30 * MIN)) as Array<{ id: string }>;
+      .all(before(30 * MINUTE)) as Array<{ id: string }>;
     for (const o of rows) {
       transaction(d.orders, () => openHold(d.orders, d.clock, o.id, ['fulfilment_blocked'], 'reconciliation'));
       rep.alarms.push(`${o.id}: paid and incomplete with nothing in progress (I10)`);
@@ -204,7 +202,7 @@ export async function reconcile(d: ReconcileDeps): Promise<ReconcileReport> {
 
 export function registerReconcileJob(runner: JobRunner, d: ReconcileDeps): void {
   runner.register('reconcile', {
-    repeatEveryMs: 60 * MIN,
+    repeatEveryMs: 60 * MINUTE,
     maxAttempts: 2,
     async run() {
       await reconcile(d);
@@ -220,6 +218,6 @@ export function registerReconcileJob(runner: JobRunner, d: ReconcileDeps): void 
 }
 
 export function scheduleReconcile(orders: Db, clock: Clock): void {
-  enqueue(orders, clock, 'reconcile', 'hourly', undefined, 5 * MIN);
+  enqueue(orders, clock, 'reconcile', 'hourly', undefined, 5 * MINUTE);
 }
 

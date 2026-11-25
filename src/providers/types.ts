@@ -1,7 +1,6 @@
 /**
- * The fulfilment provider interface (docs/design/06 §2, ADR-0017), the parts
- * built in step 3: identity checks, catalog, shipping rates, file library.
- * Orders, mockups and webhooks follow with steps 4 and 7.
+ * The fulfilment provider interface (docs/design/06 §2, ADR-0017): identity
+ * checks, catalog, shipping rates, file library, mockups, orders.
  */
 export interface Address {
   name?: string;

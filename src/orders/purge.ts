@@ -11,7 +11,7 @@
  */
 import { rmSync } from 'node:fs';
 import path from 'node:path';
-import { iso, type Clock } from '../clock';
+import { DAY, iso, type Clock } from '../clock';
 import type { Mode } from '../config';
 import { transaction, type Db } from '../db';
 import type { FileStore } from '../images/store';
@@ -31,7 +31,6 @@ export interface PurgeDeps {
   log: (line: Record<string, unknown>) => void;
 }
 
-const DAY = 24 * 60 * 60_000;
 
 export interface PurgeReport {
   personalData: number;

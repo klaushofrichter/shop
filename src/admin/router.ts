@@ -4,22 +4,21 @@
  * ALLOWED_EMAILS now; every change is a POST with a CSRF token from the same
  * origin, and goes to `admin_audit`.
  */
-import express, { type NextFunction, type Request, type Response, type Router } from 'express';
+import express, { type NextFunction, type Response, type Router } from 'express';
 import { perClient } from '../limiter';
 import { iso, type Clock } from '../clock';
-import type { Mode } from '../config';
+import type { Mode, QuoteSettings } from '../config';
 import { transaction, type Db } from '../db';
 import { enqueue } from '../jobs';
 import { esc } from '../pages';
-import { csrfOk, csrfToken, readCookie, SESSION_COOKIE, verifySession, type Session } from './session';
+import { csrfOk, csrfToken, readCookie, SESSION_COOKIE, verifySession } from './session';
 import type { SkuCatalog } from '../catalog-config';
 import { anchorOf, previewPlan, readiness, type OfferRow } from '../catalog/offers';
 import type { WorkRow } from '../catalog/works';
 import { ANCHORS, type Anchor } from '../images/printfile';
 import { formatCents, parseCents, usd } from '../money';
 import { adminLayout, postButton } from './views';
-import { holdsSection, registerOrderRoutes } from './orders';
-import type { QuoteSettings } from '../config';
+import { holdsSection, registerOrderRoutes, type AdminRequest } from './orders';
 
 export interface AdminDeps {
   catalog: Db;
@@ -41,7 +40,6 @@ const ANCHOR_LABELS: Record<Anchor, string> = {
 };
 const MAX_PRICE_CENTS = 1_000_000;
 
-type AdminRequest = Request & { session?: Session; csrf?: string };
 
 export function adminRouter(d: AdminDeps): Router {
   const r = express.Router();

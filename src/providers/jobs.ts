@@ -3,16 +3,14 @@
  *
  * While the provider is unverified (the shop started without an answer from
  * Printful), these jobs wait instead of calling it; `printful.verify` retries
- * every minute and logs an alert-level line after 30 minutes (alerts by e-mail
- * arrive with step 8).
+ * every minute and logs an alert-level line after 30 minutes.
  */
 import type { SkuCatalog } from '../catalog-config';
 import { iso, type Clock } from '../clock';
-import { transaction, type Db } from '../db';
+import { getSetting, setSetting, transaction, type Db } from '../db';
 import { enqueue, PermanentJobError, RetryLater, type JobRunner } from '../jobs';
 import sharp from 'sharp';
 import { compareSku, placementFor, StartupRefused, variantFor, verifyIdentity, type SkuCheck, type Verification } from './checks';
-import { getSetting, setSetting } from '../db';
 import type { FileStore } from '../images/store';
 import { ProviderError, type FulfilmentProvider } from './types';
 

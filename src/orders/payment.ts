@@ -9,7 +9,7 @@
  * confirmation e-mail job. SQLite serialises writers, so the breaker count is
  * exact. Running it again changes nothing.
  */
-import { iso, type Clock } from '../clock';
+import { DAY, iso, type Clock } from '../clock';
 import type { FailSafeLimits } from '../config';
 import { getSetting, transaction, type Db } from '../db';
 import { queueEmail } from '../email/jobs';
@@ -38,7 +38,6 @@ interface OrderRow {
   failsafe_checked_at: string | null;
 }
 
-const DAY = 24 * 60 * 60_000;
 
 export async function applyPayment(d: PaymentDeps, sessionId: string): Promise<ApplyResult> {
   const order = d.orders.prepare('SELECT * FROM orders WHERE stripe_session_id = ?').get(sessionId) as OrderRow | undefined;

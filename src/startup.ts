@@ -16,7 +16,7 @@ import { openDatabases, type Databases } from './db';
 import { registerCatalogJobs, scheduleSourceRefresh } from './catalog/jobs';
 import { registerOfferJobs } from './catalog/offers';
 import { FileStore } from './images/store';
-import { JobRunner } from './jobs';
+import { JobRunner, RetryLater } from './jobs';
 import { createSources } from './sources';
 import { verifyIdentity } from './providers/checks';
 import { ProviderStatus, registerMockupJob, registerProviderJobs, scheduleProviderJobs } from './providers/jobs';
@@ -33,7 +33,6 @@ import { registerPurgeJob, schedulePurge } from './orders/purge';
 import { alertingLog, registerEmailJobs } from './email/jobs';
 import { SesClient } from './email/ses';
 import { registerPrintfulEventJob } from './orders/fulfilment-events';
-import { RetryLater } from './jobs';
 
 export interface Shop {
   config: Config;

@@ -11,7 +11,7 @@
  * - Hold deadlines: `refund` → prove I4, then refund; otherwise the hold turns
  *   into an alert. `alert` → an alert, repeated daily.
  */
-import { iso, type Clock } from '../clock';
+import { HOUR, iso, type Clock } from '../clock';
 import { transaction, type Db } from '../db';
 import { queueEmail } from '../email/jobs';
 import { enqueue, RetryLater, type JobRunner } from '../jobs';
@@ -43,7 +43,6 @@ interface OrderPay {
   completed_at: string | null;
 }
 
-const H = 60 * 60_000;
 const orderOf = (db: Db, id: string) => db.prepare('SELECT * FROM orders WHERE id = ?').get(id) as OrderPay | undefined;
 const attemptsOf = (db: Db, id: string) =>
   db.prepare("SELECT * FROM provider_orders WHERE order_id = ? AND provider = 'printful' AND kind = 'order' ORDER BY attempt").all(id) as unknown as AttemptRow[];
@@ -97,7 +96,7 @@ export async function runRefund(d: RefundDeps, refundId: string): Promise<string
     const sr = await d.stripe.getRefund(r.stripe_refund_id);
     if (sr.status === 'succeeded') return (await syncPayment(d, r.order_id, 'job'), 'succeeded');
     if (sr.status === 'failed' || sr.status === 'canceled') return (failRefund(d, refundId, r.order_id, `refund ${sr.status}`, false), 'failed');
-    throw new RetryLater(H, 'refund pending');
+    throw new RetryLater(HOUR, 'refund pending');
   }
   // Read first: what is left to refund (05 §7).
   const charge = await orderCharge(d, o);
@@ -111,7 +110,7 @@ export async function runRefund(d: RefundDeps, refundId: string): Promise<string
     const sr = await d.stripe.createRefund(o.stripe_payment_intent, left, { order_id: r.order_id, refund_id: refundId }, `refund-${refundId}`);
     d.orders.prepare('UPDATE refunds SET stripe_refund_id = ?, amount_cents = ? WHERE id = ?').run(sr.id, left, refundId);
     if (sr.status === 'failed' || sr.status === 'canceled') return (failRefund(d, refundId, r.order_id, `refund ${sr.status}`, false), 'failed');
-    if (sr.status !== 'succeeded') throw new RetryLater(H, 'refund pending');
+    if (sr.status !== 'succeeded') throw new RetryLater(HOUR, 'refund pending');
     await syncPayment(d, r.order_id, 'job');
     return 'succeeded';
   } catch (e) {
@@ -276,7 +275,7 @@ export async function runDeadlines(d: RefundDeps): Promise<number> {
   // A reminder to Klaus 24 h before a deadline that refunds (09 §2); once per hold.
   const soon = d.orders
     .prepare("SELECT id, order_id, reasons_json FROM holds WHERE resolved_at IS NULL AND deadline_action = 'refund' AND deadline_at > ? AND deadline_at <= ?")
-    .all(iso(d.clock), iso(d.clock, 24 * H)) as Array<{ id: number; order_id: string; reasons_json: string }>;
+    .all(iso(d.clock), iso(d.clock, 24 * HOUR)) as Array<{ id: number; order_id: string; reasons_json: string }>;
   for (const h of soon) d.log({ level: 'alert', msg: 'hold refunds automatically within 24 h', order: h.order_id, reasons: reasonsOf(h), alertKey: `hold-${h.id}-reminder` });
   // "Delayed" to the customer: a hold older than DELAY_NOTICE_HOURS, only before the first shipment (09 §1); once per order.
   if (d.delayNoticeMs) {
@@ -296,7 +295,7 @@ export async function runDeadlines(d: RefundDeps): Promise<number> {
     if (h.deadline_action === 'alert') {
       // Repeated daily; a failed refund's next reminder comes twice as late (07 §2.5).
       const last = Date.parse(h.deadline_at) - Date.parse(h.since);
-      const next = reasons.includes('refund_failed') ? Math.max(2 * last, 24 * H) : 24 * H;
+      const next = reasons.includes('refund_failed') ? Math.max(2 * last, 24 * HOUR) : 24 * HOUR;
       d.orders.prepare('UPDATE holds SET deadline_at = ? WHERE id = ? AND resolved_at IS NULL').run(iso(d.clock, next), h.id);
       d.log({ level: 'alert', msg: 'hold needs Klaus', order: h.order_id, kind: h.kind, reasons });
       continue;
@@ -306,7 +305,7 @@ export async function runDeadlines(d: RefundDeps): Promise<number> {
     const proof = o.dispute_state === 'open' || o.dispute_state === 'lost' ? 'live' : await makeNothingLive(d, h.order_id, false);
     if (proof === 'wait') continue;
     if (proof === 'live') {
-      d.orders.prepare("UPDATE holds SET deadline_action = 'alert', deadline_at = ? WHERE id = ? AND resolved_at IS NULL").run(iso(d.clock, 24 * H), h.id);
+      d.orders.prepare("UPDATE holds SET deadline_action = 'alert', deadline_at = ? WHERE id = ? AND resolved_at IS NULL").run(iso(d.clock, 24 * HOUR), h.id);
       d.log({ level: 'alert', msg: 'hold deadline: no automatic refund, something may be live at Printful', order: h.order_id, reasons });
       continue;
     }

@@ -9,10 +9,10 @@
  *    Session; 6. the ids stored, and the customer sent to Stripe.
  */
 import type { SkuCatalog } from '../catalog-config';
-import { iso, type Clock } from '../clock';
+import { iso } from '../clock';
 import type { FailSafeLimits } from '../config';
 import { transaction, type Db } from '../db';
-import { StripeError, type StripeClient } from '../payments/stripe';
+import { StripeError } from '../payments/stripe';
 import { itemsOfCart, shippingLabel, type AddressInput, type QuoteItem, type QuoteOption } from '../public/quote';
 import { recordEvent } from './holds';
 import { drawOrderNumber, newOrderId, statusUrl } from './ids';

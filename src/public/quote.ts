@@ -181,7 +181,7 @@ export async function createQuote(d: QuoteDeps, cartId: string, address: Address
     return { id: r.id, name: r.name, cents: charged, minDays: r.minDays, maxDays: r.maxDays, parcels: r.parcels, estCostCents: m?.estCostCents, orderable: !!m && m.marginCents >= d.settings.marginFloorCents };
   });
   if (options.some((o) => !o.orderable)) {
-    // A misconfigured price, a changed wholesale price, or an unknown one: Klaus is told (alerts by e-mail with step 8).
+    // A misconfigured price, a changed wholesale price, or an unknown one: Klaus is told.
     d.log({ level: 'alert', msg: 'cost check failed at quote', skus: items.map((i) => i.skuId), options: options.filter((o) => !o.orderable).map((o) => o.id) });
   }
 
