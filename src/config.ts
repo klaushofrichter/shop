@@ -44,6 +44,8 @@ export interface Config {
     expectedStore?: string;
     webhookSecret?: string;
     webhookPublicKey?: string;
+    /** The request trace for the go-live recording runs until then (14 §7.3); start-up caps it at 7 days. */
+    traceUntilMs?: number;
   };
   stripe: {
     secretKey?: string;
@@ -294,6 +296,9 @@ export function loadConfig(env: Env = process.env): Config {
     ses: sesKey && sesSecret ? { region: get('SES_REGION') ?? 'us-east-1', accessKeyId: sesKey, secretAccessKey: sesSecret, endpoint: mode === 'mock' ? sesEndpoint : undefined } : undefined,
   };
 
+  const traceRaw = get('PRINTFUL_TRACE_UNTIL');
+  const traceUntilMs = traceRaw ? Date.parse(traceRaw) : undefined;
+  if (traceRaw && !Number.isFinite(traceUntilMs!)) problems.push('PRINTFUL_TRACE_UNTIL must be a date');
   const pfSecret = get('PRINTFUL_WEBHOOK_SECRET');
   if (pfSecret && !/^([0-9a-f]{2})+$/i.test(pfSecret)) problems.push('PRINTFUL_WEBHOOK_SECRET must be hex (the secret_key Printful returns)');
   const slipEmail = get('PACKING_SLIP_EMAIL');
@@ -329,6 +334,7 @@ export function loadConfig(env: Env = process.env): Config {
       expectedStore,
       webhookSecret: get('PRINTFUL_WEBHOOK_SECRET'),
       webhookPublicKey: get('PRINTFUL_WEBHOOK_PUBLIC_KEY'),
+      traceUntilMs,
     },
     stripe: {
       secretKey: stripeKey,

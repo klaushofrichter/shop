@@ -106,7 +106,11 @@ exports its stored `inbound_events` (raw body and signature headers, kept 30 day
 short-lived request trace of the Printful adapter to the private repository. Nothing is
 recorded from live Stripe (ADR-0028). One confirmed order is cancelled on purpose. This
 closes the "after confirmation" gap. The export and the trace are built before step 10
-(review C F5).
+(review C F5). **Built** (step 9): `PRINTFUL_TRACE_UNTIL` (ConfigMap, an ISO date, at most
+7 days after start) makes the adapter append each call's method, path, status and bodies,
+never headers, to `DATA_DIR/trace/` (mode 600); `node dist/src/cli.js export-recording
+[--since ISO]` prints the stored Printful deliveries and the trace as JSON lines, for the
+private repository only.
 
 **7.4 Real Stripe hosted page.** Playwright through Stripe's real test-mode page with
 card 4242 and a real test-mode webhook, during test mode before go-live
@@ -136,5 +140,5 @@ expect roughly the shop's own size again):
 1. With step 3 (catalog, shipping rates): mock catalog, shipping rates, files, the clock, the control API skeleton, spec validation. **Done** (`mocks/printful/`, used in-process by the tests; the image comes with step 6, when e2e needs it). Variants not yet captured (6 × 8, 12 × 16, framed 12 × 16, t-shirt S/L/XL) carry plausible values, marked in `mocks/printful/catalog.ts`.
 2. With step 6 (checkout): mock Stripe customers, sessions, checkout page, events and signatures.
 3. With step 7 (submission): orders, webhooks, holds, shipments, all §6 scenarios; the invariant tests.
-4. Before step 10: the `inbound_events` export and the adapter's request trace for the go-live recording (§7.3).
+4. Before step 10: the `inbound_events` export and the adapter's request trace for the go-live recording (§7.3). **Done** (`src/providers/trace.ts`, `src/cli.ts`).
 5. After the MVP (review 2 F12): the recorder, the allow-list scrubber and the comparator.

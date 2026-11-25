@@ -21,6 +21,7 @@ import { createSources } from './sources';
 import { verifyIdentity } from './providers/checks';
 import { ProviderStatus, registerMockupJob, registerProviderJobs, scheduleProviderJobs } from './providers/jobs';
 import { PrintfulClient } from './providers/printful';
+import { tracingFetch } from './providers/trace';
 import { workerHealth } from './worker-health';
 import { googleSignIn } from './admin/auth';
 import { randomBytes } from 'node:crypto';
@@ -91,7 +92,15 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
   });
   if (config.sourcesRefresh) scheduleSourceRefresh(dbs.orders, clock, sources.map((s) => s.id));
   const startedAtMs = clock.now();
-  const provider = config.printful.token ? new PrintfulClient({ baseUrl: config.printful.baseUrl, token: config.printful.token, mayConfirm: config.mode !== 'test' }) : undefined;
+  const provider = config.printful.token ? new PrintfulClient({
+        baseUrl: config.printful.baseUrl,
+        token: config.printful.token,
+        mayConfirm: config.mode !== 'test',
+        // The go-live recording (14 §7.3): calls are traced until PRINTFUL_TRACE_UNTIL.
+        fetch: config.printful.traceUntilMs
+          ? tracingFetch(fetch, config.dataDir, clock, Math.min(config.printful.traceUntilMs, clock.now() + 7 * 24 * 60 * 60_000))
+          : undefined,
+      }) : undefined;
   const stripe = config.stripe.secretKey ? new StripeClient({ apiBase: config.stripe.apiBase, secretKey: config.stripe.secretKey }) : undefined;
   // Status links (ADR-0037); mock mode without a secret gets a per-process one (links end with the process).
   const statusSecret = config.statusTokenSecret ?? randomBytes(32).toString('hex');
