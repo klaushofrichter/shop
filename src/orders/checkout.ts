@@ -204,7 +204,8 @@ function sessionParams(d: CheckoutDeps, orderId: string, number: string, custome
       description: `Order ${number}`,
       shipping: { name: a.name, address: { line1: a.line1, line2: a.line2, city: a.city, state: a.state, postal_code: a.zip, country: 'US' } },
     },
-    payment_method_types: ['card', 'link'],
+    // API 2026-11-18.endive refuses payment_method_types on Checkout Sessions (changelog 2026-09-30).
+    allowed_payment_method_types: ['card', 'link'],
     line_items: items.map((i, k) => {
       const sku = d.skus.byId.get(i.skuId)!;
       const image = d.catalog

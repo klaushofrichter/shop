@@ -48,7 +48,7 @@ Printful call).
 | `client_reference_id`, `metadata.order_id`, `payment_intent_data.metadata.order_id` | order id |
 | `payment_intent_data.description` | `Order 48213` (so Stripe's receipt names the order) |
 | `payment_intent_data.shipping` | the recipient (Radar uses it; dispute evidence starts there) |
-| `payment_method_types` | set in code: `card` and `link` only (cards cover Apple Pay and Google Pay). No delayed method can be enabled by a Dashboard toggle. |
+| `allowed_payment_method_types` | set in code: `card` and `link` only (API 2026-11-18.endive refuses the older `payment_method_types`) (cards cover Apple Pay and Google Pay). No delayed method can be enabled by a Dashboard toggle. |
 | `line_items[]` | per item: `price_data { currency: usd, unit_amount, tax_behavior: exclusive, product_data { name: "Framed print 12 × 16 in, black — <title>", images: [display image URL], tax_code, metadata: { order_item_id } } }`, `quantity` |
 | `shipping_options` | exactly one, `shipping_rate_data { type: fixed_amount, fixed_amount, display_name, delivery_estimate, tax_behavior: exclusive, tax_code: txcd_92010001 }`. Works without `shipping_address_collection` (captured). |
 | `shipping_address_collection` | not set |
