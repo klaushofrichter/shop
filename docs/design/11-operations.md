@@ -19,8 +19,8 @@ Per the cluster's rules (ADR-0016); the workflows exist since PR #2.
   - the kube-setup deploy token as an **environment secret** of a GitHub environment `production` limited to the `production` branch, with the deploy job naming `environment: production`, so a job from any other ref never receives it (Cluster agrees, 2026-11-26; Klaus to approve).
 - **Cluster's part** (one request after this design is accepted):
   - namespaces `shop` and `shop-runner`; the runner as above;
-  - the Deployment: `replicas: 1`, `Recreate`, the non-root `securityContext`, readiness and liveness on `/health`, memory request 256 Mi and **limit 512 Mi** (rendering a 12 × 16 print file, 3600 × 4800 px, with `sharp.concurrency(1)` and the cache off; a test asserts peak memory below 384 MiB), CPU 0.5;
-  - a 5 Gi Retain PVC; the Litestream sidecar (two database files); Ingress and Certificate for `shop.klaushofrichter.net`;
+  - the Deployment: `replicas: 1`, `Recreate`, the non-root `securityContext`, readiness and liveness on `/health`, memory request 256 Mi and **limit 512 Mi** (rendering a 12 × 16 print file, 3600 × 4800 px, with `sharp.concurrency(1)` and the cache off; a test asserts peak memory below 384 MiB, about 200 MiB measured), CPU 0.5;
+  - a 10 Gi Retain PVC (Cluster, 2026-11-25; local-path doesn't enforce it, so the shop will cap its regenerable files itself); the Litestream sidecar (two database files); Ingress and Certificate for `shop.klaushofrichter.net`;
   - the NetworkPolicy below; the Secrets below; the version-exporter entry; UptimeRobot `HEAD /health` and `GET /health/worker`; `export.sh`/`bootstrap.sh`; Velero;
   - a ConfigMap with the fail-safe thresholds (kube-setup is private);
   - creating and protecting `production` right before the first deploy (protection approved by Klaus 2026-11-24).
@@ -33,13 +33,13 @@ pod; the live Stripe key and live Printful token only at go-live.
 
 | Secret | Keys (app variable ← `.env` key) |
 |---|---|
-| `shop-env` | `PRINTFUL_TOKEN` ← `PRINTFUL_TOKEN_TEST` (test) or `PRINTFUL_TOKEN` (live); `STRIPE_SECRET_KEY` ← `STRIPE_TEST_TOKEN` (test) or `STRIPE_LIVE_TOKEN` (live); `STRIPE_WEBHOOK_SECRET` ← `STRIPE_TEST_WEBHOOK_SECRET` or `STRIPE_LIVE_WEBHOOK_SECRET`; `PRINTFUL_WEBHOOK_SECRET` and `PRINTFUL_WEBHOOK_PUBLIC_KEY` of that store; `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ALLOWED_EMAILS`, `COOKIE_SECRET`, `STATUS_TOKEN_SECRET`; SES credentials; `PREVIEW_KEY` |
-| `shop-litestream` | the backup bucket's access key and secret |
+| `shop-env` | `PRINTFUL_TOKEN` ← `PRINTFUL_TOKEN_TEST` (test) or `PRINTFUL_TOKEN` (live); `STRIPE_SECRET_KEY` ← `STRIPE_TEST_TOKEN` (test) or `STRIPE_LIVE_TOKEN` (live); `STRIPE_WEBHOOK_SECRET` ← `STRIPE_TEST_WEBHOOK_SECRET` or `STRIPE_LIVE_WEBHOOK_SECRET`; `PRINTFUL_WEBHOOK_SECRET` and `PRINTFUL_WEBHOOK_PUBLIC_KEY` ← `PRINTFUL_TEST_WEBHOOK_*` or `PRINTFUL_LIVE_WEBHOOK_*` (in test mode the webhook keys may be added later; the script skips them until then); `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `ALLOWED_EMAILS`, `COOKIE_SECRET`, `STATUS_TOKEN_SECRET`, `PREVIEW_KEY`; `SHOP_SES_AWS_ACCESS_KEY_ID`, `SHOP_SES_AWS_SECRET_ACCESS_KEY` |
+| `shop-litestream` | `LITESTREAM_ACCESS_KEY_ID` ← `SHOP_BACKUP_AWS_ACCESS_KEY_ID`, `LITESTREAM_SECRET_ACCESS_KEY` ← `SHOP_BACKUP_AWS_SECRET_ACCESS_KEY` (the bucket name is in the ConfigMap, `LITESTREAM_BUCKET`) |
 | runner registration | the runner's GitHub token |
 | repository Actions secret | the kube-setup deploy token (Klaus) |
 
 `--live` is refused unless `SHOP_MODE=live`
-is passed too. The script prints key names and the Stripe key's prefix only.
+is passed too. The script prints key names and the Stripe key's prefix only; `--dry-run` writes nothing (built in step 9, `test/create-secrets.test.ts`).
 
 **NetworkPolicy**, namespace `shop`, default deny: ingress from Traefik on the app port;
 egress DNS, **TCP 443 to public addresses only** (the cluster's pod and service ranges
