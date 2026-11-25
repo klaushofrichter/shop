@@ -12,7 +12,7 @@ import type { StripeClient } from '../payments/stripe';
 import type { FulfilmentProvider } from '../providers/types';
 import { RECONCILE_FINISHED_KEY } from '../worker-health';
 import { syncShipments } from './fulfilment-events';
-import { openHold } from './holds';
+import { completeOrder, openHold } from './holds';
 import { applyPayment, closeUnpaid, type PaymentDeps } from './payment';
 import { maybeComplete, runDeadlines, syncPayment, type RefundDeps } from './refunds';
 import { adoptProviderOrder, QUIET_PERIOD_MS, type AttemptRow } from './submit';
@@ -100,7 +100,7 @@ export async function reconcile(d: ReconcileDeps): Promise<ReconcileReport> {
       const o = d.orders.prepare('SELECT fulfilment_state f FROM orders WHERE id = ?').get(a.order_id) as { f: string };
       const last = d.orders.prepare("SELECT MAX(shipped_at) t FROM shipments WHERE order_id = ? AND shipment_status != 'canceled'").get(a.order_id) as { t: string | null };
       if (o.f === 'shipped' && last.t && Date.parse(last.t) < now - d.completeAfterShippedDays * DAY) {
-        d.orders.prepare('UPDATE orders SET completed_at = ? WHERE id = ? AND completed_at IS NULL').run(iso(d.clock), a.order_id);
+        completeOrder(d.orders, d.clock, a.order_id, 'reconciliation', `shipped more than ${d.completeAfterShippedDays} days ago`);
         rep.repaired.push(`${a.order_id}: complete ${d.completeAfterShippedDays} days after shipping`);
       }
     }

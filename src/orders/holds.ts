@@ -83,5 +83,26 @@ export function resolveHolds(db: Db, clock: Clock, which: { orderId: string; hol
        WHERE order_id = ? AND resolved_at IS NULL AND (? IS NULL OR id = ?) AND (? IS NULL OR kind = ?)`,
     )
     .run(iso(clock), by, resolution, which.orderId, which.holdId ?? null, which.holdId ?? null, which.kind ?? null, which.kind ?? null);
-  return Number(r.changes);
+  const n = Number(r.changes);
+  // Every resolution leaves a line in the order's history, whoever resolved it.
+  if (n) recordEvent(db, clock, { orderId: which.orderId, part: 'hold', to: resolution, cause: by.includes('@') ? 'admin' : 'job', causeRef: by, note: `${n} resolved` });
+  return n;
+}
+
+/** A conditional move of `dispute_state` with its history line (07 §2.2, §2.10). False when it was elsewhere. */
+export function setDispute(db: Db, clock: Clock, orderId: string, from: string[], to: string, cause: string): boolean {
+  const cur = db.prepare('SELECT dispute_state d FROM orders WHERE id = ?').get(orderId) as { d: string } | undefined;
+  if (!cur || cur.d === to || !from.includes(cur.d)) return false;
+  const r = db.prepare('UPDATE orders SET dispute_state = ?, updated_at = ? WHERE id = ? AND dispute_state = ?').run(to, iso(clock), orderId, cur.d);
+  if (!Number(r.changes)) return false;
+  recordEvent(db, clock, { orderId, part: 'dispute', from: cur.d, to, cause });
+  return true;
+}
+
+/** Completion (07 §2.7): once, with a history line naming the rule that applied. */
+export function completeOrder(db: Db, clock: Clock, orderId: string, cause: string, rule: string): boolean {
+  const r = db.prepare('UPDATE orders SET completed_at = ? WHERE id = ? AND completed_at IS NULL').run(iso(clock), orderId);
+  if (!Number(r.changes)) return false;
+  recordEvent(db, clock, { orderId, part: 'note', to: 'complete', cause, note: rule });
+  return true;
 }

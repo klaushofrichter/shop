@@ -24,7 +24,7 @@ import { RetryLater, type JobRunner } from '../jobs';
 import { chargeOf, type StripeClient } from '../payments/stripe';
 import { placementFor } from '../providers/checks';
 import { ProviderError, type DraftOrder, type FulfilmentProvider, type ProviderOrder, type ProviderOrderStatus } from '../providers/types';
-import { openHold, recordEvent } from './holds';
+import { completeOrder, openHold, recordEvent } from './holds';
 
 export interface SubmitDeps {
   orders: Db;
@@ -291,7 +291,7 @@ export async function submitOrder(d: SubmitDeps, orderId: string): Promise<Submi
     if (d.mode === 'test' || !d.provider.confirm) {
       transaction(d.orders, () => {
         if (moveFulfilment(d.orders, d.clock, orderId, 'test_draft_ok', 'job', a!.attempt)) {
-          d.orders.prepare('UPDATE orders SET completed_at = ? WHERE id = ? AND completed_at IS NULL').run(iso(d.clock), orderId);
+          completeOrder(d.orders, d.clock, orderId, 'job', 'test mode: the draft passed the cost guard');
         }
       });
       return 'test_draft_ok';

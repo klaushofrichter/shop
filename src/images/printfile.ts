@@ -108,20 +108,26 @@ export async function renderPrintFile(
   anchor: Anchor,
   opts: ImageLimits & { minDpiPaper: number; store: FileStore },
 ): Promise<RenderedPrintFile> {
-  // Upright, sRGB, raw pixels: no lossy step before the one encode at the end.
-  const upright = await sharp(file, { limitInputPixels: opts.maxInputPixels }).rotate().toColourspace('srgb').removeAlpha().raw().toBuffer({ resolveWithObject: true });
-  const raw = { raw: { width: upright.info.width, height: upright.info.height, channels: upright.info.channels } };
-  const plan = planCrop(sku, upright.info.width, upright.info.height, anchor);
+  // Planned from the header: the upright size (EXIF orientations 5–8 swap width and height).
+  const meta = await sharp(file, { limitInputPixels: opts.maxInputPixels }).metadata();
+  if (!meta.width || !meta.height) throw new Error('original has no size');
+  const swap = (meta.orientation ?? 1) >= 5;
+  const uprightW = swap ? meta.height : meta.width;
+  const uprightH = swap ? meta.width : meta.height;
+  const plan = planCrop(sku, uprightW, uprightH, anchor);
   const floor = minDpi(sku, opts.minDpiPaper);
   if (plan.effectiveDpi < floor) throw new DpiTooLow(plan.effectiveDpi, floor);
 
+  // One libvips pipeline per file, no raw copy of the whole original in memory (11 §1: peak below
+  // 384 MiB): upright, sRGB, cropped and resized, encoded once at the end.
+  const source = () =>
+    sharp(file, { limitInputPixels: opts.maxInputPixels, sequentialRead: true }).rotate().toColourspace('srgb').removeAlpha();
   let data: Buffer;
   let ext: 'jpg' | 'png';
   if (sku.kind === 'apparel') {
     // Fitted, centred at the top of the area, on transparency.
-    const fitted = await sharp(upright.data, raw)
+    const fitted = await source()
       .resize({ width: plan.outW, height: plan.outH, fit: 'inside', kernel: 'lanczos3' })
-      .toColourspace('srgb')
       .png()
       .toBuffer({ resolveWithObject: true });
     data = await sharp({ create: { width: plan.outW, height: plan.outH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
@@ -132,7 +138,7 @@ export async function renderPrintFile(
     ext = 'png';
   } else {
     const half = sku.kind === 'mug' ? Math.round(plan.outW / 2) : plan.outW;
-    const crop = sharp(upright.data, raw)
+    const crop = source()
       .extract({ left: plan.left, top: plan.top, width: plan.width, height: plan.height })
       .resize({ width: half, height: plan.outH, fit: 'fill', kernel: 'lanczos3' });
     let canvas = crop; // paper: the crop is the file, encoded once
@@ -144,7 +150,9 @@ export async function renderPrintFile(
         { input: side, left: plan.outW - half, top: 0 },
       ]);
     }
-    data = await canvas.withIccProfile('srgb').jpeg({ quality: 92, chromaSubsampling: '4:4:4', mozjpeg: false }).toBuffer();
+    // No optimised Huffman coding: it keeps every coefficient of the image in memory (about 190 MiB for
+    // 3600 × 4800 px) for a file only ~7 % smaller (11 §1).
+    data = await canvas.withIccProfile('srgb').jpeg({ quality: 92, chromaSubsampling: '4:4:4', mozjpeg: false, optimiseCoding: false }).toBuffer();
     ext = 'jpg';
   }
 

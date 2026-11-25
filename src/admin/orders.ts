@@ -13,7 +13,7 @@ import type { Mode, QuoteSettings } from '../config';
 import { setSetting, transaction, type Db } from '../db';
 import { enqueue } from '../jobs';
 import { usd } from '../money';
-import { REASONS, reasonsOf, recordEvent, resolveHolds } from '../orders/holds';
+import { REASONS, reasonsOf, recordEvent, resolveHolds, setDispute } from '../orders/holds';
 import { ORDER_ID } from '../orders/ids';
 import { requestFullRefund } from '../orders/refunds';
 import { customerStatus } from '../orders/status';
@@ -234,7 +234,6 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
         const o = d.orders.prepare('SELECT * FROM orders WHERE id = ?').get(id) as Record<string, any> | undefined;
         if (!h || !o || h.resolved_at || !allowed(h, o)) return false;
         if (!resolve(id, holdId, 'approved', by)) return false;
-        note(id, 'resolved', by, name);
         apply(id, h, by);
         return true;
       });
@@ -246,8 +245,7 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
   const REFUND_REASONS = new Set(Object.entries(REASONS).filter(([, v]) => v.kind === 'attention').map(([k]) => k));
   holdAction('approve', (h, o) => h.kind === 'approval' || (h.kind === 'fraud' && o.dispute_state === 'won') || (h.kind === 'attention' && reasonsOf(h).every((x) => REFUND_REASONS.has(x) && x !== 'refund_failed' && x !== 'cost_guard')), (id) => submit(id));
   holdAction('false-alarm', (h, o) => h.kind === 'fraud' && o.dispute_state === 'warning', (id) => {
-    d.orders.prepare("UPDATE orders SET dispute_state = 'none', updated_at = ? WHERE id = ? AND dispute_state = 'warning'").run(iso(d.clock), id);
-    recordEvent(d.orders, d.clock, { orderId: id, part: 'dispute', from: 'warning', to: 'none', cause: 'admin' });
+    setDispute(d.orders, d.clock, id, ['warning'], 'none', 'admin');
     submit(id);
   });
   holdAction('confirm-anyway', (h) => reasonsOf(h).includes('cost_guard'), (id, _h, by) => {

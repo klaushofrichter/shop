@@ -14,7 +14,7 @@ import { transaction, type Db } from '../db';
 import { enqueue, PermanentJobError, type JobRunner } from '../jobs';
 import { verifyPrintfulWebhook } from '../providers/printful-webhook';
 import { ProviderError, type FulfilmentProvider } from '../providers/types';
-import { openHold, reasonsOf, resolveHolds } from './holds';
+import { completeOrder, openHold, reasonsOf, resolveHolds } from './holds';
 import { adoptProviderOrder, moveFulfilment, newestAttempt, type AttemptRow } from './submit';
 import { queueEmail } from '../email/jobs';
 
@@ -95,7 +95,7 @@ export async function syncShipments(d: FulfilmentEventDeps, a: AttemptRow): Prom
     const o = d.orders.prepare('SELECT fulfilment_state f FROM orders WHERE id = ?').get(a.order_id) as { f: string };
     if (o.f === 'shipped' && live.length > 0 && live.every((s) => s.deliveryStatus === 'delivered')) {
       if (moveFulfilment(d.orders, d.clock, a.order_id, 'delivered', 'printful_webhook', a.attempt)) {
-        d.orders.prepare('UPDATE orders SET completed_at = COALESCE(completed_at, ?) WHERE id = ?').run(iso(d.clock), a.order_id);
+        completeOrder(d.orders, d.clock, a.order_id, 'printful_webhook', 'every parcel delivered');
       }
     }
     return added;
