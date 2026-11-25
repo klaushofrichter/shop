@@ -109,10 +109,26 @@ export async function applyPayment(d: PaymentDeps, sessionId: string): Promise<A
       const risk = charge?.outcome?.risk_level;
       if (risk === 'elevated' || risk === 'highest') reasons.push('risk');
       // The breaker counts paid orders since max(24 h ago, the last reset); the crossing order is held too.
+      // It resets itself as orders leave the window; Klaus's Reset restarts the count at once (ADR-0042).
       const reset = getSetting<string>(d.orders, 'breaker_reset_at');
       const from = reset && reset > since ? reset : since;
       const recent = d.orders.prepare(`SELECT COUNT(*) n FROM orders WHERE payment_state IN ('paid', 'partially_refunded', 'refunded') AND paid_at >= ?`).get(from) as { n: number };
-      if (recent.n > d.limits.breakerOrders24h) reasons.push('breaker');
+      // Its cost half (ADR-0042): Printful's cost of those orders (the confirmed attempt's, else the quote's
+      // estimate, which is all this order has yet) above the limit trips it too.
+      const cost = d.orders
+        .prepare(
+          `SELECT COALESCE(SUM(COALESCE(
+             (SELECT json_extract(p.costs_json, '$.totalCents') FROM provider_orders p
+               WHERE p.order_id = o.id AND p.state IN ('confirmed', 'confirming') ORDER BY p.attempt DESC LIMIT 1),
+             (SELECT q.est_cost_cents FROM quotes q WHERE q.id = o.checkout_quote_id),
+             0)), 0) AS cents
+           FROM orders o WHERE o.payment_state IN ('paid', 'partially_refunded', 'refunded') AND o.paid_at >= ?`,
+        )
+        .get(from) as { cents: number };
+      if (recent.n > d.limits.breakerOrders24h || cost.cents > d.limits.breakerCostCents24h) {
+        reasons.push('breaker');
+        d.log({ level: 'alert', msg: 'circuit breaker tripped', order: order.id, kind: recent.n > d.limits.breakerOrders24h ? 'orders' : 'cost' });
+      }
       if (reasons.length) {
         openHold(d.orders, d.clock, order.id, reasons, 'payment');
         d.log({ level: 'alert', msg: 'order held for approval', order: order.id, reasons });

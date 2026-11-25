@@ -165,7 +165,7 @@ Not bugs. Listed so they aren't lost; none is urgent.
 | F2 | Fixed: an e-mail for every shipped parcel whose e-mail isn't sent; mock Printful lists a `pending` shipment from the confirmation on. |
 | F3 | Fixed: only a full refund blocks the confirm. |
 | F4 | Fixed: the window counts from the attempt's first failure (`failing_since`, migration 5) in every state before the confirm; a draft gone at Printful marks the attempt deleted and opens `provider_order_missing`; I10 counts a submit job failing for twice the window as nothing in progress. |
-| F5 | Open: Klaus decides between implementing the cost half and removing it, and whether the breaker latches. |
+| F5 | Fixed: the cost half is built; the breaker resets itself; Klaus's Reset re-enables everything at once (ADR-0042, Klaus 2026-11-25). |
 | F6 | Fixed: covered refund requests and holds are settled even when the amount didn't change; no row when nothing is left; a warning on a refunded order is recorded and stops. |
 | F7 | Fixed: `req.body?._csrf`. |
 | F8 | Fixed: the cart is emptied only when it is still the one the order was made from. |

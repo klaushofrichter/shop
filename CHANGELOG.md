@@ -5,6 +5,7 @@ then empties it on `main`.
 
 ## [Unreleased]
 
+- The circuit breaker also trips on Printful cost within 24 hours, resets itself, and Klaus can reset it at any time from the dashboard.
 - Fixes from the code review: a brief Stripe outage no longer blocks paying for a day; every parcel gets its shipping e-mail; a goodwill partial refund no longer stops an order; a Printful outage after the draft exists ends in a hold for Klaus; paying an older checkout keeps what was added to the cart since.
 - Alerts to Klaus go out once per event: the reminder before a hold refunds automatically comes once per hold (it came every minute), and a reconciliation alarm once a day unless its content changes.
 - E-mails: an order confirmation, a notice for each parcel with its tracking link, a note if an order is delayed or refunded, and "find my order" now sends its link. Klaus gets alerts for holds, failures and new orders.

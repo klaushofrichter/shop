@@ -151,3 +151,18 @@ describe('F1: a Stripe failure at checkout does not lock the cart', () => {
     expect(db().prepare('SELECT COUNT(*) n FROM orders').get()).toEqual({ n: 1 });
   });
 });
+
+describe('F5: the cost half of the circuit breaker (ADR-0042)', () => {
+  it('over the cost limit with the order count below its limit: held with reason breaker, and an alert', async () => {
+    h.close();
+    h = await startHarness({ BREAKER_COST_CENTS_24H: '1000' }); // one 8 × 10 print costs more than $10 at Printful
+    const id = await paidOrder(h);
+    expect(db().prepare('SELECT reasons_json FROM holds WHERE order_id = ?').get(id)).toEqual({ reasons_json: '["breaker"]' });
+    expect(db().prepare("SELECT COUNT(*) n FROM jobs WHERE kind = 'alert.send'").get()).not.toEqual({ n: 0 });
+  });
+
+  it('under both limits: no hold', async () => {
+    const id = await paidOrder(h);
+    expect(db().prepare('SELECT COUNT(*) n FROM holds WHERE order_id = ?').get(id)).toEqual({ n: 0 });
+  });
+});
