@@ -13,7 +13,7 @@ import { iso, type Clock } from '../clock';
 import type { FailSafeLimits } from '../config';
 import { getSetting, transaction, type Db } from '../db';
 import { enqueue } from '../jobs';
-import type { CheckoutSession, Charge, PaymentIntent, StripeClient } from '../payments/stripe';
+import { chargeOf, type StripeClient } from '../payments/stripe';
 import { openHold } from './holds';
 
 export interface PaymentDeps {
@@ -51,8 +51,7 @@ export async function applyPayment(d: PaymentDeps, sessionId: string): Promise<A
     return 'not_paid';
   }
   const lines = await d.stripe.listLineItems(sessionId);
-  const pi = typeof session.payment_intent === 'object' ? (session.payment_intent as PaymentIntent) : undefined;
-  const charge = pi && typeof pi.latest_charge === 'object' ? (pi.latest_charge as Charge) : undefined;
+  const { paymentIntent: pi, charge } = chargeOf(session);
 
   // ---- the checks of 05 §4 ----
   const tax = session.total_details?.amount_tax ?? 0;
@@ -145,5 +144,3 @@ export function closeUnpaid(orders: Db, clock: Clock, orderId: string, cause: st
     return true;
   });
 }
-
-export type { CheckoutSession };

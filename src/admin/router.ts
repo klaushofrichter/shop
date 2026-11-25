@@ -5,7 +5,7 @@
  * origin, and goes to `admin_audit`.
  */
 import express, { type NextFunction, type Request, type Response, type Router } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { perClient } from '../limiter';
 import { iso, type Clock } from '../clock';
 import type { Mode } from '../config';
 import { transaction, type Db } from '../db';
@@ -45,7 +45,7 @@ type AdminRequest = Request & { session?: Session; csrf?: string };
 
 export function adminRouter(d: AdminDeps): Router {
   const r = express.Router();
-  r.use(rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
+  r.use(perClient(60_000, 300));
   r.use(express.urlencoded({ extended: false, limit: '32kb' }));
 
   r.use((req: AdminRequest, res: Response, next: NextFunction) => {

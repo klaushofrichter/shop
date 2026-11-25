@@ -8,7 +8,7 @@
  * newest attempt moves `fulfilment_state`.
  */
 import express, { type Router } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { perClient } from '../limiter';
 import { iso, type Clock } from '../clock';
 import { transaction, type Db } from '../db';
 import { enqueue, PermanentJobError, type JobRunner } from '../jobs';
@@ -29,7 +29,7 @@ export interface PrintfulWebhookDeps {
 
 export function printfulWebhookRouter(d: PrintfulWebhookDeps): Router {
   const r = express.Router();
-  const limiter = rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false });
+  const limiter = perClient(60_000, 600);
   r.post('/webhooks/printful', limiter, express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
     const storeId = d.storeId();
     if (!d.secretHex || !d.publicKey || !storeId) return res.status(503).json({ error: 'not ready' });

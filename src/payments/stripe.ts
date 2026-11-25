@@ -113,6 +113,13 @@ export interface LineItem {
   orderItemId?: string;
 }
 
+/** The payment intent and charge of a session fetched with `expandCharge` (absent while unpaid). */
+export function chargeOf(session: CheckoutSession): { paymentIntent?: PaymentIntent; charge?: Charge } {
+  const paymentIntent = typeof session.payment_intent === 'object' ? (session.payment_intent ?? undefined) : undefined;
+  const charge = typeof paymentIntent?.latest_charge === 'object' ? (paymentIntent.latest_charge ?? undefined) : undefined;
+  return { paymentIntent, charge };
+}
+
 export class StripeClient {
   private readonly fetch: typeof fetch;
   private readonly timeoutMs: number;
@@ -125,24 +132,24 @@ export class StripeClient {
   }
 
   createCustomer(params: Params, idempotencyKey: string): Promise<{ id: string }> {
-    return this.call('POST', '/v1/customers', params, idempotencyKey) as unknown as Promise<{ id: string }>;
+    return this.call<{ id: string }>('POST', '/v1/customers', params, idempotencyKey);
   }
 
   async deleteCustomer(id: string): Promise<void> {
-    await this.call('DELETE', `/v1/customers/${encodeURIComponent(id)}`);
+    await this.call<unknown>('DELETE', `/v1/customers/${encodeURIComponent(id)}`);
   }
 
   createCheckoutSession(params: Params, idempotencyKey: string): Promise<CheckoutSession> {
-    return this.call('POST', '/v1/checkout/sessions', params, idempotencyKey) as unknown as Promise<CheckoutSession>;
+    return this.call<CheckoutSession>('POST', '/v1/checkout/sessions', params, idempotencyKey);
   }
 
   getCheckoutSession(id: string, expandCharge = false): Promise<CheckoutSession> {
     const q = expandCharge ? '?expand[]=payment_intent.latest_charge' : '';
-    return this.call('GET', `/v1/checkout/sessions/${encodeURIComponent(id)}${q}`) as unknown as Promise<CheckoutSession>;
+    return this.call<CheckoutSession>('GET', `/v1/checkout/sessions/${encodeURIComponent(id)}${q}`);
   }
 
   expireCheckoutSession(id: string): Promise<CheckoutSession> {
-    return this.call('POST', `/v1/checkout/sessions/${encodeURIComponent(id)}/expire`, {}) as unknown as Promise<CheckoutSession>;
+    return this.call<CheckoutSession>('POST', `/v1/checkout/sessions/${encodeURIComponent(id)}/expire`, {});
   }
 
   /** Completed sessions created since `sinceS` (unix seconds), for the reverse sweep (07 §5); paged. */
@@ -151,7 +158,7 @@ export class StripeClient {
     let after: string | undefined;
     for (let page = 0; page < 20; page++) {
       const q = `?limit=100&status=complete&created[gte]=${sinceS}${after ? `&starting_after=${encodeURIComponent(after)}` : ''}`;
-      const res = (await this.call('GET', `/v1/checkout/sessions${q}`)) as unknown as { data: CheckoutSession[]; has_more: boolean };
+      const res = await this.call<{ data: CheckoutSession[]; has_more: boolean }>('GET', `/v1/checkout/sessions${q}`);
       out.push(...res.data);
       if (!res.has_more || !res.data.length) return out;
       after = res.data[res.data.length - 1].id;
@@ -160,24 +167,24 @@ export class StripeClient {
   }
 
   getCharge(id: string): Promise<Charge> {
-    return this.call('GET', `/v1/charges/${encodeURIComponent(id)}`) as unknown as Promise<Charge>;
+    return this.call<Charge>('GET', `/v1/charges/${encodeURIComponent(id)}`);
   }
 
   /** A refund of the payment (05 §7); the key makes a repeat return the same refund for 24 h. */
   createRefund(paymentIntent: string, amountCents: number, metadata: Record<string, string>, idempotencyKey: string): Promise<Refund> {
-    return this.call('POST', '/v1/refunds', { payment_intent: paymentIntent, amount: amountCents, metadata }, idempotencyKey) as unknown as Promise<Refund>;
+    return this.call<Refund>('POST', '/v1/refunds', { payment_intent: paymentIntent, amount: amountCents, metadata }, idempotencyKey);
   }
 
   getRefund(id: string): Promise<Refund> {
-    return this.call('GET', `/v1/refunds/${encodeURIComponent(id)}`) as unknown as Promise<Refund>;
+    return this.call<Refund>('GET', `/v1/refunds/${encodeURIComponent(id)}`);
   }
 
   getDispute(id: string): Promise<Dispute> {
-    return this.call('GET', `/v1/disputes/${encodeURIComponent(id)}`) as unknown as Promise<Dispute>;
+    return this.call<Dispute>('GET', `/v1/disputes/${encodeURIComponent(id)}`);
   }
 
   getEarlyFraudWarning(id: string): Promise<EarlyFraudWarning> {
-    return this.call('GET', `/v1/radar/early_fraud_warnings/${encodeURIComponent(id)}`) as unknown as Promise<EarlyFraudWarning>;
+    return this.call<EarlyFraudWarning>('GET', `/v1/radar/early_fraud_warnings/${encodeURIComponent(id)}`);
   }
 
   /** Every line item of a session, paged (review C F6), with our order item id from the product's metadata. */
@@ -186,7 +193,7 @@ export class StripeClient {
     let after: string | undefined;
     for (let page = 0; page < 20; page++) {
       const q = `?limit=100&expand[]=data.price.product${after ? `&starting_after=${encodeURIComponent(after)}` : ''}`;
-      const res = (await this.call('GET', `/v1/checkout/sessions/${encodeURIComponent(sessionId)}/line_items${q}`)) as unknown as { data: LineItem[]; has_more: boolean };
+      const res = await this.call<{ data: LineItem[]; has_more: boolean }>('GET', `/v1/checkout/sessions/${encodeURIComponent(sessionId)}/line_items${q}`);
       for (const li of res.data) {
         const product = li.price?.product;
         out.push({ ...li, orderItemId: typeof product === 'object' ? product?.metadata?.order_item_id : undefined });
@@ -197,7 +204,7 @@ export class StripeClient {
     throw new StripeError('permanent', 'too many line items');
   }
 
-  private async call(method: 'GET' | 'POST' | 'DELETE', path: string, params?: Params, idempotencyKey?: string): Promise<Json> {
+  private async call<T>(method: 'GET' | 'POST' | 'DELETE', path: string, params?: Params, idempotencyKey?: string): Promise<T> {
     const headers: Record<string, string> = {
       authorization: `Bearer ${this.opts.secretKey}`,
       'stripe-version': STRIPE_VERSION,
@@ -223,7 +230,7 @@ export class StripeClient {
     } catch {
       json = undefined;
     }
-    if (res.ok && json) return json;
+    if (res.ok && json) return json as T;
     const err = (json?.error ?? {}) as { message?: string; type?: string; code?: string; param?: string };
     const message = `stripe: ${err.message ?? `HTTP ${res.status}`}`;
     if (res.status === 429) throw new StripeError('rate_limited', message, 429, err.code);

@@ -21,7 +21,7 @@ import { iso, type Clock } from '../clock';
 import type { Config, Mode, QuoteSettings } from '../config';
 import { transaction, type Db } from '../db';
 import { RetryLater, type JobRunner } from '../jobs';
-import type { StripeClient, Charge, PaymentIntent } from '../payments/stripe';
+import { chargeOf, type StripeClient } from '../payments/stripe';
 import { placementFor } from '../providers/checks';
 import { ProviderError, type DraftOrder, type FulfilmentProvider, type ProviderOrder, type ProviderOrderStatus } from '../providers/types';
 import { openHold } from './holds';
@@ -330,8 +330,7 @@ async function confirmAttempt(d: SubmitDeps, o: OrderRow, a: AttemptRow, po: Pro
   }
   // A fresh read of the refunds at Stripe (06 §4 step 8, review A F13).
   const session = await d.stripe.getCheckoutSession(o.stripe_session_id!, true);
-  const pi = typeof session.payment_intent === 'object' ? (session.payment_intent as PaymentIntent) : undefined;
-  const charge = pi && typeof pi.latest_charge === 'object' ? (pi.latest_charge as Charge) : undefined;
+  const { charge } = chargeOf(session);
   if (!charge || charge.amount_refunded > 0) {
     blocked(d, o.id, [charge ? 'refunded at Stripe' : 'no charge']);
     return 'blocked';

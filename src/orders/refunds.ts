@@ -14,7 +14,7 @@
 import { iso, type Clock } from '../clock';
 import { transaction, type Db } from '../db';
 import { enqueue, RetryLater, type JobRunner } from '../jobs';
-import { StripeError, type CheckoutSession, type Charge, type PaymentIntent, type StripeClient } from '../payments/stripe';
+import { chargeOf, StripeError, type Charge, type StripeClient } from '../payments/stripe';
 import { ProviderError, type FulfilmentProvider } from '../providers/types';
 import { openHold } from './holds';
 import { moveFulfilment, newestAttempt, QUIET_PERIOD_MS, type AttemptRow } from './submit';
@@ -49,11 +49,9 @@ const attemptsOf = (db: Db, id: string) =>
 const event = (db: Db, clock: Clock, orderId: string, part: string, from: string | null, to: string | null, cause: string, note?: string) =>
   db.prepare('INSERT INTO order_events (order_id, part, from_value, to_value, cause, note, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(orderId, part, from, to, cause, note ?? null, iso(clock));
 
-async function chargeOf(d: RefundDeps, o: OrderPay): Promise<Charge | undefined> {
+async function orderCharge(d: RefundDeps, o: OrderPay): Promise<Charge | undefined> {
   if (!o.stripe_session_id) return undefined;
-  const s: CheckoutSession = await d.stripe.getCheckoutSession(o.stripe_session_id, true);
-  const pi = typeof s.payment_intent === 'object' ? (s.payment_intent as PaymentIntent) : undefined;
-  return pi && typeof pi.latest_charge === 'object' ? (pi.latest_charge as Charge) : undefined;
+  return chargeOf(await d.stripe.getCheckoutSession(o.stripe_session_id, true)).charge;
 }
 
 // ---------------------------------------------------------------- refunds
@@ -101,7 +99,7 @@ export async function runRefund(d: RefundDeps, refundId: string): Promise<string
     throw new RetryLater(H, 'refund pending');
   }
   // Read first: what is left to refund (05 §7).
-  const charge = await chargeOf(d, o);
+  const charge = await orderCharge(d, o);
   if (!charge || !o.stripe_payment_intent) return (failRefund(d, refundId, r.order_id, 'no charge to refund', false), 'failed');
   const left = charge.amount - charge.amount_refunded;
   if (left <= 0) {
@@ -132,7 +130,7 @@ export async function runRefund(d: RefundDeps, refundId: string): Promise<string
 export async function syncPayment(d: RefundDeps, orderId: string, cause: string): Promise<void> {
   const o = orderOf(d.orders, orderId);
   if (!o || !['paid', 'partially_refunded', 'refunded'].includes(o.payment_state)) return;
-  const charge = await chargeOf(d, o);
+  const charge = await orderCharge(d, o);
   if (!charge) return;
   const full = charge.amount_refunded >= charge.amount;
   const becameFull = transaction(d.orders, () => {

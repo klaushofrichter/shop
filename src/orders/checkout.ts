@@ -13,7 +13,7 @@ import { iso, type Clock } from '../clock';
 import type { FailSafeLimits } from '../config';
 import { transaction, type Db } from '../db';
 import { StripeError, type StripeClient } from '../payments/stripe';
-import { itemsOfCart, type AddressInput, type QuoteItem, type QuoteOption } from '../public/quote';
+import { itemsOfCart, shippingLabel, type AddressInput, type QuoteItem, type QuoteOption } from '../public/quote';
 import { drawOrderNumber, newOrderId, statusToken } from './ids';
 import { applyPayment, closeUnpaid, type PaymentDeps } from './payment';
 
@@ -206,7 +206,7 @@ function sessionParams(d: CheckoutDeps, orderId: string, number: string, custome
         shipping_rate_data: {
           type: 'fixed_amount',
           fixed_amount: { amount: option.cents, currency: 'usd' },
-          display_name: option.name.replace(/\s*\(.*\)\s*$/, '').slice(0, 100),
+          display_name: shippingLabel(option.name).slice(0, 100),
           delivery_estimate: option.minDays
             ? { minimum: { unit: 'business_day', value: option.minDays }, maximum: { unit: 'business_day', value: option.maxDays ?? option.minDays } }
             : undefined,
