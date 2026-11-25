@@ -91,6 +91,14 @@ export function publicRouter(d: PublicDeps): Router {
     res.status(403).type('text').send('form expired; reload the page');
   };
 
+  // The gate's own address: the same page with 200, so the live check can audit it
+  // (Lighthouse refuses a 401) while the gate is on.
+  r.get('/preview', (req, res) => {
+    if (!gateActive) return res.redirect(303, '/');
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).type('html').send(gatePage(req, res));
+  });
+
   r.post('/preview', perClient(60_000, 10), csrf, (req, res) => {
     const body = req.body as Record<string, string | undefined>;
     // Always back to the home page: a target taken from the form would be an open redirect.
