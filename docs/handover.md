@@ -31,7 +31,6 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 ## Waiting for Klaus
 
-- SES production access in us-east-1 before go-live (see Next steps).
 
 ## Settled on 2026-11-25
 
@@ -40,14 +39,14 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 - Every work of art, every product (ADR-0040); prices per product, the launch prices accepted (ADR-0041).
 - Packing-slip contact: Klaus gave the e-mail and phone. They go into the cluster's configuration (`PACKING_SLIP_EMAIL`, `PACKING_SLIP_PHONE`), not into this public repository.
 - `STATUS_TOKEN_SECRET` is in the node's `.env` (Cluster). `scripts/create-secrets.sh` (step 9) must list it for `shop-env`.
-- AWS (Klaus, checked by Cluster): the backup bucket and two IAM users exist; their keys are in the node's `.env` as `SHOP_BACKUP_AWS_*` (→ `shop-litestream` Secret) and `SHOP_SES_AWS_*` (→ `shop-env`). SES may send only as `orders@shop.klaushofrichter.net`. The SES domain identity is verified with DKIM (Cluster, 2026-11-25; region us-east-1). The account is still in the SES sandbox, so it can send only to verified addresses (fine for test mode); production access is Klaus's request before go-live. The Litestream bucket name goes in the ConfigMap (`LITESTREAM_BUCKET`), only the key pair in `shop-litestream`. Bounce and complaint notices, alerts and the packing slip use the shop's business address (Klaus, 2026-11-25; verified in SES), set in the ConfigMap as `SES_FEEDBACK_ADDRESS`, `ALERT_EMAIL` and `PACKING_SLIP_EMAIL`; step 8 sends it as the feedback-forwarding (Return-Path) address, not as From or Reply-To (ADR-0038).
+- AWS (Klaus, checked by Cluster): the backup bucket and two IAM users exist; their keys are in the node's `.env` as `SHOP_BACKUP_AWS_*` (→ `shop-litestream` Secret) and `SHOP_SES_AWS_*` (→ `shop-env`). SES may send only as `orders@shop.klaushofrichter.net`. The SES domain identity is verified with DKIM (Cluster, 2026-11-25; region us-east-1). The account is out of the SES sandbox (production access granted 2026-11-25, us-east-1); outside live mode the shop still sends only to `EMAIL_ALLOWLIST`, which also holds the SES mailbox simulator addresses (success, bounce, complaint, suppressionlist @simulator.amazonses.com; Klaus, 2026-11-25) for the step 10 tests. The account-level suppression list covers bounces and complaints (already on; checked by Cluster 2026-11-25). The allow-list is now the only thing keeping test-mode mail from real people. The Litestream bucket name goes in the ConfigMap (`LITESTREAM_BUCKET`), only the key pair in `shop-litestream`. Bounce and complaint notices, alerts and the packing slip use the shop's business address (Klaus, 2026-11-25; verified in SES), set in the ConfigMap as `SES_FEEDBACK_ADDRESS`, `ALERT_EMAIL` and `PACKING_SLIP_EMAIL`; step 8 sends it as the feedback-forwarding (Return-Path) address, not as From or Reply-To (ADR-0038).
 
 ## Next
 
 - Milestone 12, Claude as operator (ADR-0043, Accepted): read, diagnose and act through tools inside the shop process, used by a Claude session on the node; prices by pull request and deploy for now; a token API for Claude in the cloud is optional.
 
 1. Step 9 (done except art's link: create-secrets.sh, the go-live recording tools (14 §7.3), the test-mode deployment behind the preview gate, released by Cluster's release-when-green since v2026.11.25.2 with a gate-aware live check; render memory in the pod 113 MiB peak for the largest original on the volume (10 MP), the app idle at about 47 Mi of 512, see 11 §1). Then step 10, in the order of `docs/design/13-plan-and-open-questions.md` §1.
-2. Before go-live (Klaus): request SES production access in us-east-1 (Account dashboard → Request production access; transactional, low volume; bounces and complaints forwarded to the business address, the account-level suppression list on). Mention the preview gate, since reviewers may open the site. The sandbox sends only to verified addresses, so customers would get no mail without it.
+2. Step 10 includes the SES mailbox simulator: test-mode orders to success@, bounce@ and complaint@ (the notices must reach the business address) and suppressionlist@.
 
 ## Keys
 
