@@ -23,7 +23,10 @@ interface Session {
   expiresAt: number; created: number; customText?: string; automaticTax: boolean;
   paymentIntent?: string; params: Json;
 }
-interface Charge { id: string; pi: string; amount: number; refunded: number; risk?: string; fingerprint?: string }
+interface Charge { id: string; pi: string; amount: number; refunded: number; risk?: string; fingerprint?: string; disputed?: boolean }
+interface MockRefund { id: string; charge: string; amount: number; status: string; metadata: Json }
+interface MockDispute { id: string; charge: string; status: string }
+interface MockEfw { id: string; charge: string; actionable: boolean }
 
 export interface MockStripeOptions {
   clock: Clock;
@@ -64,6 +67,13 @@ export function createMockStripe(opts: MockStripeOptions) {
     dropNext: false,
     duplicateNext: false,
     oldShapeNext: false,
+    refunds: new Map<string, MockRefund>(),
+    disputes: new Map<string, MockDispute>(),
+    efws: new Map<string, MockEfw>(),
+    /** The next refund ends `failed` (refund.failed). */
+    failNextRefund: false,
+    /** The next refund stays `pending` until settled with settleRefund(). */
+    pendingNextRefund: false,
   };
   const id = (prefix: string) => `${prefix}_mock_${String(++s.n).padStart(6, '0')}`;
   const now = () => Math.floor(clock.now() / 1000);
@@ -255,6 +265,52 @@ ${ses.customText ? `<p>${esc(ses.customText)}</p>` : ''}
     res.json(sessionBody(ses, false));
   });
 
+
+  // ---- charges, refunds, disputes, early fraud warnings (05 §4, §7) ----
+  const chargeBody = (ch: Charge) => ({
+    id: ch.id, object: 'charge', amount: ch.amount, amount_refunded: ch.refunded, refunded: ch.refunded >= ch.amount,
+    payment_intent: ch.pi, disputed: !!ch.disputed, currency: 'usd',
+    outcome: ch.risk ? { risk_level: ch.risk, type: 'authorized' } : null,
+    payment_method_details: { type: 'card', card: ch.fingerprint ? { fingerprint: ch.fingerprint } : null },
+  });
+  const refundBody = (r: MockRefund) => ({ id: r.id, object: 'refund', amount: r.amount, charge: r.charge, currency: 'usd', status: r.status, metadata: r.metadata });
+  app.get('/v1/charges/:id', (req, res) => {
+    const ch = s.charges.get(String(req.params.id));
+    if (!ch) return fail(res, 404, `No such charge: '${req.params.id}'`, { code: 'resource_missing', param: 'id' });
+    res.json(chargeBody(ch));
+  });
+  app.post('/v1/refunds', async (req, res) => {
+    const b = req.body as Json;
+    const ch = [...s.charges.values()].find((c) => c.pi === b.payment_intent);
+    if (!ch) return fail(res, 400, `No such payment_intent: '${String(b.payment_intent)}'`, { code: 'resource_missing', param: 'payment_intent' });
+    if (ch.disputed) return fail(res, 400, `Charge ${ch.id} has been disputed.`, { code: 'charge_disputed' });
+    const amount = b.amount === undefined ? ch.amount - ch.refunded : Number(b.amount);
+    if (ch.refunded >= ch.amount) return fail(res, 400, `Charge ${ch.id} has already been refunded.`, { code: 'charge_already_refunded' });
+    if (!Number.isInteger(amount) || amount <= 0 || amount > ch.amount - ch.refunded) return fail(res, 400, 'Refund amount is greater than unrefunded amount on charge', { code: 'amount_too_large', param: 'amount' });
+    const status = s.failNextRefund ? 'failed' : s.pendingNextRefund ? 'pending' : 'succeeded';
+    s.failNextRefund = s.pendingNextRefund = false;
+    const r: MockRefund = { id: id('re'), charge: ch.id, amount, status, metadata: (b.metadata as Json) ?? {} };
+    s.refunds.set(r.id, r);
+    if (status !== 'failed') ch.refunded += amount;
+    res.json(refundBody(r));
+    if (status === 'succeeded') await emit('charge.refunded', chargeBody(ch));
+    if (status === 'failed') await emit('refund.failed', refundBody(r));
+  });
+  app.get('/v1/refunds/:id', (req, res) => {
+    const r = s.refunds.get(String(req.params.id));
+    if (!r) return fail(res, 404, `No such refund: '${req.params.id}'`, { code: 'resource_missing', param: 'id' });
+    res.json(refundBody(r));
+  });
+  app.get('/v1/disputes/:id', (req, res) => {
+    const d = s.disputes.get(String(req.params.id));
+    if (!d) return fail(res, 404, `No such dispute: '${req.params.id}'`, { code: 'resource_missing', param: 'id' });
+    res.json({ id: d.id, object: 'dispute', charge: d.charge, status: d.status, amount: s.charges.get(d.charge)?.amount ?? 0, currency: 'usd' });
+  });
+  app.get('/v1/radar/early_fraud_warnings/:id', (req, res) => {
+    const w = s.efws.get(String(req.params.id));
+    if (!w) return fail(res, 404, `No such early fraud warning: '${req.params.id}'`, { code: 'resource_missing', param: 'id' });
+    res.json({ id: w.id, object: 'radar.early_fraud_warning', charge: w.charge, actionable: w.actionable, fraud_type: 'made_with_stolen_card' });
+  });
   app.use((req, res) => fail(res, 404, `mock: no route for ${req.method} ${req.path}`));
 
   // ---- behaviour ----
@@ -341,6 +397,8 @@ ${ses.customText ? `<p>${esc(ses.customText)}</p>` : ''}
     s.customers.clear(); s.sessions.clear(); s.charges.clear(); s.idem.clear();
     s.requests.length = 0; s.deliveries.length = 0; s.queued.length = 0;
     s.paused = s.dropNext = s.duplicateNext = s.oldShapeNext = false;
+    s.refunds.clear(); s.disputes.clear(); s.efws.clear();
+    s.failNextRefund = s.pendingNextRefund = false;
   }
 
   return {
@@ -352,7 +410,42 @@ ${ses.customText ? `<p>${esc(ses.customText)}</p>` : ''}
         await emit('checkout.session.expired', sessionBody(ses, false));
       }
     },
-    sessions: s.sessions, customers: s.customers, requests: s.requests, deliveries: s.deliveries,
+    /** A refund made in the Stripe Dashboard (partial or full). */
+    dashboardRefund: async (chargeId: string, amount: number) => {
+      const ch = s.charges.get(chargeId)!;
+      const r: MockRefund = { id: id('re'), charge: ch.id, amount, status: 'succeeded', metadata: {} };
+      s.refunds.set(r.id, r);
+      ch.refunded += amount;
+      await emit('charge.refunded', chargeBody(ch));
+      return r.id;
+    },
+    settleRefund: async (refundId: string, status: 'succeeded' | 'failed') => {
+      const r = s.refunds.get(refundId)!;
+      const ch = s.charges.get(r.charge)!;
+      if (status === 'failed' && r.status === 'pending') ch.refunded -= r.amount;
+      r.status = status;
+      await emit(status === 'failed' ? 'refund.failed' : 'refund.updated', refundBody(r));
+      if (status === 'succeeded') await emit('charge.refunded', chargeBody(ch));
+    },
+    earlyFraudWarning: async (chargeId: string) => {
+      const w: MockEfw = { id: id('issfr'), charge: chargeId, actionable: true };
+      s.efws.set(w.id, w);
+      await emit('radar.early_fraud_warning.created', { id: w.id, object: 'radar.early_fraud_warning', charge: chargeId, actionable: true });
+      return w.id;
+    },
+    dispute: async (chargeId: string) => {
+      const d: MockDispute = { id: id('dp'), charge: chargeId, status: 'needs_response' };
+      s.disputes.set(d.id, d);
+      s.charges.get(chargeId)!.disputed = true;
+      await emit('charge.dispute.created', { id: d.id, object: 'dispute', charge: chargeId, status: d.status });
+      return d.id;
+    },
+    closeDispute: async (disputeId: string, outcome: 'won' | 'lost') => {
+      const d = s.disputes.get(disputeId)!;
+      d.status = outcome;
+      await emit('charge.dispute.closed', { id: d.id, object: 'dispute', charge: d.charge, status: outcome });
+    },
+    sessions: s.sessions, customers: s.customers, requests: s.requests, deliveries: s.deliveries, charges: s.charges, refunds: s.refunds,
     control: s,
   };
 }

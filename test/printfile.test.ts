@@ -65,7 +65,9 @@ describe('planCrop (04 §5.2)', () => {
   });
 });
 
-describe('renderPrintFile', () => {
+// Full-size renders (up to 3600 × 4800 px) take seconds of CPU; with every test file in parallel on a
+// 4-core runner the 5 s default is too tight (PR #24, CI). The work, not a hang, sets this limit.
+describe('renderPrintFile', { timeout: 30_000 }, () => {
   it('renders the exact size, sRGB, no metadata but the profile; the anchor picks the part', async () => {
     const s = store();
     const file = path.join(s.dir('tmp'), 'o.jpg');
@@ -105,7 +107,7 @@ describe('renderPrintFile', () => {
   });
 });
 
-describe('offers through the admin and the render job', () => {
+describe('offers through the admin and the render job', { timeout: 30_000 }, () => {
   const SECRET = 'x'.repeat(40);
   const ADMIN = 'admin@example.com';
   const ART = parseSources({ sources: [{ id: 'art', default: true, adapter: 'x', publicUrl: 'https://art.example.com', printsAllowedDefault: false, printsAllowedWorks: ['w1'] }] })[0];

@@ -27,6 +27,7 @@ import { randomBytes } from 'node:crypto';
 import { StripeClient } from './payments/stripe';
 import { registerStripeEventJob } from './orders/webhooks';
 import { registerSubmitJob } from './orders/submit';
+import { onStripeEvent, registerRefundJobs, scheduleDeadlines } from './orders/refunds';
 import { registerPrintfulEventJob } from './orders/fulfilment-events';
 import { RetryLater } from './jobs';
 
@@ -87,7 +88,12 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
   // Status links (ADR-0037); mock mode without a secret gets a per-process one (links end with the process).
   const statusSecret = config.statusTokenSecret ?? randomBytes(32).toString('hex');
   const paymentDeps = stripe ? { orders: dbs.orders, clock, stripe, limits: config.limits, log } : undefined;
-  if (paymentDeps) registerStripeEventJob(runner, paymentDeps);
+  const refundDeps = stripe ? { orders: dbs.orders, clock, stripe, provider, log } : undefined;
+  if (refundDeps) {
+    registerRefundJobs(runner, refundDeps);
+    scheduleDeadlines(dbs.orders, clock);
+  }
+  if (paymentDeps) registerStripeEventJob(runner, paymentDeps, refundDeps ? (type, id) => onStripeEvent(refundDeps, type, id) : undefined);
   // Submission (06 §4) needs Printful and Stripe; without them the job waits.
   if (provider && stripe) {
     registerSubmitJob(runner, {

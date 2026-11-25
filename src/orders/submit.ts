@@ -152,6 +152,8 @@ export function adoptProviderOrder(db: Db, clock: Clock, orderId: string, attemp
 }
 
 function blocked(d: SubmitDeps, orderId: string, why: string[]): void {
+  // A refund the shop asked for, or a refunded order, is a stop, not a problem for Klaus.
+  if (why.every((w) => w === 'refund issued' || w === 'payment refunded' || w === 'open hold')) return;
   transaction(d.orders, () => {
     if (openHoldCount(d.orders, orderId) === 0) {
       openHold(d.orders, d.clock, orderId, ['fulfilment_blocked'], 'job');
