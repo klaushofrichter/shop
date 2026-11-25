@@ -20,7 +20,7 @@ before step 10. Mock pieces are built with the step that needs them ([14 §10](1
 | 9 | `scripts/create-secrets.sh`; the `inbound_events` export and adapter trace (14 §7.3); first deployment in **test** mode (Cluster: namespaces, hardened runner, PVC, Litestream with two files, Ingress, NetworkPolicy, ConfigMap with thresholds and store ids, `production` branch); art's link (art's session) |
 | 10 | Test mode against the test store and Stripe test mode ([12 §3](12-testing.md#3-against-the-real-services-before-go-live)); then the go-live checklist: live behind the preview gate, Klaus's orders recorded, gate off |
 | 11 | After the MVP: recorder, scrubber, comparator |
-| 12 | **Claude as operator** (Klaus, 2026-11-25; ADR-0043, Proposed): ask Claude about the shop and act through it, e.g. "show recent orders", "how many orders are pending", "which SKU sold most in the last seven days", "reset the circuit breaker", "change the price of the t-shirt M to $15". A read API and a small set of audited actions for an MCP server Klaus connects to Claude; a Claude Dashboard artifact for the shop's state; prices editable at runtime (today a config change and a deploy) |
+| 12 | **Claude as operator** (Klaus, 2026-11-25; ADR-0043): ask Claude about the shop and act through it, e.g. "show recent orders", "how many orders are pending", "which SKU sold most in the last seven days", "reset the circuit breaker", "change the price of the t-shirt M to $15". Reads and audited actions as tools inside the shop process, for a Claude session on the node (a token API for Claude in the cloud optional); a Claude Dashboard fed by the reads; prices still by pull request and deploy |
 
 ## 2. Decisions
 
