@@ -73,7 +73,9 @@ jobs:
             -e MOCK_SOURCE_URL=http://localhost:9103 \
             -e PRINTFUL_BASE_URL=http://localhost:9101 -e PRINTFUL_TOKEN=mock_printful_e2e \
             -e STRIPE_API_BASE=http://localhost:9102 -e STRIPE_SECRET_KEY=mock_stripe_e2e \
-            -e STRIPE_WEBHOOK_SECRET=mock-whsec-e2e shop:e2e
+            -e STRIPE_WEBHOOK_SECRET=mock-whsec-e2e \
+            -e PRINTFUL_WEBHOOK_SECRET=e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0 \
+            -e PRINTFUL_WEBHOOK_PUBLIC_KEY=mock-pf-public-key-e2e shop:e2e
           for i in $(seq 1 30); do
             curl -sf http://localhost:8080/health >/dev/null && break
             echo "waiting for the image (${i}/30)"; sleep 1

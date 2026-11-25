@@ -15,7 +15,14 @@ const SHOP_URL = (process.env.SHOP_URL ?? 'http://localhost:8080').replace(/\/+$
 const port = (name: string, dflt: number) => Number(process.env[name] ?? dflt);
 
 async function main() {
-  const printful = createMockPrintful({ clock: systemClock });
+  const printful = createMockPrintful({
+    clock: systemClock,
+    webhook: {
+      target: `${SHOP_URL}/webhooks/printful`,
+      secretHex: process.env.MOCK_PRINTFUL_WEBHOOK_SECRET ?? 'e2e0'.repeat(16),
+      publicKey: process.env.MOCK_PRINTFUL_WEBHOOK_PUBLIC_KEY ?? 'mock-pf-public-key-e2e',
+    },
+  });
   const stripe = createMockStripe({
     clock: systemClock,
     webhookSecret: process.env.MOCK_STRIPE_WEBHOOK_SECRET ?? 'mock-whsec-e2e',

@@ -95,6 +95,26 @@ export interface FulfilmentProvider {
   deleteOrder(providerOrderId: string): Promise<'deleted' | 'refused'>;
   /** v1 cancel of a confirmed order not yet in production. */
   cancel(providerOrderId: string): Promise<'canceled' | 'not_cancellable'>;
+  /** Carrier, tracking and estimates come from here, not from webhook bodies (06 §5). */
+  getShipments(providerOrderId: string): Promise<Shipment[]>;
+}
+
+export interface Shipment {
+  id: string;
+  carrier: string | null;
+  service: string | null;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  estimatedFrom: string | null;
+  estimatedTo: string | null;
+  /** As Printful reports them: pending, onhold, canceled, packaged, shipped, returned, outstock. */
+  shipmentStatus: string;
+  /** unknown, delivered, pre_transit, in_transit, out_for_delivery, available_for_pickup, return_to_sender, failure, canceled. */
+  deliveryStatus: string;
+  isReshipment: boolean;
+  items: unknown[];
 }
 
 /** Normalised order status (06 §2). */

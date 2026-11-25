@@ -486,7 +486,24 @@ ${payForm}`,
 
   function orderPage(req: Request, res: Response, o: Record<string, unknown>) {
     const items = d.orders.prepare('SELECT * FROM order_items WHERE order_id = ? ORDER BY id').all(String(o.id)) as Array<Record<string, unknown>>;
-    const shipped = (d.orders.prepare('SELECT COUNT(*) n FROM shipments WHERE order_id = ?').get(String(o.id)) as { n: number }).n > 0;
+    const parcels = d.orders
+      .prepare("SELECT * FROM shipments WHERE order_id = ? AND shipment_status != 'canceled' ORDER BY shipped_at, id")
+      .all(String(o.id)) as Array<Record<string, string | null>>;
+    const shipped = parcels.length > 0;
+    const parcelLine = (p: Record<string, string | null>, n: number) => {
+      const state =
+        p.delivery_status === 'delivered' ? `delivered${p.delivered_at ? ` on ${p.delivered_at.slice(0, 10)}` : ''}`
+        : p.delivery_status === 'return_to_sender' || p.shipment_status === 'returned' ? 'returned to sender'
+        : p.delivery_status === 'failure' ? 'delivery failed'
+        : `on its way${p.estimated_to ? `, expected ${p.estimated_from && p.estimated_from !== p.estimated_to ? `${p.estimated_from} to ` : ''}${p.estimated_to}` : ''}`;
+      const track = p.tracking_number
+        ? p.tracking_url && /^https:\/\//.test(p.tracking_url)
+          ? `, tracking <a href="${esc(p.tracking_url)}" rel="noopener noreferrer">${esc(p.tracking_number)}</a>`
+          : `, tracking ${esc(p.tracking_number)}`
+        : '';
+      return `<li>Parcel ${n + 1}: ${esc(p.carrier ?? 'carrier')}${p.service ? ` (${esc(p.service)})` : ''}${track}; ${esc(state)}.</li>`;
+    };
+    const parcelList = parcels.length ? `<h2>Parcels</h2><ul class="parcels">${parcels.map(parcelLine).join('')}</ul>` : '';
     const st = customerStatus({ payment_state: String(o.payment_state), fulfilment_state: String(o.fulfilment_state), refunded_cents: Number(o.refunded_cents), shippedSomething: shipped });
     const created = new Date(String(o.created_at)).toISOString().slice(0, 10);
     const lines = items.map((i) => `<tr><th scope="row">${esc(String(i.name))}</th><td>${i.quantity} × $${formatCents(Number(i.unit_cents))}</td></tr>`).join('');
@@ -501,6 +518,7 @@ ${payForm}`,
       body: `${refresh}<h1>Order ${esc(String(o.number))}</h1>
 <p class="status" role="status"><strong>${esc(st.text)}</strong></p>
 <p>Ordered on ${created}. Ships to ${esc(String(o.ship_name ?? ''))}, ${esc(String(o.ship_city ?? ''))}, ${esc(String(o.ship_state ?? ''))}.</p>
+${parcelList}
 <table class="lines"><tbody>${lines}</tbody></table>
 <p>Shipping: $${formatCents(Number(o.shipping_cents))}</p>
 ${paid}${partly}

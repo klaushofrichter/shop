@@ -16,6 +16,7 @@ import {
   type ProviderFile,
   type ProviderOrder,
   type ProviderOrderStatus,
+  type Shipment,
   type ShippingRate,
   type StoreIdentity,
   type VariantSpec,
@@ -223,6 +224,24 @@ export class PrintfulClient implements FulfilmentProvider {
       if (e instanceof ProviderError && e.kind === 'permanent') return 'not_cancellable';
       throw e;
     }
+  }
+
+  async getShipments(providerOrderId: string): Promise<Shipment[]> {
+    const res = await this.call('GET', `/v2/orders/${encodeURIComponent(providerOrderId)}/shipments?limit=100`);
+    const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+    return ((res.data ?? []) as Json[]).map((d) => {
+      const est = (d.estimated_delivery ?? {}) as Json;
+      return {
+        id: String(d.id),
+        carrier: str(d.carrier), service: str(d.service),
+        trackingNumber: str(d.tracking_number), trackingUrl: str(d.tracking_url),
+        shippedAt: str(d.shipped_at), deliveredAt: str(d.delivered_at),
+        estimatedFrom: str(est.from_date), estimatedTo: str(est.to_date),
+        shipmentStatus: String(d.shipment_status ?? 'pending'), deliveryStatus: String(d.delivery_status ?? 'unknown'),
+        isReshipment: d.is_reshipment === true,
+        items: Array.isArray(d.shipment_items) ? d.shipment_items : [],
+      };
+    });
   }
 
   /**

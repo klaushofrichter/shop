@@ -31,9 +31,12 @@ export class ProviderStatus {
   verified = false;
   since: number;
   alerted = false;
+  /** The store the token sees, once verified: webhook bodies must carry it (06 §3). */
+  storeId?: string;
   constructor(clock: Clock, initial: Verification) {
     this.since = clock.now();
     this.verified = initial.state === 'verified';
+    if (initial.state === 'verified') this.storeId = initial.storeId;
   }
 }
 
@@ -77,6 +80,7 @@ export function registerProviderJobs(runner: JobRunner, d: ProviderJobDeps): voi
       }
       if (v.state === 'verified') {
         d.status.verified = true;
+        d.status.storeId = v.storeId;
         d.log({ level: 'info', msg: 'Printful verified' });
         enqueue(d.orders, d.clock, 'catalog.check', 'all');
         return;
