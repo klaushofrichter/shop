@@ -1,17 +1,17 @@
 {
-  "_comment": "Launch SKUs (docs/design/04 §2, ADR-0033). Prices are Klaus's: placeholder prices are refused in live mode. Quantity limits are deployment configuration (SKU_MAX_QUANTITY), not here.",
+  "_comment": "Launch SKUs (docs/design/04 §2, ADR-0033). Prices are Klaus's (ADR-0041, 2026-11-25); a SKU marked placeholderPrice is refused in live mode. Quantity limits are deployment configuration (SKU_MAX_QUANTITY), not here.",
   "minDpiPaper": 180,
   "skus": [
-    { "id": "postcard-4x6", "name": "Postcard 4 × 6 in", "kind": "paper", "provider": "printful", "productId": 433, "variants": { "any": 11513 }, "printAreaIn": [6.14, 4.13], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 400, "placeholderPrice": true },
-    { "id": "print-6x8", "name": "Art print 6 × 8 in", "kind": "paper", "provider": "printful", "productId": 1, "variants": { "any": 48489 }, "printAreaIn": [6, 8], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 2500, "placeholderPrice": true },
-    { "id": "print-8x10", "name": "Art print 8 × 10 in", "kind": "paper", "provider": "printful", "productId": 1, "variants": { "any": 4463 }, "printAreaIn": [8, 10], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 3200, "placeholderPrice": true },
-    { "id": "print-12x16", "name": "Art print 12 × 16 in", "kind": "paper", "provider": "printful", "productId": 1, "variants": { "any": 1349 }, "printAreaIn": [12, 16], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 4500, "placeholderPrice": true },
-    { "id": "framed-8x10-black", "name": "Framed print 8 × 10 in, black frame", "kind": "paper", "provider": "printful", "productId": 2, "variants": { "any": 4651 }, "printAreaIn": [8, 10], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 5900, "placeholderPrice": true },
-    { "id": "framed-12x16-black", "name": "Framed print 12 × 16 in, black frame", "kind": "paper", "provider": "printful", "productId": 2, "variants": { "any": 1350 }, "printAreaIn": [12, 16], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 7900, "placeholderPrice": true },
-    { "id": "mug-11oz", "name": "Mug 11 oz", "kind": "mug", "provider": "printful", "productId": 19, "variants": { "any": 1320 }, "printAreaIn": [9, 3.5], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 1800, "placeholderPrice": true },
-    { "id": "tshirt-white-s", "name": "T-shirt, white, S", "kind": "apparel", "provider": "printful", "productId": 71, "variants": { "any": 4011 }, "printAreaIn": [12, 16], "dpi": 150, "taxCode": "txcd_30011000", "priceCents": 2600, "placeholderPrice": true },
-    { "id": "tshirt-white-m", "name": "T-shirt, white, M", "kind": "apparel", "provider": "printful", "productId": 71, "variants": { "any": 4012 }, "printAreaIn": [12, 16], "dpi": 150, "taxCode": "txcd_30011000", "priceCents": 2600, "placeholderPrice": true },
-    { "id": "tshirt-white-l", "name": "T-shirt, white, L", "kind": "apparel", "provider": "printful", "productId": 71, "variants": { "any": 4013 }, "printAreaIn": [12, 16], "dpi": 150, "taxCode": "txcd_30011000", "priceCents": 2600, "placeholderPrice": true },
-    { "id": "tshirt-white-xl", "name": "T-shirt, white, XL", "kind": "apparel", "provider": "printful", "productId": 71, "variants": { "any": 4014 }, "printAreaIn": [12, 16], "dpi": 150, "taxCode": "txcd_30011000", "priceCents": 2600, "placeholderPrice": true }
+    { "id": "postcard-4x6", "name": "Postcard 4 × 6 in", "kind": "paper", "provider": "printful", "productId": 433, "variants": { "any": 11513 }, "printAreaIn": [6.14, 4.13], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 400 },
+    { "id": "print-6x8", "name": "Art print 6 × 8 in", "kind": "paper", "provider": "printful", "productId": 1, "variants": { "any": 48489 }, "printAreaIn": [6, 8], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 2500 },
+    { "id": "print-8x10", "name": "Art print 8 × 10 in", "kind": "paper", "provider": "printful", "productId": 1, "variants": { "any": 4463 }, "printAreaIn": [8, 10], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 3200 },
+    { "id": "print-12x16", "name": "Art print 12 × 16 in", "kind": "paper", "provider": "printful", "productId": 1, "variants": { "any": 1349 }, "printAreaIn": [12, 16], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 4500 },
+    { "id": "framed-8x10-black", "name": "Framed print 8 × 10 in, black frame", "kind": "paper", "provider": "printful", "productId": 2, "variants": { "any": 4651 }, "printAreaIn": [8, 10], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 5900 },
+    { "id": "framed-12x16-black", "name": "Framed print 12 × 16 in, black frame", "kind": "paper", "provider": "printful", "productId": 2, "variants": { "any": 1350 }, "printAreaIn": [12, 16], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 7900 },
+    { "id": "mug-11oz", "name": "Mug 11 oz", "kind": "mug", "provider": "printful", "productId": 19, "variants": { "any": 1320 }, "printAreaIn": [9, 3.5], "dpi": 300, "taxCode": "txcd_99999999", "priceCents": 1800 },
+    { "id": "tshirt-white-s", "name": "T-shirt, white, S", "kind": "apparel", "provider": "printful", "productId": 71, "variants": { "any": 4011 }, "printAreaIn": [12, 16], "dpi": 150, "taxCode": "txcd_30011000", "priceCents": 2600 },
+    { "id": "tshirt-white-m", "name": "T-shirt, white, M", "kind": "apparel", "provider": "printful", "productId": 71, "variants": { "any": 4012 }, "printAreaIn": [12, 16], "dpi": 150, "taxCode": "txcd_30011000", "priceCents": 2600 },
+    { "id": "tshirt-white-l", "name": "T-shirt, white, L", "kind": "apparel", "provider": "printful", "productId": 71, "variants": { "any": 4013 }, "printAreaIn": [12, 16], "dpi": 150, "taxCode": "txcd_30011000", "priceCents": 2600 },
+    { "id": "tshirt-white-xl", "name": "T-shirt, white, XL", "kind": "apparel", "provider": "printful", "productId": 71, "variants": { "any": 4014 }, "printAreaIn": [12, 16], "dpi": 150, "taxCode": "txcd_30011000", "priceCents": 2600 }
   ]
 }

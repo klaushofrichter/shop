@@ -30,12 +30,11 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 ## Waiting for Klaus
 
-- Retail prices per product (`config/skus.json`; the current ones are placeholders and a live start refuses them).
 - The return address in Printful's store settings (the packing slip itself carries only an e-mail, a phone, a message and a logo).
 
 ## Settled on 2026-11-25
 
-- Every work of art, every product (ADR-0040); prices per product.
+- Every work of art, every product (ADR-0040); prices per product, the launch prices accepted (ADR-0041).
 - Packing-slip contact: Klaus gave the e-mail and phone. They go into the cluster's configuration (`PACKING_SLIP_EMAIL`, `PACKING_SLIP_PHONE`), not into this public repository.
 - `STATUS_TOKEN_SECRET` is in the node's `.env` (Cluster). `scripts/create-secrets.sh` (step 9) must list it for `shop-env`.
 
