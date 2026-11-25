@@ -47,7 +47,7 @@ export interface PayOptions {
 const TAX: Record<string, { rate: number; shipping: boolean }> = { TX: { rate: 0.0825, shipping: true }, NY: { rate: 0.08, shipping: false } };
 
 const ALLOWED_SESSION_PARAMS = new Set([
-  'mode', 'customer', 'client_reference_id', 'metadata', 'payment_intent_data', 'payment_method_types', 'line_items',
+  'mode', 'customer', 'client_reference_id', 'metadata', 'payment_intent_data', 'allowed_payment_method_types', 'line_items',
   'shipping_options', 'custom_text', 'billing_address_collection', 'automatic_tax', 'consent_collection',
   'allow_promotion_codes', 'expires_at', 'success_url', 'cancel_url', 'customer_update',
 ]);
@@ -73,6 +73,8 @@ export function createMockStripe(opts: MockStripeOptions) {
     /** The next refund ends `failed` (refund.failed). */
     /** The next session create answers 503 without making a session. */
     failNextSessionCreate: false,
+    /** The next session create is refused with this Stripe error (400). */
+    rejectNextSessionCreate: undefined as Json | undefined,
     failNextRefund: false,
     /** The next refund stays `pending` until settled with settleRefund(). */
     pendingNextRefund: false,
@@ -184,18 +186,25 @@ ${ses.customText ? `<p>${esc(ses.customText)}</p>` : ''}
 
   // ---- checkout sessions ----
   app.post('/v1/checkout/sessions', (req, res) => {
+    if (s.rejectNextSessionCreate) {
+      const error = s.rejectNextSessionCreate;
+      s.rejectNextSessionCreate = undefined;
+      return res.status(400).json({ error });
+    }
     if (s.failNextSessionCreate) {
       s.failNextSessionCreate = false;
       return res.status(503).json({ error: { message: 'mock: service unavailable', type: 'api_error' } });
     }
     const b = req.body as Json;
+    // Removed in the pinned version (2026-11-18.endive), as Stripe answers it.
+    if ('payment_method_types' in b) return fail(res, 400, 'The `payment_method_types` parameter is no longer supported when creating a Checkout Session. To limit this session to specific payment methods (for example, card only), use `allowed_payment_method_types`.', { param: 'payment_method_types' });
     const unknown = Object.keys(b).find((k) => !ALLOWED_SESSION_PARAMS.has(k));
     if (unknown) return fail(res, 400, `Received unknown parameter: ${unknown}`, { param: unknown });
     if (b.mode !== 'payment') return fail(res, 400, 'mock: mode must be payment', { param: 'mode' });
     const customer = s.customers.get(String(b.customer ?? ''));
     if (!customer) return fail(res, 400, `No such customer: '${b.customer}'`, { param: 'customer', code: 'resource_missing' });
-    const pmt = Object.values((b.payment_method_types as Json) ?? {});
-    if (!pmt.length || pmt.some((p) => p !== 'card' && p !== 'link')) return fail(res, 400, 'mock: payment_method_types must be card and/or link', { param: 'payment_method_types' });
+    const pmt = Object.values((b.allowed_payment_method_types as Json) ?? {});
+    if (!pmt.length || pmt.some((p) => p !== 'card' && p !== 'link')) return fail(res, 400, 'mock: allowed_payment_method_types must be card and/or link', { param: 'allowed_payment_method_types' });
     const items = Object.values((b.line_items as Json) ?? {}) as Json[];
     if (!items.length) return fail(res, 400, 'Missing required param: line_items.', { param: 'line_items' });
     const state = String((customer.address as Json | undefined)?.state ?? '');

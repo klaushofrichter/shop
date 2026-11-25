@@ -43,7 +43,7 @@ function sessionParams(customer: string, lines = 1, over: Record<string, unknown
   return {
     mode: 'payment', customer, client_reference_id: 'ord1', metadata: { order_id: 'ord1' },
     payment_intent_data: { metadata: { order_id: 'ord1' }, description: 'Order 48213' },
-    payment_method_types: ['card', 'link'],
+    allowed_payment_method_types: ['card', 'link'],
     line_items: Array.from({ length: lines }, (_, i) => ({
       quantity: 1,
       price_data: { currency: 'usd', unit_amount: 1000, tax_behavior: 'exclusive', product_data: { name: `Item ${i}`, tax_code: 'txcd_99999999', metadata: { order_item_id: `oi${i}` } } },
@@ -96,6 +96,8 @@ describe('the client against mock Stripe', () => {
   it('refuses unknown parameters, negative amounts and other API versions', async () => {
     const c = await stripe().createCustomer({}, 'k3');
     await expect(stripe().createCheckoutSession(sessionParams(c.id, 1, { shipping_adress_collection: 'x' }), 'k4')).rejects.toMatchObject({ kind: 'permanent', param: 'shipping_adress_collection' });
+    // Removed in the pinned version (cluster test mode, 2026-11-25): Stripe answers 400 with this param.
+    await expect(stripe().createCheckoutSession(sessionParams(c.id, 1, { payment_method_types: ['card'] }), 'k4b')).rejects.toMatchObject({ kind: 'permanent', param: 'payment_method_types' });
     const neg = sessionParams(c.id);
     (neg.line_items[0].price_data as { unit_amount: number }).unit_amount = -1;
     await expect(stripe().createCheckoutSession(neg, 'k5')).rejects.toMatchObject({ message: 'stripe: Invalid non-negative integer', param: 'line_items[0][price_data][unit_amount]' });

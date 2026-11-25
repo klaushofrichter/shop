@@ -12,7 +12,7 @@ import type { SkuCatalog } from '../catalog-config';
 import { iso } from '../clock';
 import type { FailSafeLimits } from '../config';
 import { transaction, type Db } from '../db';
-import { StripeError } from '../payments/stripe';
+import { StripeError, stripeErrorDetail } from '../payments/stripe';
 import { itemsOfCart, shippingLabel, type AddressInput, type QuoteItem, type QuoteOption } from '../public/quote';
 import { recordEvent } from './holds';
 import { drawOrderNumber, newOrderId, statusUrl } from './ids';
@@ -177,7 +177,7 @@ async function createStripeSession(d: CheckoutDeps, orderId: string): Promise<Ch
     if (err instanceof StripeError && (err.kind === 'permanent' || err.kind === 'auth' || err.kind === 'idempotency')) {
       // Stripe answered: no session exists (05 §3 errors).
       closeUnpaid(d.orders, d.clock, orderId, 'checkout');
-      d.log({ level: err.kind === 'permanent' ? 'warn' : 'alert', msg: 'checkout refused by Stripe', order: orderId, code: err.code });
+      d.log({ level: err.kind === 'permanent' ? 'warn' : 'alert', msg: 'checkout refused by Stripe', order: orderId, ...stripeErrorDetail(err) });
       if (err.code === 'customer_tax_location_invalid') return { kind: 'address', message: 'Stripe could not use this address for sales tax. Please check it.' };
       return { kind: 'unavailable' };
     }
@@ -204,7 +204,8 @@ function sessionParams(d: CheckoutDeps, orderId: string, number: string, custome
       description: `Order ${number}`,
       shipping: { name: a.name, address: { line1: a.line1, line2: a.line2, city: a.city, state: a.state, postal_code: a.zip, country: 'US' } },
     },
-    payment_method_types: ['card', 'link'],
+    // API 2026-11-18.endive refuses payment_method_types on Checkout Sessions (changelog 2026-09-30).
+    allowed_payment_method_types: ['card', 'link'],
     line_items: items.map((i, k) => {
       const sku = d.skus.byId.get(i.skuId)!;
       const image = d.catalog
