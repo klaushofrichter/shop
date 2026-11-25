@@ -24,6 +24,10 @@ jobs:
     timeout-minutes: 25
     env:
       BASE_URL: https://shop.klaushofrichter.net
+      # The site is behind the preview gate until go-live (ADR-0039): the tests
+      # check the gate instead of the pages, and Lighthouse audits the gate's
+      # page, which carries noindex. Set to off with the gate (12 §4).
+      PREVIEW_GATE: 'on'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -47,10 +51,15 @@ jobs:
           set -euo pipefail
           PW=$(node -p "require('@playwright/test/package.json').version")
           docker run --rm --ipc=host -v "$PWD:/work" -w /work \
-            -e CI=true -e BASE_URL -e EXPECT_VERSION \
+            -e CI=true -e BASE_URL -e EXPECT_VERSION -e PREVIEW_GATE \
             "mcr.microsoft.com/playwright:v${PW}-resolute" npx playwright test --grep @live
       - name: Lighthouse (Google PageSpeed) on the live site
-        run: scripts/lighthouse-gate.sh "$BASE_URL/"
+        run: |
+          if [ "$PREVIEW_GATE" = on ]; then
+            LH_SKIP_AUDITS=is-crawlable scripts/lighthouse-gate.sh "$BASE_URL/preview"
+          else
+            scripts/lighthouse-gate.sh "$BASE_URL/"
+          fi
       - name: Keep the reports when something failed
         if: failure()
         uses: actions/upload-artifact@v7

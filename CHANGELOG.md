@@ -5,3 +5,4 @@ then empties it on `main`.
 
 ## [Unreleased]
 
+- The preview page also has its own address, /preview.
