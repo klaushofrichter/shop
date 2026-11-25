@@ -44,7 +44,7 @@ Current state of the shop work, for whichever session picks it up next. Keep it 
 
 - Milestone 12, Claude as operator (ADR-0043, Accepted): read, diagnose and act through tools inside the shop process, used by a Claude session on the node; prices by pull request and deploy for now; a token API for Claude in the cloud is optional.
 
-1. Step 9 (in progress: `scripts/create-secrets.sh` done; the go-live recording tools done (`PRINTFUL_TRACE_UNTIL`, `cli.js export-recording`, 14 §7.3); first deployment in test mode is up behind the preview gate (Cluster, 2026-11-25), the first deploy through `production` follows; art's link; measure a render's peak memory in the pod with real originals; the CI test measures about 200 MiB of 384) in the order of `docs/design/13-plan-and-open-questions.md` §1.
+1. Step 9 (done except art's link: create-secrets.sh, the go-live recording tools (14 §7.3), the test-mode deployment behind the preview gate, released by Cluster's release-when-green since v2026.11.25.2 with a gate-aware live check; render memory in the pod 113 MiB peak for the largest original on the volume (10 MP), the app idle at about 47 Mi of 512, see 11 §1). Then step 10, in the order of `docs/design/13-plan-and-open-questions.md` §1.
 2. Before go-live (Klaus): request SES production access in us-east-1 (Account dashboard → Request production access; transactional, low volume; bounces and complaints forwarded to the business address, the account-level suppression list on). Mention the preview gate, since reviewers may open the site. The sandbox sends only to verified addresses, so customers would get no mail without it.
 
 ## Keys
