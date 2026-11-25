@@ -10,6 +10,7 @@ import { systemClock } from '../src/clock';
 import { createFakeArt } from './art/server';
 import { createMockPrintful } from './printful/server';
 import { createMockStripe } from './stripe/server';
+import { createMockSes } from './ses/server';
 
 const SHOP_URL = (process.env.SHOP_URL ?? 'http://localhost:8080').replace(/\/+$/, '');
 const port = (name: string, dflt: number) => Number(process.env[name] ?? dflt);
@@ -31,10 +32,12 @@ async function main() {
     webhookTarget: `${SHOP_URL}/webhooks/stripe`,
   });
   const art = await createFakeArt();
+  const ses = createMockSes({ accessKeyId: process.env.MOCK_SES_KEY_ID ?? 'mock_ses_e2e', secretAccessKey: process.env.MOCK_SES_SECRET ?? 'mock-ses-secret-e2e' });
   printful.app.listen(port('MOCK_PRINTFUL_PORT', 9101));
   stripe.app.listen(port('MOCK_STRIPE_PORT', 9102));
   art.listen(port('MOCK_ART_PORT', 9103));
-  console.log('mocks listening: printful 9101, stripe 9102, art 9103');
+  ses.app.listen(port('MOCK_SES_PORT', 9104));
+  console.log('mocks listening: printful 9101, stripe 9102, art 9103, ses 9104');
 }
 
 void main();

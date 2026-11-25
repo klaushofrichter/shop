@@ -30,6 +30,8 @@ import { registerSubmitJob } from './orders/submit';
 import { onStripeEvent, registerRefundJobs, scheduleDeadlines } from './orders/refunds';
 import { registerReconcileJob, scheduleReconcile } from './orders/reconcile';
 import { registerPurgeJob, schedulePurge } from './orders/purge';
+import { alertingLog, registerEmailJobs } from './email/jobs';
+import { SesClient } from './email/ses';
 import { registerPrintfulEventJob } from './orders/fulfilment-events';
 import { RetryLater } from './jobs';
 
@@ -51,13 +53,15 @@ export interface Shop {
   stop(): void;
 }
 
-const log = (line: Record<string, unknown>) => console.log(JSON.stringify(line));
+const baseLog = (line: Record<string, unknown>) => console.log(JSON.stringify(line));
 
 export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = systemClock): Shop {
   const config = loadConfig(env);
   const skus = loadSkus(config.skusConfig, config.mode);
   const sources = loadSources(config.sourcesConfig);
   const dbs = openDatabases(config.dataDir, config.mode);
+  // Every `alert` line also queues an e-mail to Klaus (09 §2).
+  const log = alertingLog(baseLog, dbs.orders, clock, { alertNewOrders: config.email.alertNewOrders });
   const runner = new JobRunner(dbs.orders, clock, log);
   const store = new FileStore(config.dataDir);
   const contentSources = createSources(sources, config.mode, undefined, config.mockSourceUrl);
@@ -90,7 +94,7 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
   // Status links (ADR-0037); mock mode without a secret gets a per-process one (links end with the process).
   const statusSecret = config.statusTokenSecret ?? randomBytes(32).toString('hex');
   const paymentDeps = stripe ? { orders: dbs.orders, clock, stripe, limits: config.limits, log } : undefined;
-  const refundDeps = stripe ? { orders: dbs.orders, clock, stripe, provider, log } : undefined;
+  const refundDeps = stripe ? { orders: dbs.orders, clock, stripe, provider, delayNoticeMs: config.email.delayNoticeMs, log } : undefined;
   if (refundDeps) {
     registerRefundJobs(runner, refundDeps);
     scheduleDeadlines(dbs.orders, clock);
@@ -113,14 +117,19 @@ export function startShop(env: NodeJS.ProcessEnv = process.env, clock: Clock = s
     });
   }
   if (provider) registerPrintfulEventJob(runner, { orders: dbs.orders, clock, provider, log });
-  // E-mails arrive with step 8: their jobs wait until then.
-  for (const kind of provider && stripe ? ['email.send'] : ['order.submit', 'email.send']) {
-    runner.register(kind, { maxAttempts: 1_000_000, run: async () => { throw new RetryLater(6 * 60 * 60_000, `${kind} is not built yet`); } });
+  // Without Printful or Stripe the submit job waits.
+  if (!(provider && stripe)) {
+    runner.register('order.submit', { maxAttempts: 1_000_000, run: async () => { throw new RetryLater(6 * 60 * 60_000, 'Printful or Stripe is not configured'); } });
   }
+  const ses = config.email.ses ? new SesClient(config.email.ses) : undefined;
+  registerEmailJobs(runner, {
+    orders: dbs.orders, clock, mode: config.mode, publicUrl: config.publicUrl, shopName: config.fulfilment.shopName,
+    statusSecret, email: config.email, ses, log,
+  });
   // Set once ready() has checked Printful's identity.
   let providerStatus: ProviderStatus | undefined;
   const app = createApp({
-    workerHealth: () => workerHealth(dbs.orders, clock, { checkReconciliation: !!(stripe && provider), checkAlerts: false, startedAtMs }),
+    workerHealth: () => workerHealth(dbs.orders, clock, { checkReconciliation: !!(stripe && provider), checkAlerts: !!(ses && config.email.alertTo), startedAtMs }),
     dataDir: config.dataDir,
     mockStripePages: config.mockStripePages,
     auth: {
