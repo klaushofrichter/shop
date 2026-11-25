@@ -42,7 +42,7 @@ const REASON_TEXT: Record<string, string> = {
   cost_guard: 'Printful costs more than allowed', provider_unavailable: 'Printful unavailable', fulfilment_blocked: 'submission blocked',
   amount_mismatch: 'payment does not match the order', provider_hold: 'on hold at Printful', early_fraud_warning: 'early fraud warning',
   dispute: 'dispute', refund_failed: 'refund failed', provider_refused: 'Printful refused the order', costs_failed: 'Printful could not price it',
-  provider_failed: 'failed at Printful', confirm_failed: 'Printful did not confirm', provider_canceled: 'cancelled by Printful',
+  provider_failed: 'failed at Printful', confirm_failed: 'Printful did not confirm', provider_canceled: 'cancelled by Printful', provider_order_missing: 'the draft is gone at Printful',
 };
 
 const when = (ms: number) => {

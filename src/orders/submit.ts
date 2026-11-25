@@ -138,7 +138,7 @@ export function adoptProviderOrder(db: Db, clock: Clock, orderId: string, attemp
     else if (po.status === 'failed') state = 'failed';
     else if (po.status === 'draft' && (a.state === 'submitting' || a.state === 'draft')) state = 'draft';
     db.prepare(
-      "UPDATE provider_orders SET provider_order_id = ?, status = ?, state = ?, costs_json = ?, updated_at = ? WHERE order_id = ? AND provider = 'printful' AND attempt = ?",
+      "UPDATE provider_orders SET provider_order_id = ?, status = ?, state = ?, costs_json = ?, updated_at = ?, failing_since = NULL WHERE order_id = ? AND provider = 'printful' AND attempt = ?",
     ).run(po.id, po.status, state, JSON.stringify(po.costs), now, orderId, attempt);
     if (newestAttempt(db, orderId)?.attempt !== attempt) return;
     const to = po.status === 'draft' && a.state === 'confirming' ? 'confirming' : FULFILMENT_OF[po.status];
@@ -304,11 +304,25 @@ export async function submitOrder(d: SubmitDeps, orderId: string): Promise<Submi
     if (e instanceof ProviderError) {
       if (e.kind === 'rate_limited') throw new RetryLater(e.retryAfterMs ?? 60_000, 'rate limited');
       if (e.kind === 'auth') throw e;
-      // unavailable / unknown: retry with backoff until the window closes, then a hold whose deadline refunds only if I4 holds.
-      const since = Date.parse(a.updated_at);
-      if (d.clock.now() - since > d.fulfilment.providerRetryWindowMs && a.state === 'submitting') {
-        hold(d, orderId, 'provider_unavailable', 'Printful unavailable past the retry window', { error: e.message.slice(0, 200) });
+      // A known draft that Printful no longer has: the attempt is gone (I4 holds); a new one is Klaus's decision (I5, review F4).
+      if (e.status === 404 && a.provider_order_id && (a.state === 'draft' || a.state === 'submitting')) {
+        transaction(d.orders, () => {
+          d.orders.prepare("UPDATE provider_orders SET state = 'deleted', last_error = ?, updated_at = ? WHERE order_id = ? AND provider = 'printful' AND attempt = ?").run('not found at Printful', iso(d.clock), orderId, a!.attempt);
+          moveFulfilment(d.orders, d.clock, orderId, 'canceled', 'job', a!.attempt, 'draft gone at Printful');
+        });
+        hold(d, orderId, 'provider_order_missing', 'the draft is gone at Printful', { attempt: a.attempt });
         return 'held';
+      }
+      // No answer, or an error: retry with backoff until the window closes, counted from the attempt's first
+      // failure in any state before the confirm (review F4); then a hold whose deadline refunds only if I4 holds.
+      if (a.state === 'submitting' || a.state === 'draft') {
+        const now = iso(d.clock);
+        d.orders.prepare("UPDATE provider_orders SET failing_since = COALESCE(failing_since, ?), last_error = ? WHERE order_id = ? AND provider = 'printful' AND attempt = ?").run(now, e.message.slice(0, 300), orderId, a.attempt);
+        const since = (d.orders.prepare("SELECT failing_since f FROM provider_orders WHERE order_id = ? AND provider = 'printful' AND attempt = ?").get(orderId, a.attempt) as { f: string }).f;
+        if (d.clock.now() - Date.parse(since) > d.fulfilment.providerRetryWindowMs) {
+          hold(d, orderId, 'provider_unavailable', 'Printful unavailable past the retry window', { attempt: a.attempt });
+          return 'held';
+        }
       }
     }
     throw e;
@@ -328,7 +342,8 @@ async function confirmAttempt(d: SubmitDeps, o: OrderRow, a: AttemptRow, po: Pro
   // A fresh read of the refunds at Stripe (06 §4 step 8, review A F13).
   const session = await d.stripe.getCheckoutSession(o.stripe_session_id!, true);
   const { charge } = chargeOf(session);
-  if (!charge || charge.amount_refunded > 0) {
+  // Only a full refund stops fulfilment; a partial one (goodwill in the Dashboard) is an event only (I7, review F3).
+  if (!charge || charge.amount_refunded >= charge.amount) {
     blocked(d, o.id, [charge ? 'refunded at Stripe' : 'no charge']);
     return 'blocked';
   }

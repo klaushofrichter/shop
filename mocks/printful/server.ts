@@ -66,7 +66,8 @@ export interface MockShipment {
   id: number;
   status: string;
   delivery: string;
-  shippedAt: number;
+  /** Unset while the parcel is `pending` (Printful lists shipments before they ship). */
+  shippedAt?: number;
   deliveredAt?: number;
 }
 
@@ -448,6 +449,8 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     if (clock.now() - o.created < COSTS_MS || o.costsFail) return fail(res, 400, 'BadRequest', 'Order costs are not calculated');
     o.status = 'pending';
     o.confirmedAt = clock.now();
+    // Printful may list a shipment before it ships (review F2): the parcel exists as `pending` from now on.
+    o.shipments.push({ id: nextShipmentId++, status: 'pending', delivery: 'unknown' });
     if (state.scenario.loseNextConfirmAnswer) {
       state.scenario.loseNextConfirmAnswer = false;
       return fail(res, 500, 'InternalServerError', 'mock scenario: answer lost');
@@ -484,10 +487,10 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
   const isoS = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
   const shipmentBody = (o: MockOrder, sh: MockShipment) => ({
     id: sh.id, order_id: o.id, order_external_id: o.externalId, carrier: 'USPS', service: 'USPS Ground Advantage',
-    shipment_status: sh.status, shipped_at: isoS(sh.shippedAt), delivery_status: sh.delivery, delivered_at: sh.deliveredAt ? isoS(sh.deliveredAt) : null,
+    shipment_status: sh.status, shipped_at: sh.shippedAt ? isoS(sh.shippedAt) : null, delivery_status: sh.delivery, delivered_at: sh.deliveredAt ? isoS(sh.deliveredAt) : null,
     departure_address: { country_name: 'United States', country_code: 'US', state_code: 'NC' }, is_reshipment: false,
     tracking_number: `9400000000000${sh.id}`, tracking_url: `https://tools.usps.com/go/TrackConfirmAction?tLabels=9400000000000${sh.id}`,
-    tracking_events: [], estimated_delivery: { from_date: isoS(sh.shippedAt + 2 * 86_400_000).slice(0, 10), to_date: isoS(sh.shippedAt + 5 * 86_400_000).slice(0, 10), calculated_at: isoS(sh.shippedAt) },
+    tracking_events: [], estimated_delivery: sh.shippedAt ? { from_date: isoS(sh.shippedAt + 2 * 86_400_000).slice(0, 10), to_date: isoS(sh.shippedAt + 5 * 86_400_000).slice(0, 10), calculated_at: isoS(sh.shippedAt) } : null,
     shipment_items: ((o.body.order_items ?? []) as Array<{ external_id?: string; quantity: number }>).map((i, k) => ({ id: o.id * 10 + k, order_item_id: o.id * 10 + k, order_item_external_id: i.external_id ?? null, quantity: i.quantity })),
     _links: { self: { href: `https://api.printful.com/v2/shipments/${sh.id}` } },
   });
@@ -521,8 +524,12 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
   }
   async function ship(id: number): Promise<number> {
     const o = state.orders.get(id)!;
-    const sh: MockShipment = { id: nextShipmentId++, status: 'shipped', delivery: 'in_transit', shippedAt: clock.now() };
-    o.shipments.push(sh);
+    let sh = o.shipments.find((x) => x.status === 'pending');
+    if (!sh) {
+      sh = { id: nextShipmentId++, status: 'pending', delivery: 'unknown' };
+      o.shipments.push(sh);
+    }
+    Object.assign(sh, { status: 'shipped', delivery: 'in_transit', shippedAt: clock.now() });
     o.status = 'fulfilled';
     await emit('shipment_sent', o, sh);
     return sh.id;

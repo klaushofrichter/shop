@@ -36,6 +36,7 @@ export const REASONS: Record<string, { kind: HoldKind; deadlineMs: number; actio
   risk: { kind: 'approval', deadlineMs: 72 * HOUR, action: 'refund' },
   cost_guard: { kind: 'attention', deadlineMs: 24 * HOUR, action: 'refund' },
   provider_unavailable: { kind: 'attention', deadlineMs: 72 * HOUR, action: 'refund' },
+  provider_order_missing: { kind: 'attention', deadlineMs: 72 * HOUR, action: 'refund' }, // the draft is gone at Printful (review F4)
   fulfilment_blocked: { kind: 'attention', deadlineMs: 24 * HOUR, action: 'alert' },
   amount_mismatch: { kind: 'attention', deadlineMs: 24 * HOUR, action: 'alert' },
   provider_hold: { kind: 'provider', deadlineMs: 24 * HOUR, action: 'alert' },

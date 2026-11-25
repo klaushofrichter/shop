@@ -36,6 +36,7 @@ interface OrderRow {
   cart_id: string | null;
   stripe_session_id: string | null;
   failsafe_checked_at: string | null;
+  checkout_quote_id: string | null;
 }
 
 
@@ -123,7 +124,12 @@ export async function applyPayment(d: PaymentDeps, sessionId: string): Promise<A
 
     // The cart is emptied and detached on the first paid transition (reviews A F12, B F10).
     if (order.cart_id) {
-      d.orders.prepare('DELETE FROM cart_items WHERE cart_id = ?').run(order.cart_id);
+      // Only if the cart is still the one this order was made from: a customer who came back,
+      // changed the cart and then paid the older session keeps what they added (review F8).
+      const cart = d.orders.prepare('SELECT open_order_id, quote_id FROM carts WHERE id = ?').get(order.cart_id) as { open_order_id: string | null; quote_id: string | null } | undefined;
+      if (cart?.open_order_id === order.id && cart.quote_id !== null && cart.quote_id === order.checkout_quote_id) {
+        d.orders.prepare('DELETE FROM cart_items WHERE cart_id = ?').run(order.cart_id);
+      }
       d.orders.prepare('UPDATE carts SET open_order_id = NULL, quote_id = NULL, updated_at = ? WHERE id = ? AND open_order_id = ?').run(now, order.cart_id, order.id);
     }
     queueEmail(d.orders, d.clock, order.id, 'confirmation');

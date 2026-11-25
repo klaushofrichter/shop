@@ -57,7 +57,7 @@ describe('reconciliation, forward (07 §5)', () => {
     const pf = [...h.printful.orders.values()][0];
     // Ship and deliver without webhooks reaching the shop.
     pf.status = 'fulfilled';
-    pf.shipments.push({ id: 41009999, status: 'shipped', delivery: 'delivered', shippedAt: h.clock.now(), deliveredAt: h.clock.now() });
+    Object.assign(pf.shipments[0], { status: 'shipped', delivery: 'delivered', shippedAt: h.clock.now(), deliveredAt: h.clock.now() });
     await runReconcile();
     expect(order(id).fulfilment_state).toBe('delivered');
     expect(order(id).completed_at).toBeTruthy();
@@ -68,7 +68,7 @@ describe('reconciliation, forward (07 §5)', () => {
     await settle();
     const pf = [...h.printful.orders.values()][0];
     pf.status = 'fulfilled';
-    pf.shipments.push({ id: 41009998, status: 'shipped', delivery: 'in_transit', shippedAt: h.clock.now() });
+    Object.assign(pf.shipments[0], { status: 'shipped', delivery: 'in_transit', shippedAt: h.clock.now() });
     await runReconcile();
     expect(order(id)).toMatchObject({ fulfilment_state: 'shipped', completed_at: null });
     h.clock.advance(46 * 24 * 3_600_000);
