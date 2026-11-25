@@ -11,13 +11,14 @@
  */
 import { rmSync } from 'node:fs';
 import path from 'node:path';
-import { iso, type Clock } from '../clock';
+import { DAY, iso, type Clock } from '../clock';
 import type { Mode } from '../config';
 import { transaction, type Db } from '../db';
 import type { FileStore } from '../images/store';
 import { enqueue, type JobRunner } from '../jobs';
 import type { StripeClient } from '../payments/stripe';
 import type { FulfilmentProvider } from '../providers/types';
+import { recordEvent } from './holds';
 
 export interface PurgeDeps {
   orders: Db;
@@ -30,7 +31,6 @@ export interface PurgeDeps {
   log: (line: Record<string, unknown>) => void;
 }
 
-const DAY = 24 * 60 * 60_000;
 
 export interface PurgeReport {
   personalData: number;
@@ -79,7 +79,7 @@ export async function purge(d: PurgeDeps): Promise<PurgeReport> {
              card_fingerprint = NULL, stripe_customer_id = NULL, purged_at = ?, updated_at = ? WHERE id = ? AND purged_at IS NULL`,
         )
         .run(iso(d.clock), iso(d.clock), o.id);
-      d.orders.prepare("INSERT INTO order_events (order_id, part, to_value, cause, at) VALUES (?, 'note', 'purged', 'job', ?)").run(o.id, iso(d.clock));
+      recordEvent(d.orders, d.clock, { orderId: o.id, part: 'note', to: 'purged', cause: 'job' });
     });
     rep.personalData++;
   }

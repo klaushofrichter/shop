@@ -1,7 +1,7 @@
 import path from 'node:path';
 import compression from 'compression';
 import express, { type Express } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { perClient } from './limiter';
 import { homePage, notFoundPage } from './pages';
 import { appVersion } from './version';
 import type { WorkerHealth } from './worker-health';
@@ -92,46 +92,31 @@ export function createApp(deps: AppDeps = {}): Express {
 
   // Files from disk are rate-limited per client. Generous: a picture page loads
   // a handful of images, and Printful fetches a print file once per use.
-  const fileLimiter = rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false });
+  const fileLimiter = perClient(60_000, 600);
 
-  // Display images (docs/design/04 §6): immutable, named by their hash.
-  // Outside the preview gate: Stripe fetches them for its checkout page.
+  // Content-addressed files from DATA_DIR: immutable, named by their hash, no listing.
+  // All three are outside the preview gate.
+  // - /img: display images (docs/design/04 §6); Stripe fetches them for its checkout page.
+  // - /mockups: Printful's previews, re-encoded without metadata (04 §7).
+  // - /files: print files (04 §5.4); Printful fetches them by URL when a file is
+  //   registered and when an order is made. Unguessable.
   if (deps.dataDir) {
-    const imgDir = path.resolve(deps.dataDir, 'img');
-    app.get('/img/:name', fileLimiter, (req, res, next) => {
-      const name = String(req.params.name);
-      if (!IMG_NAME.test(name)) return next();
-      res.setHeader('X-Robots-Tag', 'noindex');
-      res.sendFile(name, { root: imgDir, maxAge: '365d', immutable: true, dotfiles: 'deny' }, (err) => {
-        if (err) next();
+    const areas: Array<[area: string, name: RegExp, noindex: boolean]> = [
+      ['img', IMG_NAME, true],
+      ['mockups', MOCKUP_NAME, false],
+      ['files', FILE_NAME, true],
+    ];
+    for (const [area, pattern, noindex] of areas) {
+      const root = path.resolve(deps.dataDir, area);
+      app.get(`/${area}/:name`, fileLimiter, (req, res, next) => {
+        const name = String(req.params.name);
+        if (!pattern.test(name)) return next();
+        if (noindex) res.setHeader('X-Robots-Tag', 'noindex');
+        res.sendFile(name, { root, maxAge: '365d', immutable: true, dotfiles: 'deny' }, (err) => {
+          if (err) next();
+        });
       });
-    });
-  }
-
-  // Mockups (docs/design/04 §7): Printful's previews, re-encoded without metadata.
-  if (deps.dataDir) {
-    const mockupDir = path.resolve(deps.dataDir, 'mockups');
-    app.get('/mockups/:name', fileLimiter, (req, res, next) => {
-      const name = String(req.params.name);
-      if (!MOCKUP_NAME.test(name)) return next();
-      res.sendFile(name, { root: mockupDir, maxAge: '365d', immutable: true, dotfiles: 'deny' }, (err) => {
-        if (err) next();
-      });
-    });
-  }
-
-  // Print files (docs/design/04 §5.4): Printful fetches them by URL when a file
-  // is registered and when an order is made. Unguessable, immutable, no listing.
-  if (deps.dataDir) {
-    const filesDir = path.resolve(deps.dataDir, 'files');
-    app.get('/files/:name', fileLimiter, (req, res, next) => {
-      const name = String(req.params.name);
-      if (!FILE_NAME.test(name)) return next();
-      res.setHeader('X-Robots-Tag', 'noindex');
-      res.sendFile(name, { root: filesDir, maxAge: '365d', immutable: true, dotfiles: 'deny' }, (err) => {
-        if (err) next();
-      });
-    });
+    }
   }
 
   if (deps.webhooks) app.use(webhookRouter(deps.webhooks));

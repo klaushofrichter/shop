@@ -9,12 +9,13 @@
  * confirmation e-mail job. SQLite serialises writers, so the breaker count is
  * exact. Running it again changes nothing.
  */
-import { iso, type Clock } from '../clock';
+import { DAY, iso, type Clock } from '../clock';
 import type { FailSafeLimits } from '../config';
 import { getSetting, transaction, type Db } from '../db';
+import { queueEmail } from '../email/jobs';
 import { enqueue } from '../jobs';
-import type { CheckoutSession, Charge, PaymentIntent, StripeClient } from '../payments/stripe';
-import { openHold } from './holds';
+import { chargeOf, type StripeClient } from '../payments/stripe';
+import { openHold, recordEvent } from './holds';
 
 export interface PaymentDeps {
   orders: Db;
@@ -37,7 +38,6 @@ interface OrderRow {
   failsafe_checked_at: string | null;
 }
 
-const DAY = 24 * 60 * 60_000;
 
 export async function applyPayment(d: PaymentDeps, sessionId: string): Promise<ApplyResult> {
   const order = d.orders.prepare('SELECT * FROM orders WHERE stripe_session_id = ?').get(sessionId) as OrderRow | undefined;
@@ -51,8 +51,7 @@ export async function applyPayment(d: PaymentDeps, sessionId: string): Promise<A
     return 'not_paid';
   }
   const lines = await d.stripe.listLineItems(sessionId);
-  const pi = typeof session.payment_intent === 'object' ? (session.payment_intent as PaymentIntent) : undefined;
-  const charge = pi && typeof pi.latest_charge === 'object' ? (pi.latest_charge as Charge) : undefined;
+  const { paymentIntent: pi, charge } = chargeOf(session);
 
   // ---- the checks of 05 §4 ----
   const tax = session.total_details?.amount_tax ?? 0;
@@ -85,7 +84,7 @@ export async function applyPayment(d: PaymentDeps, sessionId: string): Promise<A
       const again = d.orders.prepare('SELECT payment_state, failsafe_checked_at FROM orders WHERE id = ?').get(order.id) as { payment_state: string; failsafe_checked_at: string | null };
       if (again.failsafe_checked_at || again.payment_state !== 'paid') return 'already';
     } else {
-      d.orders.prepare("INSERT INTO order_events (order_id, part, from_value, to_value, cause, cause_ref, at) VALUES (?, 'payment', ?, 'paid', 'stripe', ?, ?)").run(order.id, order.payment_state, sessionId, now);
+      recordEvent(d.orders, d.clock, { orderId: order.id, part: 'payment', from: order.payment_state, to: 'paid', cause: 'stripe', causeRef: sessionId, at: now });
     }
     const setTax = d.orders.prepare('UPDATE order_items SET tax_cents = ? WHERE id = ? AND order_id = ?');
     for (const [itemId, t] of lineTax) setTax.run(t, itemId, order.id);
@@ -127,7 +126,7 @@ export async function applyPayment(d: PaymentDeps, sessionId: string): Promise<A
       d.orders.prepare('DELETE FROM cart_items WHERE cart_id = ?').run(order.cart_id);
       d.orders.prepare('UPDATE carts SET open_order_id = NULL, quote_id = NULL, updated_at = ? WHERE id = ? AND open_order_id = ?').run(now, order.cart_id, order.id);
     }
-    enqueue(d.orders, d.clock, 'email.send', `${order.id}/confirmation`, { orderId: order.id, kind: 'confirmation' });
+    queueEmail(d.orders, d.clock, order.id, 'confirmation');
     return 'paid';
   });
   if (result === 'paid') d.log({ level: 'info', msg: 'payment applied', order: order.id });
@@ -140,10 +139,8 @@ export function closeUnpaid(orders: Db, clock: Clock, orderId: string, cause: st
     const now = iso(clock);
     const r = orders.prepare("UPDATE orders SET payment_state = 'closed_unpaid', updated_at = ? WHERE id = ? AND payment_state = 'checkout_open'").run(now, orderId);
     if (!Number(r.changes)) return false;
-    orders.prepare("INSERT INTO order_events (order_id, part, from_value, to_value, cause, at) VALUES (?, 'payment', 'checkout_open', 'closed_unpaid', ?, ?)").run(orderId, cause, now);
+    recordEvent(orders, clock, { orderId, part: 'payment', from: 'checkout_open', to: 'closed_unpaid', cause, at: now });
     orders.prepare('UPDATE carts SET open_order_id = NULL WHERE open_order_id = ?').run(orderId);
     return true;
   });
 }
-
-export type { CheckoutSession };

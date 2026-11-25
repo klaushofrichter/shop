@@ -9,6 +9,7 @@
  * - event id: SHA-256 of `type|occurred_at|order id|shipment id`, 32 hex.
  */
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { sameString } from '../crypto';
 
 export interface PrintfulEvent {
   eventId: string;
@@ -35,9 +36,7 @@ export function verifyPrintfulWebhook(
   nowMs: number,
 ): WebhookCheck {
   if (!headers.signature || !headers.publicKey) return { ok: false, reason: 'headers missing' };
-  const pk = Buffer.from(headers.publicKey);
-  const want = Buffer.from(cfg.publicKey);
-  if (pk.length !== want.length || !timingSafeEqual(pk, want)) return { ok: false, reason: 'public key' };
+  if (!sameString(headers.publicKey, cfg.publicKey)) return { ok: false, reason: 'public key' };
   const sig = Buffer.from(headers.signature, 'hex');
   const expected = Buffer.from(signPrintfulWebhook(raw, cfg.secretHex), 'hex');
   if (sig.length !== expected.length || !timingSafeEqual(sig, expected)) return { ok: false, reason: 'signature' };

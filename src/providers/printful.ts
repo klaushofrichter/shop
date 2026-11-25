@@ -4,7 +4,7 @@
  * response. Error messages are Printful's own (captured 2026-11-24), shown in
  * the admin, never parsed for behaviour except the duplicate external id.
  */
-import { parseCents } from '../money';
+import { formatCents, parseCents } from '../money';
 import {
   ProviderError,
   type Address,
@@ -184,13 +184,13 @@ export class PrintfulClient implements FulfilmentProvider {
         catalog_variant_id: i.variantId,
         external_id: i.externalId,
         quantity: i.quantity,
-        retail_price: (i.retailCents / 100).toFixed(2),
+        retail_price: formatCents(i.retailCents),
         name: i.name,
         ...(i.orientation ? { orientation: i.orientation } : {}),
         placements: [{ placement: i.placement, technique: i.technique, layers: [{ type: 'file', url: i.fileUrl }] }],
       })),
       customization: { packing_slip: slip },
-      retail_costs: { currency: 'USD', shipping: (o.retail.shippingCents / 100).toFixed(2), tax: (o.retail.taxCents / 100).toFixed(2) },
+      retail_costs: { currency: 'USD', shipping: formatCents(o.retail.shippingCents), tax: formatCents(o.retail.taxCents) },
     };
     return toOrder((await this.call('POST', '/v2/orders', body)).data as Json);
   }

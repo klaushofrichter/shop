@@ -6,7 +6,7 @@
  * are stored (review C F14).
  */
 import express, { type Router } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { perClient } from '../limiter';
 import { iso, type Clock } from '../clock';
 import { type Db } from '../db';
 import { enqueue, type JobRunner } from '../jobs';
@@ -23,7 +23,7 @@ export interface WebhookDeps {
 export function webhookRouter(d: WebhookDeps): Router {
   const r = express.Router();
   // Stripe sends a handful of events per order; generous, but bounded.
-  const limiter = rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false });
+  const limiter = perClient(60_000, 600);
   r.post('/webhooks/stripe', limiter, express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
     if (!d.stripeWebhookSecret) return res.status(503).json({ error: 'not configured' });
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);

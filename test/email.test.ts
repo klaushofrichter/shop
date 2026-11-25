@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig, ConfigError } from '../src/config';
+import { alertingLog } from '../src/email/jobs';
 import { signV4 } from '../src/email/ses';
+import { openHold } from '../src/orders/holds';
 import { requestFullRefund } from '../src/orders/refunds';
 import { paidOrder, startHarness, visitor, type Harness } from './helpers/harness';
 
@@ -156,5 +158,29 @@ describe('alerts (09 §2)', () => {
     await settle();
     expect(alerts()).toHaveLength(n);
     expect(db().prepare("SELECT value_json FROM settings WHERE key = 'alert_accepted_at'").get()).toBeTruthy();
+  });
+
+  it('the reminder before a refunding deadline goes out once per hold, not once per sweep', async () => {
+    const id = await paidOrder(h);
+    await settle();
+    openHold(db(), h.clock, id, ['amount'], 'job');
+    h.clock.advance(71 * 60 * 60_000); // an hour before the 72 h deadline
+    for (let minute = 0; minute < 10; minute++) {
+      h.clock.advance(60_000);
+      for (let i = 0; i < 5; i++) await h.shop.runner.tick();
+    }
+    expect(alerts().filter((m) => m.subject.includes('refunds automatically within 24 h'))).toHaveLength(1);
+  });
+
+  it('the same alert once a day, but an alert with different details the same day still goes out', async () => {
+    const log = alertingLog(() => undefined, db(), h.clock, { alertNewOrders: false });
+    const queued = () => (db().prepare("SELECT COUNT(*) n FROM jobs WHERE kind = 'alert.send'").get() as { n: number }).n;
+    const before = queued();
+    log({ level: 'alert', msg: 'reconciliation alarms', alarms: ['Printful order 1 is not the shop\'s'] });
+    await settle();
+    log({ level: 'alert', msg: 'reconciliation alarms', alarms: ['Printful order 1 is not the shop\'s'] });
+    expect(queued()).toBe(before + 1);
+    log({ level: 'alert', msg: 'reconciliation alarms', alarms: ['Printful order 1 is not the shop\'s', 'Stripe session cs_1 is paid but the shop has no order for it'] });
+    expect(queued()).toBe(before + 2);
   });
 });

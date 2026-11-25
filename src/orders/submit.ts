@@ -21,10 +21,10 @@ import { iso, type Clock } from '../clock';
 import type { Config, Mode, QuoteSettings } from '../config';
 import { transaction, type Db } from '../db';
 import { RetryLater, type JobRunner } from '../jobs';
-import type { StripeClient, Charge, PaymentIntent } from '../payments/stripe';
+import { chargeOf, type StripeClient } from '../payments/stripe';
 import { placementFor } from '../providers/checks';
 import { ProviderError, type DraftOrder, type FulfilmentProvider, type ProviderOrder, type ProviderOrderStatus } from '../providers/types';
-import { openHold } from './holds';
+import { openHold, recordEvent } from './holds';
 
 export interface SubmitDeps {
   orders: Db;
@@ -123,9 +123,7 @@ export function moveFulfilment(db: Db, clock: Clock, orderId: string, to: string
   const now = iso(clock);
   const r = db.prepare('UPDATE orders SET fulfilment_state = ?, updated_at = ? WHERE id = ? AND fulfilment_state = ?').run(to, now, orderId, o.fulfilment_state);
   if (!Number(r.changes)) return false;
-  db.prepare("INSERT INTO order_events (order_id, part, attempt, from_value, to_value, cause, note, at) VALUES (?, 'fulfilment', ?, ?, ?, ?, ?, ?)").run(
-    orderId, attempt, o.fulfilment_state, to, cause, note ?? null, now,
-  );
+  recordEvent(db, clock, { orderId, part: 'fulfilment', attempt, from: o.fulfilment_state, to, cause, note, at: now });
   return true;
 }
 
@@ -214,8 +212,7 @@ export type SubmitOutcome =
   | 'blocked'
   | 'held'
   | 'test_draft_ok'
-  | 'submitted'
-  | 'waiting';
+  | 'submitted';
 
 export async function submitOrder(d: SubmitDeps, orderId: string): Promise<SubmitOutcome> {
   const o = getOrder(d.orders, orderId);
@@ -330,8 +327,7 @@ async function confirmAttempt(d: SubmitDeps, o: OrderRow, a: AttemptRow, po: Pro
   }
   // A fresh read of the refunds at Stripe (06 §4 step 8, review A F13).
   const session = await d.stripe.getCheckoutSession(o.stripe_session_id!, true);
-  const pi = typeof session.payment_intent === 'object' ? (session.payment_intent as PaymentIntent) : undefined;
-  const charge = pi && typeof pi.latest_charge === 'object' ? (pi.latest_charge as Charge) : undefined;
+  const { charge } = chargeOf(session);
   if (!charge || charge.amount_refunded > 0) {
     blocked(d, o.id, [charge ? 'refunded at Stripe' : 'no charge']);
     return 'blocked';
@@ -380,8 +376,7 @@ export function registerSubmitJob(runner: JobRunner, d: SubmitDeps): void {
     backoffMs: (n) => Math.min(30_000 * 2 ** (n - 1), 30 * 60_000),
     async run(ctx) {
       const { orderId } = ctx.payload as { orderId: string };
-      const outcome = await submitOrder(d, orderId);
-      if (outcome === 'waiting') throw new RetryLater(COSTS_POLL_MS);
+      await submitOrder(d, orderId);
     },
   });
 }

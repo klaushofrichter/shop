@@ -231,4 +231,14 @@ ALTER TABLE orders ADD COLUMN checkout_quote_id TEXT;
   `
 ALTER TABLE order_items ADD COLUMN orientation TEXT;
 `,
+  // 4: indexes for the lookups that run all the time: the runner's lease every few
+  // seconds, and an order's rows on every order page, webhook and sweep.
+  `
+CREATE INDEX jobs_due ON jobs(state, run_after);
+CREATE INDEX order_items_order ON order_items(order_id);
+CREATE INDEX order_events_order ON order_events(order_id);
+CREATE INDEX refunds_order ON refunds(order_id);
+CREATE INDEX shipments_order ON shipments(order_id);
+CREATE INDEX orders_payment_intent ON orders(stripe_payment_intent);
+`,
 ];

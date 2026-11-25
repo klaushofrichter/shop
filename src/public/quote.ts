@@ -36,7 +36,7 @@ const LATIN = /^[\x20-\x7E -ɏ]*$/;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,}$/;
 
 /** Trimmed, whitespace collapsed, state upper-case, ZIP as 5 or 5-4 digits. */
-export function normaliseAddress(raw: Record<string, unknown>): { address?: AddressInput; errors: AddressErrors } {
+export function normaliseAddress(raw: Record<string, unknown>): { address?: AddressInput; errors: AddressErrors; zipMismatch?: boolean } {
   const s = (k: string, max: number) => String(raw[k] ?? '').replace(/\s+/g, ' ').trim().slice(0, max + 1);
   const a: AddressInput = {
     name: s('name', 100),
@@ -61,8 +61,9 @@ export function normaliseAddress(raw: Record<string, unknown>): { address?: Addr
   for (const k of ['name', 'line1', 'line2', 'city'] as const) {
     if (a[k] && !LATIN.test(a[k]!) && !e[k]) e[k] = 'Please use Latin letters: our printer can only print those.';
   }
-  if (!e.state && !e.zip && checkZip(a.state, a.zip) === 'mismatch') e.zip = `This ZIP code isn't in ${a.state}. Please check the ZIP code and the state.`;
-  return Object.keys(e).length ? { errors: e } : { address: a, errors: e };
+  const zipMismatch = !e.state && !e.zip && checkZip(a.state, a.zip) === 'mismatch';
+  if (zipMismatch) e.zip = `This ZIP code isn't in ${a.state}. Please check the ZIP code and the state.`;
+  return Object.keys(e).length ? { errors: e, zipMismatch } : { address: a, errors: e };
 }
 
 export interface QuoteItem {
@@ -84,6 +85,9 @@ export interface QuoteOption {
   maxDays?: number;
   parcels: number;
 }
+
+/** A shipping option's name as shown: Printful's name without its "(…)" delivery estimate. */
+export const shippingLabel = (name: string): string => name.replace(/\s*\(.*\)\s*$/, '');
 
 export interface QuoteDeps {
   catalog: Db;
@@ -177,7 +181,7 @@ export async function createQuote(d: QuoteDeps, cartId: string, address: Address
     return { id: r.id, name: r.name, cents: charged, minDays: r.minDays, maxDays: r.maxDays, parcels: r.parcels, estCostCents: m?.estCostCents, orderable: !!m && m.marginCents >= d.settings.marginFloorCents };
   });
   if (options.some((o) => !o.orderable)) {
-    // A misconfigured price, a changed wholesale price, or an unknown one: Klaus is told (alerts by e-mail with step 8).
+    // A misconfigured price, a changed wholesale price, or an unknown one: Klaus is told.
     d.log({ level: 'alert', msg: 'cost check failed at quote', skus: items.map((i) => i.skuId), options: options.filter((o) => !o.orderable).map((o) => o.id) });
   }
 

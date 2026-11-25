@@ -5,14 +5,14 @@
  * buttons, with the session id checked. Never mounted in test or live mode.
  */
 import express, { type Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import { perClient } from './limiter';
 
 const SESSION = /^cs_mock_[A-Za-z0-9_]{1,64}$/;
 const ACTIONS = ['pay', 'decline', 'cancel'] as const;
 
 export function mockPagesRouter(stripeBase: string): Router {
   const r = express.Router();
-  r.use('/__mock-pages', rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
+  r.use('/__mock-pages', perClient(60_000, 300));
 
   async function pass(res: express.Response, url: URL, method: 'GET' | 'POST') {
     const upstream = await fetch(url, { method, redirect: 'manual', ...(method === 'POST' ? { headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: '' } : {}) });

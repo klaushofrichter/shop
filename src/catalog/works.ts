@@ -5,8 +5,8 @@
  *   works the source no longer lists (offers kept), and returns the enabled
  *   works whose original needs a check.
  * - `checkOriginal` downloads an original, hashes it and, only when the hash
- *   changed, renders new display images (review 2 F4). Print files and
- *   mockups follow in later steps.
+ *   changed, renders new display images (review 2 F4). Print files are
+ *   src/catalog/offers.ts, mockups src/providers/jobs.ts.
  */
 import { iso, type Clock } from '../clock';
 import { printsAllowed, type SourceConfig } from '../catalog-config';

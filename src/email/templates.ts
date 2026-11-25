@@ -3,7 +3,7 @@
  * part, no images, no tracking, no marketing. Every e-mail carries the status
  * link. One vocabulary with the status page (07 §2.6).
  */
-import { formatCents } from '../money';
+import { usd as $ } from '../money';
 import { esc } from '../pages';
 
 export interface OrderView {
@@ -36,8 +36,6 @@ export interface Email {
   text: string;
   html: string;
 }
-
-const $ = (c: number) => `$${formatCents(c)}`;
 
 /** A piece of an e-mail, rendered to HTML (escaped) and to text separately: nothing is parsed back. */
 type Block = { p: string } | { list: string[] } | { link: { label: string; url: string }; before?: string };

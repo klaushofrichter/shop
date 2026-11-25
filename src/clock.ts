@@ -28,3 +28,8 @@ export class FakeClock implements Clock {
 export function iso(clock: Clock, offsetMs = 0): string {
   return new Date(clock.now() + offsetMs).toISOString();
 }
+
+/** Durations in milliseconds. */
+export const MINUTE = 60_000;
+export const HOUR = 60 * MINUTE;
+export const DAY = 24 * HOUR;

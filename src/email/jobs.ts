@@ -14,7 +14,8 @@ import { iso, type Clock } from '../clock';
 import type { Config, Mode } from '../config';
 import { setSetting, type Db } from '../db';
 import { enqueue, PermanentJobError, type JobRunner } from '../jobs';
-import { statusToken } from '../orders/ids';
+import { recordEvent } from '../orders/holds';
+import { statusUrl } from '../orders/ids';
 import { ALERT_ACCEPTED_KEY, ALERT_FAILED_KEY } from '../worker-health';
 import { SesError, type SesClient } from './ses';
 import { confirmationEmail, delayedEmail, linkEmail, refundedEmail, shippedEmail, type Email, type OrderView } from './templates';
@@ -68,7 +69,7 @@ function view(db: Db, orderId: string): (OrderView & { email: string | null }) |
 export function composeEmail(d: Pick<EmailDeps, 'orders' | 'publicUrl' | 'shopName' | 'statusSecret'>, p: Payload): (Email & { to: string | null }) | undefined {
   const o = view(d.orders, p.orderId);
   if (!o) return undefined;
-  const url = `${d.publicUrl}/order/${p.orderId}?t=${statusToken(d.statusSecret, p.orderId)}`;
+  const url = statusUrl(d, p.orderId);
   const kind = p.kind === 'shipment' ? 'shipped' : p.kind;
   let mail: Email;
   switch (kind) {
@@ -145,7 +146,7 @@ export async function sendCustomerEmail(d: EmailDeps, p: Payload): Promise<'sent
     throw e;
   }
   d.orders.prepare('UPDATE emails SET sent_at = ?, last_error = NULL WHERE order_id = ? AND kind = ? AND ref = ?').run(iso(d.clock), p.orderId, kind, ref);
-  d.orders.prepare("INSERT INTO order_events (order_id, part, to_value, cause, note, at) VALUES (?, 'email', ?, 'job', ?, ?)").run(p.orderId, kind, ref || null, iso(d.clock));
+  recordEvent(d.orders, d.clock, { orderId: p.orderId, part: 'email', to: kind, cause: 'job', note: ref || null });
   return 'sent';
 }
 
@@ -176,8 +177,12 @@ export function alertingLog(
     const fields = Object.fromEntries(Object.entries(line).filter(([k]) => ALERT_FIELDS.includes(k)));
     const msg = isNewOrder ? 'new paid order' : String(line.msg);
     const day = new Date(clock.now()).toISOString().slice(0, 10);
-    const key = String(line.alertKey ?? createHash('sha256').update(`${msg}|${String(line.order ?? '')}|${day}`).digest('hex').slice(0, 32));
+    // The same alert (message, order and details) once a day; different details are a different alert.
+    const key = String(line.alertKey ?? createHash('sha256').update(`${msg}|${JSON.stringify(fields)}|${day}`).digest('hex').slice(0, 32));
     try {
+      // Once per key: `enqueue` alone only refuses a duplicate while the first is still open,
+      // and a sent alert is done within seconds. An alert that could not be sent may go again.
+      if (orders.prepare("SELECT 1 FROM jobs WHERE kind = 'alert.send' AND key = ? AND state != 'failed'").get(key)) return;
       enqueue(orders, clock, 'alert.send', key, { msg, fields } satisfies AlertPayload);
     } catch {
       // An alert must never break the work that raised it.

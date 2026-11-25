@@ -17,3 +17,6 @@ export function formatCents(cents: number): string {
   const abs = Math.abs(cents);
   return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
+
+/** For display: "$10.89". */
+export const usd = (cents: number): string => `$${formatCents(cents)}`;

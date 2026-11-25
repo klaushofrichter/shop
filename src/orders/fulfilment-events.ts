@@ -8,13 +8,13 @@
  * newest attempt moves `fulfilment_state`.
  */
 import express, { type Router } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { perClient } from '../limiter';
 import { iso, type Clock } from '../clock';
 import { transaction, type Db } from '../db';
 import { enqueue, PermanentJobError, type JobRunner } from '../jobs';
 import { verifyPrintfulWebhook } from '../providers/printful-webhook';
 import { ProviderError, type FulfilmentProvider } from '../providers/types';
-import { openHold } from './holds';
+import { openHold, reasonsOf, resolveHolds } from './holds';
 import { adoptProviderOrder, moveFulfilment, newestAttempt, type AttemptRow } from './submit';
 
 export interface PrintfulWebhookDeps {
@@ -29,7 +29,7 @@ export interface PrintfulWebhookDeps {
 
 export function printfulWebhookRouter(d: PrintfulWebhookDeps): Router {
   const r = express.Router();
-  const limiter = rateLimit({ windowMs: 60_000, limit: 600, standardHeaders: 'draft-8', legacyHeaders: false });
+  const limiter = perClient(60_000, 600);
   r.post('/webhooks/printful', limiter, express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
     const storeId = d.storeId();
     if (!d.secretHex || !d.publicKey || !storeId) return res.status(503).json({ error: 'not ready' });
@@ -63,7 +63,7 @@ const SHIPMENT_TROUBLE = new Set(['shipment_put_hold', 'shipment_put_hold_approv
 
 function hold(d: FulfilmentEventDeps, orderId: string, reason: string) {
   const open = d.orders.prepare('SELECT reasons_json FROM holds WHERE order_id = ? AND resolved_at IS NULL').all(orderId) as Array<{ reasons_json: string }>;
-  if (!open.some((h) => (JSON.parse(h.reasons_json) as string[]).includes(reason))) openHold(d.orders, d.clock, orderId, [reason], 'printful_webhook');
+  if (!open.some((h) => reasonsOf(h).includes(reason))) openHold(d.orders, d.clock, orderId, [reason], 'printful_webhook');
 }
 
 /** Upsert the attempt's shipments; all delivered → `delivered` and complete (07 §2.7). New parcels get their e-mail. */
@@ -146,10 +146,7 @@ export async function applyPrintfulEvent(d: FulfilmentEventDeps, eventId: string
       note('Printful put the order on hold');
       return 'provider hold';
     case 'order_remove_hold': {
-      const r = d.orders
-        .prepare("UPDATE holds SET resolved_at = ?, resolved_by = 'printful', resolution = 'cleared' WHERE order_id = ? AND kind = 'provider' AND resolved_at IS NULL")
-        .run(iso(d.clock), a.order_id);
-      return Number(r.changes) ? 'hold cleared' : 'no hold';
+      return resolveHolds(d.orders, d.clock, { orderId: a.order_id, kind: 'provider' }, 'cleared', 'printful') ? 'hold cleared' : 'no hold';
     }
     case 'order_refunded':
       note('Printful refunded the store');

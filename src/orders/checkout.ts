@@ -9,12 +9,13 @@
  *    Session; 6. the ids stored, and the customer sent to Stripe.
  */
 import type { SkuCatalog } from '../catalog-config';
-import { iso, type Clock } from '../clock';
+import { iso } from '../clock';
 import type { FailSafeLimits } from '../config';
 import { transaction, type Db } from '../db';
-import { StripeError, type StripeClient } from '../payments/stripe';
-import { itemsOfCart, type AddressInput, type QuoteItem, type QuoteOption } from '../public/quote';
-import { drawOrderNumber, newOrderId, statusToken } from './ids';
+import { StripeError } from '../payments/stripe';
+import { itemsOfCart, shippingLabel, type AddressInput, type QuoteItem, type QuoteOption } from '../public/quote';
+import { recordEvent } from './holds';
+import { drawOrderNumber, newOrderId, statusUrl } from './ids';
 import { applyPayment, closeUnpaid, type PaymentDeps } from './payment';
 
 export const SESSION_TTL_S = 30 * 60;
@@ -42,10 +43,6 @@ interface QuoteRow {
   address_json: string;
   options_json: string;
   expires_at: string;
-}
-
-export function statusUrl(d: Pick<CheckoutDeps, 'publicUrl' | 'statusSecret'>, orderId: string, from?: string): string {
-  return `${d.publicUrl}/order/${orderId}?t=${statusToken(d.statusSecret, orderId)}${from ? `&from=${from}` : ''}`;
 }
 
 export async function startCheckout(d: CheckoutDeps, cartId: string, quoteId: string, shippingId: string): Promise<CheckoutResult> {
@@ -131,7 +128,7 @@ export async function startCheckout(d: CheckoutDeps, cartId: string, quoteId: st
       if (!pf) throw new Error('print file missing at checkout');
       ins.run(`${orderId}-${k + 1}`, orderId, i.sourceId, i.workId, i.skuId, `${i.name} — ${i.title}`, i.variantId, i.unitCents, i.quantity, pf.print_file_sha, pf.orientation);
     });
-    d.orders.prepare("INSERT INTO order_events (order_id, part, to_value, cause, at) VALUES (?, 'payment', 'checkout_open', 'storefront', ?)").run(orderId, ts);
+    recordEvent(d.orders, d.clock, { orderId, part: 'payment', to: 'checkout_open', cause: 'storefront', at: ts });
     d.orders.prepare('UPDATE carts SET open_order_id = ?, updated_at = ? WHERE id = ?').run(orderId, ts, cartId);
     return n;
   });
@@ -206,7 +203,7 @@ function sessionParams(d: CheckoutDeps, orderId: string, number: string, custome
         shipping_rate_data: {
           type: 'fixed_amount',
           fixed_amount: { amount: option.cents, currency: 'usd' },
-          display_name: option.name.replace(/\s*\(.*\)\s*$/, '').slice(0, 100),
+          display_name: shippingLabel(option.name).slice(0, 100),
           delivery_estimate: option.minDays
             ? { minimum: { unit: 'business_day', value: option.minDays }, maximum: { unit: 'business_day', value: option.maxDays ?? option.minDays } }
             : undefined,

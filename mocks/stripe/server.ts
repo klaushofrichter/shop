@@ -4,11 +4,11 @@
  * items, expire, a checkout page (Pay / Decline / Cancel), payments with a
  * charge (risk level and fingerprint settable or absent), a tax table (one
  * state taxes shipping, one doesn't), idempotency as captured, the pinned API
- * version only, and signed webhooks to the shop. Refunds, disputes and early
- * fraud warnings follow with step 7.
+ * version only, signed webhooks to the shop, refunds, disputes and early
+ * fraud warnings.
  */
 import { createHash } from 'node:crypto';
-import express, { type Express, type Request, type Response } from 'express';
+import express, { type Request, type Response } from 'express';
 import type { Clock } from '../../src/clock';
 import { signStripeWebhook, STRIPE_VERSION } from '../../src/payments/stripe';
 

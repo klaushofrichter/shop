@@ -12,8 +12,8 @@ import { iso, type Clock } from '../clock';
 import type { Mode, QuoteSettings } from '../config';
 import { setSetting, transaction, type Db } from '../db';
 import { enqueue } from '../jobs';
-import { formatCents } from '../money';
-import { REASONS } from '../orders/holds';
+import { usd } from '../money';
+import { REASONS, reasonsOf, recordEvent, resolveHolds } from '../orders/holds';
 import { ORDER_ID } from '../orders/ids';
 import { requestFullRefund } from '../orders/refunds';
 import { customerStatus } from '../orders/status';
@@ -28,7 +28,11 @@ export interface AdminOrderDeps {
   quote?: QuoteSettings;
 }
 
-type AdminRequest = Request & { session?: Session; csrf?: string };
+export type AdminRequest = Request & { session?: Session; csrf?: string };
+
+/** "2026-11-25 14:03" from a stored timestamp (UTC). */
+const utc = (at: string) => at.slice(0, 16).replace('T', ' ');
+const isPaid = (o: { payment_state?: string }) => o.payment_state === 'paid' || o.payment_state === 'partially_refunded';
 type Page = (res: Response, title: string, body: string) => void;
 type Audit = (req: AdminRequest, action: string, target: string, details?: unknown) => void;
 
@@ -74,7 +78,7 @@ export function holdsSection(d: AdminOrderDeps, csrf: string): string {
   const list = rows.length
     ? `<ul class="holds">${rows
         .map((h) => {
-          const reasons = (JSON.parse(h.reasons_json) as string[]).map((r) => REASON_TEXT[r] ?? r).join(', ');
+          const reasons = reasonsOf(h).map((r) => REASON_TEXT[r] ?? r).join(', ');
           const left = Date.parse(h.deadline_at) - d.clock.now();
           const next = h.deadline_action === 'refund' ? `refunds automatically ${when(left)}` : `reminds again ${when(left)}`;
           return `<li><a href="/admin/orders/${esc(h.order_id)}">Order ${esc(h.number)}</a>: ${esc(h.kind)} hold, ${esc(reasons)}; ${esc(next)}.</li>`;
@@ -84,7 +88,7 @@ export function holdsSection(d: AdminOrderDeps, csrf: string): string {
   const run = d.orders.prepare('SELECT finished_at, report_json, alarms FROM reconciliation_runs ORDER BY id DESC LIMIT 1').get() as { finished_at: string; report_json: string; alarms: number } | undefined;
   const alarms = run ? (JSON.parse(run.report_json) as { alarms: string[]; errors: string[] }) : undefined;
   const rec = run
-    ? `<p>Last run ${esc(run.finished_at.slice(0, 16).replace('T', ' '))} UTC: ${run.alarms} alarm${run.alarms === 1 ? '' : 's'}${alarms?.errors.length ? `, ${alarms.errors.length} step${alarms.errors.length === 1 ? '' : 's'} failed` : ''}.</p>${alarms?.alarms.length ? `<ul>${alarms.alarms.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}`
+    ? `<p>Last run ${esc(utc(run.finished_at))} UTC: ${run.alarms} alarm${run.alarms === 1 ? '' : 's'}${alarms?.errors.length ? `, ${alarms.errors.length} step${alarms.errors.length === 1 ? '' : 's'} failed` : ''}.</p>${alarms?.alarms.length ? `<ul>${alarms.alarms.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}`
     : '<p>Not run yet.</p>';
   return `<h2>Open holds</h2>${list}
 <h2>Reconciliation</h2>${rec}
@@ -109,7 +113,7 @@ export function registerOrderRoutes(r: Router, d: AdminOrderDeps, page: Page, au
     const body = rows
       .map((o) => {
         const st = customerStatus({ payment_state: o.payment_state, fulfilment_state: o.fulfilment_state, refunded_cents: o.refunded_cents, shippedSomething: o.fulfilment_state.includes('shipped') || o.fulfilment_state === 'delivered' });
-        return `<tr><th scope="row"><a href="/admin/orders/${esc(o.id)}">${esc(o.number)}</a></th><td>${esc(String(o.created_at).slice(0, 16).replace('T', ' '))}</td><td>${esc(st.text)}</td><td>${o.paid_cents != null ? `$${formatCents(o.paid_cents)}` : '—'}</td><td>${o.holds ? `<strong>${o.holds} open</strong>` : ''}</td></tr>`;
+        return `<tr><th scope="row"><a href="/admin/orders/${esc(o.id)}">${esc(o.number)}</a></th><td>${esc(utc(String(o.created_at)))}</td><td>${esc(st.text)}</td><td>${o.paid_cents != null ? `${usd(o.paid_cents)}` : '—'}</td><td>${o.holds ? `<strong>${o.holds} open</strong>` : ''}</td></tr>`;
       })
       .join('');
     page(
@@ -140,11 +144,9 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
     const costs = newest?.costs_json ? (JSON.parse(newest.costs_json) as { totalCents?: number }) : undefined;
     const revenue = o.items_cents + o.shipping_cents;
     const margin = fee !== undefined && costs?.totalCents !== undefined ? revenue - fee - costs.totalCents - o.refunded_cents : undefined;
-    const money = (c: number | null | undefined) => (c == null ? '—' : `$${formatCents(c)}`);
+    const money = (c: number | null | undefined) => (c == null ? '—' : `${usd(c)}`);
 
     // Actions by hold (08 §3).
-    const open = holds.filter((h) => !h.resolved_at);
-    const reasonsOf = (h: HoldRow) => JSON.parse(h.reasons_json) as string[];
     const holdActions = (h: HoldRow) => {
       const rs = reasonsOf(h);
       const out: string[] = [];
@@ -165,20 +167,20 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
       .map((h) => {
         const rs = reasonsOf(h).map((x) => REASON_TEXT[x] ?? x).join(', ');
         const state = h.resolved_at
-          ? `resolved ${esc(h.resolution ?? '')} ${esc(h.resolved_at.slice(0, 16).replace('T', ' '))}`
+          ? `resolved ${esc(h.resolution ?? '')} ${esc(utc(h.resolved_at))}`
           : `${h.deadline_action === 'refund' ? 'refunds automatically' : 'reminds'} ${when(Date.parse(h.deadline_at) - d.clock.now())}`;
         return `<li>${esc(h.kind)}: ${esc(rs)}; ${state}${h.resolved_at ? '' : `<br>${holdActions(h)}`}</li>`;
       })
       .join('');
 
     const shopRefund = refunds.some((x) => x.purpose !== 'dashboard' && (x.state === 'requested' || x.state === 'succeeded'));
-    const refundable = ['paid', 'partially_refunded'].includes(o.payment_state) && !shopRefund && !['open', 'lost'].includes(o.dispute_state);
+    const refundable = isPaid(o) && !shopRefund && !['open', 'lost'].includes(o.dispute_state);
     const inProduction = ['in_production', 'partially_shipped', 'shipped', 'delivered'].includes(o.fulfilment_state);
     const orderActions: string[] = [];
     if (refundable && !inProduction) orderActions.push(action(`/admin/orders/${id}/refund`, 'Refund in full (and cancel at Printful)', csrf));
     if (refundable && inProduction) orderActions.push(action(`/admin/orders/${id}/refund-anyway`, 'Refund anyway (already in production)', csrf));
     if (newest && ['confirmed', 'draft', 'failed'].includes(newest.state) && !inProduction) orderActions.push(action(`/admin/orders/${id}/cancel`, 'Cancel at Printful', csrf));
-    if (newest && ['canceled', 'deleted'].includes(newest.state) && newest.attempt < MAX_ATTEMPTS && ['paid', 'partially_refunded'].includes(o.payment_state)) {
+    if (newest && ['canceled', 'deleted'].includes(newest.state) && newest.attempt < MAX_ATTEMPTS && isPaid(o)) {
       orderActions.push(action(`/admin/orders/${id}/retry`, `Retry submission (attempt ${newest.attempt + 1} of ${MAX_ATTEMPTS})`, csrf));
     }
 
@@ -194,10 +196,10 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
 <h1>Order ${esc(o.number)}</h1>
 <ul class="facts">
 <li>Payment: <strong>${esc(o.payment_state)}</strong>; fulfilment: <strong>${esc(o.fulfilment_state)}</strong>; dispute: ${esc(o.dispute_state)}${o.completed_at ? `; complete since ${esc(String(o.completed_at).slice(0, 10))}` : ''}</li>
-<li>Created ${esc(String(o.created_at).slice(0, 16).replace('T', ' '))} UTC; ${esc(o.email ?? '(purged)')}; ships to ${esc(o.ship_name ?? '')}, ${esc(o.ship_city ?? '')}, ${esc(o.ship_state ?? '')} ${esc(o.ship_zip ?? '')} by ${esc(o.shipping_method)}</li>
+<li>Created ${esc(utc(String(o.created_at)))} UTC; ${esc(o.email ?? '(purged)')}; ships to ${esc(o.ship_name ?? '')}, ${esc(o.ship_city ?? '')}, ${esc(o.ship_state ?? '')} ${esc(o.ship_zip ?? '')} by ${esc(o.shipping_method)}</li>
 <li>Paid ${money(o.paid_cents)} (tax ${money(o.tax_cents)}); refunded ${money(o.refunded_cents)}; Stripe fee about ${money(fee)}; Printful ${money(costs?.totalCents)}; margin ${money(margin)} ${stripeLink}</li>
 </ul>
-<h2>Items</h2><table class="lines"><tbody>${items.map((i) => `<tr><th scope="row">${esc(i.name)}</th><td>${i.quantity} × $${formatCents(i.unit_cents)}</td><td>${esc(i.source_id)}/${esc(i.work_id)}</td></tr>`).join('')}</tbody></table>
+<h2>Items</h2><table class="lines"><tbody>${items.map((i) => `<tr><th scope="row">${esc(i.name)}</th><td>${i.quantity} × ${usd(i.unit_cents)}</td><td>${esc(i.source_id)}/${esc(i.work_id)}</td></tr>`).join('')}</tbody></table>
 <h2>Holds</h2>${holds.length ? `<ul class="holds">${holdRows}</ul>` : '<p>None.</p>'}
 <h2>Actions</h2>${orderActions.length ? orderActions.join('\n') : '<p>None available.</p>'}
 <h2>Refunds</h2>${refunds.length ? `<ul>${refunds.map((x) => `<li>${esc(x.purpose)} ${money(x.amount_cents)}: ${esc(x.state)}${x.last_error ? ` (${esc(x.last_error)})` : ''}, by ${esc(x.requested_by)}</li>`).join('')}</ul>` : '<p>None.</p>'}
@@ -216,13 +218,10 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
   const back = (res: Response, id: string) => res.redirect(303, `/admin/orders/${id}`);
   const params = (req: AdminRequest) => ({ id: String(req.params.id), holdId: Number(req.params.hold) });
   /** Resolve one open hold of this order; only the first action wins. */
-  const resolve = (id: string, holdId: number, resolution: string, by: string) =>
-    Number(
-      d.orders.prepare('UPDATE holds SET resolved_at = ?, resolved_by = ?, resolution = ? WHERE id = ? AND order_id = ? AND resolved_at IS NULL').run(iso(d.clock), by, resolution, holdId, id).changes,
-    ) > 0;
+  const resolve = (id: string, holdId: number, resolution: string, by: string) => resolveHolds(d.orders, d.clock, { orderId: id, holdId }, resolution, by) > 0;
   const holdOf = (id: string, holdId: number) => d.orders.prepare('SELECT * FROM holds WHERE id = ? AND order_id = ?').get(holdId, id) as HoldRow | undefined;
   const note = (id: string, to: string, by: string, what: string) =>
-    d.orders.prepare("INSERT INTO order_events (order_id, part, to_value, cause, cause_ref, note, at) VALUES (?, 'hold', ?, 'admin', ?, ?, ?)").run(id, to, by, what, iso(d.clock));
+    recordEvent(d.orders, d.clock, { orderId: id, part: 'hold', to, cause: 'admin', causeRef: by, note: what });
   const submit = (id: string) => enqueue(d.orders, d.clock, 'order.submit', id, { orderId: id });
 
   const holdAction = (name: string, allowed: (h: HoldRow, o: Record<string, any>) => boolean, apply: (id: string, h: HoldRow, by: string) => void) =>
@@ -245,21 +244,21 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
     });
 
   const REFUND_REASONS = new Set(Object.entries(REASONS).filter(([, v]) => v.kind === 'attention').map(([k]) => k));
-  holdAction('approve', (h, o) => h.kind === 'approval' || (h.kind === 'fraud' && o.dispute_state === 'won') || (h.kind === 'attention' && (JSON.parse(h.reasons_json) as string[]).every((x) => REFUND_REASONS.has(x) && x !== 'refund_failed' && x !== 'cost_guard')), (id) => submit(id));
+  holdAction('approve', (h, o) => h.kind === 'approval' || (h.kind === 'fraud' && o.dispute_state === 'won') || (h.kind === 'attention' && reasonsOf(h).every((x) => REFUND_REASONS.has(x) && x !== 'refund_failed' && x !== 'cost_guard')), (id) => submit(id));
   holdAction('false-alarm', (h, o) => h.kind === 'fraud' && o.dispute_state === 'warning', (id) => {
     d.orders.prepare("UPDATE orders SET dispute_state = 'none', updated_at = ? WHERE id = ? AND dispute_state = 'warning'").run(iso(d.clock), id);
-    d.orders.prepare("INSERT INTO order_events (order_id, part, from_value, to_value, cause, at) VALUES (?, 'dispute', 'warning', 'none', 'admin', ?)").run(id, iso(d.clock));
+    recordEvent(d.orders, d.clock, { orderId: id, part: 'dispute', from: 'warning', to: 'none', cause: 'admin' });
     submit(id);
   });
-  holdAction('confirm-anyway', (h) => (JSON.parse(h.reasons_json) as string[]).includes('cost_guard'), (id, _h, by) => {
+  holdAction('confirm-anyway', (h) => reasonsOf(h).includes('cost_guard'), (id, _h, by) => {
     const a = newestAttempt(d.orders, id);
     if (a) d.orders.prepare("UPDATE provider_orders SET override_by = ?, override_at = ? WHERE order_id = ? AND provider = 'printful' AND attempt = ?").run(by, iso(d.clock), id, a.attempt);
     submit(id);
   });
-  holdAction('retry-refund', (h) => (JSON.parse(h.reasons_json) as string[]).includes('refund_failed'), (id, _h, by) => {
+  holdAction('retry-refund', (h) => reasonsOf(h).includes('refund_failed'), (id, _h, by) => {
     requestFullRefund(d, id, 'cancel', by);
   });
-  holdAction('fulfil-anyway', (h) => (JSON.parse(h.reasons_json) as string[]).includes('refund_failed'), (id) => submit(id));
+  holdAction('fulfil-anyway', (h) => reasonsOf(h).includes('refund_failed'), (id) => submit(id));
 
   r.post('/orders/:id/refund', (req: AdminRequest, res) => refundAction(req, res, 'cancel'));
   r.post('/orders/:id/refund-anyway', (req: AdminRequest, res) => refundAction(req, res, 'anyway'));
@@ -267,7 +266,7 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
     if (!sure(req, res)) return;
     const id = String(req.params.id);
     const o = d.orders.prepare('SELECT payment_state, dispute_state FROM orders WHERE id = ?').get(id) as { payment_state: string; dispute_state: string } | undefined;
-    if (!o || !['paid', 'partially_refunded'].includes(o.payment_state) || ['open', 'lost'].includes(o.dispute_state)) {
+    if (!o || !isPaid(o) || ['open', 'lost'].includes(o.dispute_state)) {
       return res.status(409).type('text').send('this order cannot be refunded now');
     }
     const refundId = requestFullRefund(d, id, purpose, req.session!.email);
@@ -291,9 +290,9 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
     const n = transaction(d.orders, () => {
       const a = newestAttempt(d.orders, id);
       const o = d.orders.prepare('SELECT payment_state FROM orders WHERE id = ?').get(id) as { payment_state: string } | undefined;
-      if (!a || !o || !['canceled', 'deleted'].includes(a.state) || a.attempt >= MAX_ATTEMPTS || !['paid', 'partially_refunded'].includes(o.payment_state)) return 0;
+      if (!a || !o || !['canceled', 'deleted'].includes(a.state) || a.attempt >= MAX_ATTEMPTS || !isPaid(o)) return 0;
       const now = iso(d.clock);
-      d.orders.prepare("UPDATE holds SET resolved_at = ?, resolved_by = ?, resolution = 'approved' WHERE order_id = ? AND resolved_at IS NULL").run(now, by, id);
+      resolveHolds(d.orders, d.clock, { orderId: id }, 'approved', by);
       const next = a.attempt + 1;
       d.orders.prepare("INSERT INTO provider_orders (order_id, provider, attempt, external_id, state, updated_at) VALUES (?, 'printful', ?, ?, 'submitting', ?)").run(id, next, `${id}-${next}`, now);
       moveFulfilment(d.orders, d.clock, id, 'submitting', 'admin', next, `retry by ${by}`);

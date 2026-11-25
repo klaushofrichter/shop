@@ -4,8 +4,8 @@
  * provider is called, so it doesn't flap with Printful. The uptime monitor
  * checks it, and its own notification is the second alert channel.
  *
- * Checks that the build doesn't have yet (reconciliation arrives in step 7,
- * alerts in step 8) are switched on by the caller when they exist.
+ * The caller switches on the checks its configuration has: reconciliation
+ * needs Stripe and Printful, alerts need SES and an address.
  */
 import type { Clock } from './clock';
 import { getSetting, type Db } from './db';
