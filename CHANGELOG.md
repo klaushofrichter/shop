@@ -5,4 +5,4 @@ then empties it on `main`.
 
 ## [Unreleased]
 
-- The preview page also has its own address, /preview.
+- Paying works with Stripe's current API: checkout no longer sends a parameter Stripe has retired.

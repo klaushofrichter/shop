@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { syncShipments } from '../src/orders/fulfilment-events';
 import { newestAttempt } from '../src/orders/submit';
 import { ADDRESS, paidOrder, startHarness, visitor, type Harness } from './helpers/harness';
@@ -149,6 +149,31 @@ describe('F1: a Stripe failure at checkout does not lock the cart', () => {
     expect(second.location).toContain(open[0].stripe_session_id);
     // The repeat used the order's own keys: one Customer for that order, not a second order.
     expect(db().prepare('SELECT COUNT(*) n FROM orders').get()).toEqual({ n: 1 });
+  });
+});
+
+describe('a refused checkout says why in the log', () => {
+  it('logs Stripe type, code, param and message, without the e-mail it quotes', async () => {
+    h.stripe.control.rejectNextSessionCreate = {
+      type: 'invalid_request_error', code: 'parameter_invalid', param: 'automatic_tax[enabled]',
+      message: 'Stripe Tax is not set up for jane@example.com',
+    };
+    const spy = vi.spyOn(console, 'log');
+    try {
+      const v = visitor(h.shopUrl);
+      const p = await v.go('GET', '/p/art/w1');
+      const tok = v.token(p.text);
+      await v.go('POST', '/cart/items', { _csrf: tok, source: 'art', work: 'w1', sku: 'print-8x10', quantity: 1 });
+      await v.go('POST', '/cart/address', { _csrf: tok, ...ADDRESS });
+      const q = await v.go('GET', '/quote');
+      const quote = /name="quote" value="([^"]+)"/.exec(q.text)![1];
+      await v.go('POST', '/checkout', { _csrf: tok, quote, shipping: 'STANDARD' });
+      const line = spy.mock.calls.map((c) => JSON.parse(String(c[0])) as Record<string, unknown>).find((l) => l.msg === 'checkout refused by Stripe')!;
+      expect(line).toMatchObject({ status: 400, type: 'invalid_request_error', code: 'parameter_invalid', param: 'automatic_tax[enabled]' });
+      expect(line.message).toBe('stripe: Stripe Tax is not set up for [email]');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 

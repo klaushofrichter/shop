@@ -17,6 +17,8 @@ export class StripeError extends Error {
     readonly status?: number,
     readonly code?: string,
     readonly param?: string,
+    /** Stripe's `error.type`, e.g. invalid_request_error. */
+    readonly type?: string,
   ) {
     super(message);
     this.name = 'StripeError';
@@ -233,11 +235,11 @@ export class StripeClient {
     if (res.ok && json) return json as T;
     const err = (json?.error ?? {}) as { message?: string; type?: string; code?: string; param?: string };
     const message = `stripe: ${err.message ?? `HTTP ${res.status}`}`;
-    if (res.status === 429) throw new StripeError('rate_limited', message, 429, err.code);
-    if (res.status === 401 || res.status === 403) throw new StripeError('auth', message, res.status, err.code);
-    if (res.status >= 500) throw new StripeError(creating ? 'unknown' : 'unavailable', message, res.status, err.code);
-    if (err.type === 'idempotency_error') throw new StripeError('idempotency', message, res.status, err.code);
-    throw new StripeError('permanent', message, res.status, err.code, err.param);
+    if (res.status === 429) throw new StripeError('rate_limited', message, 429, err.code, err.param, err.type);
+    if (res.status === 401 || res.status === 403) throw new StripeError('auth', message, res.status, err.code, err.param, err.type);
+    if (res.status >= 500) throw new StripeError(creating ? 'unknown' : 'unavailable', message, res.status, err.code, err.param, err.type);
+    if (err.type === 'idempotency_error') throw new StripeError('idempotency', message, res.status, err.code, err.param, err.type);
+    throw new StripeError('permanent', message, res.status, err.code, err.param, err.type);
   }
 }
 
@@ -282,4 +284,14 @@ export function verifyStripeWebhook(raw: Buffer, header: string | undefined, sec
 export function signStripeWebhook(raw: string, secret: string, nowMs: number): string {
   const t = Math.floor(nowMs / 1000);
   return `t=${t},v1=${createHmac('sha256', secret).update(`${t}.${raw}`).digest('hex')}`;
+}
+
+/**
+ * What a log line may carry about a Stripe refusal: status, type, code, param and
+ * the message with e-mail addresses removed and its length capped (Stripe's
+ * messages can quote a submitted value; the request body is never logged).
+ */
+export function stripeErrorDetail(e: StripeError): Record<string, unknown> {
+  const message = e.message.replace(/[^\s'"<>()]+@[^\s'"<>()]+/g, '[email]').slice(0, 300);
+  return { status: e.status, type: e.type, code: e.code, param: e.param, message };
 }

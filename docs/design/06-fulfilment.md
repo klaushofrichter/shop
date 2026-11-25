@@ -88,7 +88,10 @@ once per store by `scripts/printful-webhook.ts` (`POST /v2/webhooks`, replaces t
 config; `expires_at: null`; the returned `secret_key` and `public_key` go to the node's
 `.env`; the System page shows the configuration and its expiry). The script takes the mode,
 checks the token's store against the expected one, prints the current configuration and
-asks before replacing it (review A F9).
+asks before replacing it (review A F9). **Built** (step 10): it writes both keys into the `.env`
+(mode 600) without printing them; `shipment_delivered` and `order_refunded` are not in the v2
+spec, so they are asked for and dropped if Printful refuses them (shipment events re-read the
+parcels, and the reconciliation completes shipped orders).
 
 Every event is resolved to an attempt by its `external_id` ([07 §2.4](07-orders-data-jobs.md#24-submission-attempts));
 only the newest attempt moves `fulfilment_state`.
