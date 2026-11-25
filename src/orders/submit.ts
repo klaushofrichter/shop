@@ -16,6 +16,7 @@
  *      lost answer is read back after the quiet period; a draft is confirmed
  *      again, at most three times.
  */
+import { stripeFeeCents } from '../money';
 import type { SkuCatalog } from '../catalog-config';
 import { iso, type Clock } from '../clock';
 import type { Config, Mode, QuoteSettings } from '../config';
@@ -202,7 +203,7 @@ export function draftFor(d: SubmitDeps, o: OrderRow, externalId: string): DraftO
 
 /** Provider cost ≤ items + shipping paid − Stripe's fee − the margin floor (06 §4 step 6). Customer tax is never revenue. */
 export function costGuard(o: OrderRow, providerTotalCents: number, q: QuoteSettings): { ok: boolean; allowedCents: number } {
-  const fee = Math.ceil(((o.paid_cents ?? o.items_cents + o.shipping_cents) * q.stripeFeePct) / 100) + q.stripeFeeFixedCents;
+  const fee = stripeFeeCents(o.paid_cents ?? o.items_cents + o.shipping_cents, q);
   const allowed = o.items_cents + o.shipping_cents - fee - q.marginFloorCents;
   return { ok: providerTotalCents <= allowed, allowedCents: allowed };
 }

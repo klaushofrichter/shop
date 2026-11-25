@@ -12,7 +12,7 @@ import { iso, type Clock } from '../clock';
 import type { Mode, QuoteSettings } from '../config';
 import { setSetting, transaction, type Db } from '../db';
 import { enqueue } from '../jobs';
-import { usd } from '../money';
+import { stripeFeeCents, usd } from '../money';
 import { REASONS, reasonsOf, recordEvent, resolveHolds, setDispute } from '../orders/holds';
 import { ORDER_ID } from '../orders/ids';
 import { requestFullRefund } from '../orders/refunds';
@@ -140,7 +140,7 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
     const newest = attempts.at(-1);
 
     // Amounts: paid, tax, Stripe's fee (estimate), Printful's cost, margin.
-    const fee = d.quote && o.paid_cents != null ? Math.ceil((o.paid_cents * d.quote.stripeFeePct) / 100) + d.quote.stripeFeeFixedCents : undefined;
+    const fee = d.quote && o.paid_cents != null ? stripeFeeCents(o.paid_cents, d.quote) : undefined;
     const costs = newest?.costs_json ? (JSON.parse(newest.costs_json) as { totalCents?: number }) : undefined;
     const revenue = o.items_cents + o.shipping_cents;
     const margin = fee !== undefined && costs?.totalCents !== undefined ? revenue - fee - costs.totalCents - o.refunded_cents : undefined;

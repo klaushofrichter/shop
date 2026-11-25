@@ -174,3 +174,4 @@ Tests for each are in `test/review-fixes.test.ts`.
 | §4 transitions | Done: `setDispute` and `completeOrder` in `src/orders/holds.ts` (conditional, with a history line naming the cause or rule); every hold resolution writes a history line. |
 | §4 originals | Done: the checked original is kept under `originals/<sha256>`; renders use it (one download per work, not one per product); the nightly purge removes kept originals no work points at. |
 | §4 render memory | Done (PR #34): one pipeline per file and no optimised Huffman coding; about 200 MiB peak for 50 megapixels. |
+| §4 Stripe fee | Done: one `stripeFeeCents` in `src/money.ts` used by the quote check, the cost guard and the admin. Each passes what Stripe charges as far as it is known (before payment: items and shipping; after: the amount paid), so no number changed. |
