@@ -226,6 +226,11 @@ export class PrintfulClient implements FulfilmentProvider {
     }
   }
 
+  async listRecentOrders(limit: number): Promise<ProviderOrder[]> {
+    const res = await this.call('GET', `/v2/orders?limit=${Math.min(100, Math.max(1, limit))}`);
+    return ((res.data ?? []) as Json[]).map(toOrder);
+  }
+
   async getShipments(providerOrderId: string): Promise<Shipment[]> {
     const res = await this.call('GET', `/v2/orders/${encodeURIComponent(providerOrderId)}/shipments?limit=100`);
     const str = (v: unknown) => (typeof v === 'string' && v ? v : null);

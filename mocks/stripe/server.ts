@@ -232,6 +232,16 @@ ${ses.customText ? `<p>${esc(ses.customText)}</p>` : ''}
     if (!ses) fail(res, 404, `No such checkout.session: ${req.params.id}`, { code: 'resource_missing' });
     return ses;
   };
+  // The list, as the reverse sweep reads it: status and created[gte]; newest first.
+  app.get('/v1/checkout/sessions', (req, res) => {
+    const q = req.query as Record<string, unknown>;
+    const gte = Number(q['created[gte]'] ?? (q.created as Record<string, unknown> | undefined)?.gte ?? 0);
+    const list = [...s.sessions.values()]
+      .filter((x) => (!q.status || x.status === q.status) && x.created >= gte)
+      .sort((a, b) => b.created - a.created)
+      .slice(0, Math.min(100, Number(q.limit ?? 10)));
+    res.json({ object: 'list', data: list.map((x) => sessionBody(x, false)), has_more: false, url: '/v1/checkout/sessions' });
+  });
   app.get('/v1/checkout/sessions/:id', (req, res) => {
     const ses = session(req, res);
     if (!ses) return;

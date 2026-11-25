@@ -145,6 +145,20 @@ export class StripeClient {
     return this.call('POST', `/v1/checkout/sessions/${encodeURIComponent(id)}/expire`, {}) as unknown as Promise<CheckoutSession>;
   }
 
+  /** Completed sessions created since `sinceS` (unix seconds), for the reverse sweep (07 §5); paged. */
+  async listCompletedSessions(sinceS: number): Promise<CheckoutSession[]> {
+    const out: CheckoutSession[] = [];
+    let after: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const q = `?limit=100&status=complete&created[gte]=${sinceS}${after ? `&starting_after=${encodeURIComponent(after)}` : ''}`;
+      const res = (await this.call('GET', `/v1/checkout/sessions${q}`)) as unknown as { data: CheckoutSession[]; has_more: boolean };
+      out.push(...res.data);
+      if (!res.has_more || !res.data.length) return out;
+      after = res.data[res.data.length - 1].id;
+    }
+    return out;
+  }
+
   getCharge(id: string): Promise<Charge> {
     return this.call('GET', `/v1/charges/${encodeURIComponent(id)}`) as unknown as Promise<Charge>;
   }

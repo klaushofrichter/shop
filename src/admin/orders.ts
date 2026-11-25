@@ -81,7 +81,14 @@ export function holdsSection(d: AdminOrderDeps, csrf: string): string {
         })
         .join('')}</ul>`
     : '<p>No open holds.</p>';
+  const run = d.orders.prepare('SELECT finished_at, report_json, alarms FROM reconciliation_runs ORDER BY id DESC LIMIT 1').get() as { finished_at: string; report_json: string; alarms: number } | undefined;
+  const alarms = run ? (JSON.parse(run.report_json) as { alarms: string[]; errors: string[] }) : undefined;
+  const rec = run
+    ? `<p>Last run ${esc(run.finished_at.slice(0, 16).replace('T', ' '))} UTC: ${run.alarms} alarm${run.alarms === 1 ? '' : 's'}${alarms?.errors.length ? `, ${alarms.errors.length} step${alarms.errors.length === 1 ? '' : 's'} failed` : ''}.</p>${alarms?.alarms.length ? `<ul>${alarms.alarms.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}`
+    : '<p>Not run yet.</p>';
   return `<h2>Open holds</h2>${list}
+<h2>Reconciliation</h2>${rec}
+${action('/admin/reconcile', 'Run reconciliation now', csrf)}
 <h2>Circuit breaker</h2><p>Counts paid orders since ${breaker ? esc(JSON.parse(breaker.value_json) as string) : '24 hours ago'}.</p>
 ${action('/admin/breaker/reset', 'Reset the circuit breaker', csrf)}`;
 }
@@ -296,6 +303,13 @@ ${rows.length ? `<table class="orders"><thead><tr><th scope="col">Order</th><th 
     audit(req, 'order.retry', id, { attempt: n || null });
     if (!n) return res.status(409).type('text').send('a new attempt needs the last one cancelled or deleted, and at most 3 attempts');
     back(res, id);
+  });
+
+  r.post('/reconcile', (req: AdminRequest, res) => {
+    if (!sure(req, res)) return;
+    enqueue(d.orders, d.clock, 'reconcile.now', 'admin', undefined);
+    audit(req, 'reconcile.now', 'reconcile');
+    res.redirect(303, '/admin');
   });
 
   r.post('/breaker/reset', (req: AdminRequest, res) => {

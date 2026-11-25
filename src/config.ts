@@ -64,6 +64,8 @@ export interface Config {
   /** Submission (06 §3–4). The packing-slip contact is Klaus's and lives in the cluster's ConfigMap, not here. */
   fulfilment: {
     providerRetryWindowMs: number;
+    /** Completion rule 2 (07 §2.7): everything shipped this many days ago. */
+    completeAfterShippedDays: number;
     shopName: string;
     packingSlipEmail?: string;
     packingSlipPhone?: string;
@@ -245,6 +247,7 @@ export function loadConfig(env: Env = process.env): Config {
   if (slipPhone && !/^\+?[0-9 ()-]{7,20}$/.test(slipPhone)) problems.push('PACKING_SLIP_PHONE must be a phone number');
   const fulfilment = {
     providerRetryWindowMs: num('PROVIDER_RETRY_WINDOW_HOURS', 24, 168) * 60 * 60_000,
+    completeAfterShippedDays: num('COMPLETE_AFTER_SHIPPED_DAYS', 45, 365),
     shopName: get('SHOP_NAME') ?? new URL(publicUrl).host,
     packingSlipEmail: slipEmail,
     packingSlipPhone: slipPhone,

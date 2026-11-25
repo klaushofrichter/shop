@@ -431,6 +431,11 @@ export function createMockPrintful(opts: { clock: Clock & { advance?(ms: number)
     }
     send(res, 200, { data: orderBody(o), extra: [] });
   });
+  app.get('/v2/orders', (req, res) => {
+    const limit = Math.min(100, Number(req.query.limit) || 20);
+    const list = [...state.orders.values()].sort((a, b) => b.id - a.id).slice(0, limit);
+    send(res, 200, { data: list.map(orderBody), extra: [], paging: { total: state.orders.size, limit, offset: 0 }, _links: {} });
+  });
   app.get('/v2/orders/:ref', (req, res) => {
     const o = findOrder(String(req.params.ref));
     if (!o) return fail(res, 404, 'NotFound', 'Order not found');

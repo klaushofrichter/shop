@@ -97,6 +97,8 @@ export interface FulfilmentProvider {
   cancel(providerOrderId: string): Promise<'canceled' | 'not_cancellable'>;
   /** Carrier, tracking and estimates come from here, not from webhook bodies (06 §5). */
   getShipments(providerOrderId: string): Promise<Shipment[]>;
+  /** The newest orders of the store, for the reverse sweep (07 §5). */
+  listRecentOrders(limit: number): Promise<ProviderOrder[]>;
 }
 
 export interface Shipment {
