@@ -45,6 +45,11 @@ nothing confirmed (the adapter has no confirm method), preview gate on. Klaus ag
 7. Restore of both database files from S3.
 8. `/health/worker` turns 503 when the runner is stopped, and the uptime monitor reports it.
 
+Items 3, 4 and 6 run as `e2e/test-mode.spec.ts` (Playwright through Stripe's real hosted
+page, 14 §7.4), started by Cluster on the node with the preview key from the `.env` and the SES
+mailbox simulator addresses as customers; refunds from the admin and the Stripe Dashboard, Stripe
+Tax and the bounce notices in the mailbox are Klaus's checks by hand.
+
 Shipments, per-parcel pages and shipped e-mails are never seen in test mode (nothing is
 produced); CI covers them against the mock. Test mode exists only until go-live (ADR-0029):
 afterwards a real-service check is the capture script run by hand against the test store
