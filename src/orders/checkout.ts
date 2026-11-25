@@ -202,7 +202,8 @@ function sessionParams(d: CheckoutDeps, orderId: string, number: string, custome
     payment_intent_data: {
       metadata: { order_id: orderId },
       description: `Order ${number}`,
-      shipping: { name: a.name, address: { line1: a.line1, line2: a.line2, city: a.city, state: a.state, postal_code: a.zip, country: 'US' } },
+      // No `shipping` here: Stripe refuses it together with automatic tax. The recipient is the
+      // Customer's `shipping` (set above), which is also where Stripe Tax takes the location from.
     },
     // API 2026-11-18.endive refuses payment_method_types on Checkout Sessions (changelog 2026-09-30).
     allowed_payment_method_types: ['card', 'link'],

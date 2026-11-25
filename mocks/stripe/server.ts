@@ -203,6 +203,10 @@ ${ses.customText ? `<p>${esc(ses.customText)}</p>` : ''}
     if (b.mode !== 'payment') return fail(res, 400, 'mock: mode must be payment', { param: 'mode' });
     const customer = s.customers.get(String(b.customer ?? ''));
     if (!customer) return fail(res, 400, `No such customer: '${b.customer}'`, { param: 'customer', code: 'resource_missing' });
+    // As Stripe answers it (cluster test mode, 2026-11-25).
+    if ((b.automatic_tax as Json | undefined)?.enabled === 'true' && ((b.payment_intent_data as Json | undefined) ?? {}).shipping !== undefined) {
+      return fail(res, 400, 'You cannot enable automatic tax calculation with `payment_intent_data[shipping]` set.');
+    }
     const pmt = Object.values((b.allowed_payment_method_types as Json) ?? {});
     if (!pmt.length || pmt.some((p) => p !== 'card' && p !== 'link')) return fail(res, 400, 'mock: allowed_payment_method_types must be card and/or link', { param: 'allowed_payment_method_types' });
     const items = Object.values((b.line_items as Json) ?? {}) as Json[];

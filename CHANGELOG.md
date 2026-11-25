@@ -5,4 +5,5 @@ then empties it on `main`.
 
 ## [Unreleased]
 
-- Paying works with Stripe's current API: checkout no longer sends a parameter Stripe has retired.
+- Paying with sales tax works on Stripe: checkout no longer sends a shipping address Stripe refuses together with automatic tax.
+

@@ -77,7 +77,8 @@ fixtures enforces the synthetic rules ([12 §1](12-testing.md#1-layers)).
 | Contact | an address for order questions |
 
 Rendered from Markdown in the repository (`content/legal/*.md`). Drafts on request; not
-legal advice.
+legal advice. Terms of sale: drafted 2026-11-25 (`content/legal/terms.md`), awaiting Klaus's
+review; the `/terms` page is not built yet (the Stripe Dashboard's terms URL is to point there).
 
 ## 7. Tax
 
