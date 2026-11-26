@@ -5,5 +5,5 @@ then empties it on `main`.
 
 ## [Unreleased]
 
-- Paying with sales tax works on Stripe: checkout no longer sends a shipping address Stripe refuses together with automatic tax.
+- Checkout offers card payment only (including Apple Pay and Google Pay); Link is no longer offered.
 

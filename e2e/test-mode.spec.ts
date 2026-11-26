@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Frame, type Locator, type Page } from '@playwright/test';
 
 // docs/design/12 §3 items 3, 4 and 6, and 14 §7.4: the shop in TEST mode on the
 // cluster, through Stripe's real test-mode Checkout page and the Printful test
@@ -54,17 +54,78 @@ async function toStripe(page: Page, email: string) {
   await expect(page).toHaveURL(/^https:\/\/checkout\.stripe\.com\//, { timeout: 30_000 });
 }
 
-/** Stripe Checkout's card form (field ids as of 2026; the page is Stripe's). */
+type Scope = Page | Frame;
+
+/**
+ * The first visible match of `build` in the page or any of its frames (Stripe's
+ * Checkout puts its payment form in an iframe, and the card fields or the 3-D
+ * Secure challenge may sit in further nested ones; page.frames() lists them all).
+ */
+async function inAnyFrame(page: Page, build: (s: Scope) => Locator[], ms = 15_000): Promise<Locator | undefined> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    for (const scope of [page as Scope, ...page.frames()]) {
+      for (const c of build(scope)) if (await c.first().isVisible().catch(() => false)) return c.first();
+    }
+    await page.waitForTimeout(250);
+  }
+  return undefined;
+}
+
+/** On a miss: a screenshot and every frame's ARIA snapshot in the report, then the error. */
+async function missing(page: Page, what: string): Promise<never> {
+  const info = test.info();
+  await info.attach('stripe-page.png', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  const parts: string[] = [];
+  for (const f of page.frames()) {
+    const snap = await f.locator('body').ariaSnapshot({ timeout: 2_000 }).catch(() => '(no snapshot)');
+    parts.push(`--- frame ${f.name() || '(unnamed)'} ${f.url().split('?')[0]}\n${snap}`);
+  }
+  await info.attach('stripe-frames.txt', { body: parts.join('\n\n'), contentType: 'text/plain' });
+  throw new Error(`Stripe page: ${what} not found (see stripe-page.png and stripe-frames.txt)`);
+}
+
+async function fill(page: Page, what: string, value: string, build: (s: Scope) => Locator[], required = true) {
+  const field = await inAnyFrame(page, build, required ? 15_000 : 3_000);
+  if (field) await field.fill(value);
+  else if (required) await missing(page, what);
+}
+
+/**
+ * Stripe Checkout as of 2026-11: the payment form is in an iframe; payment methods
+ * are buttons (Card, and Link's bank option); the card fields appear once Card is
+ * chosen; the terms consent (consent_collection) is a checkbox to tick before Pay.
+ */
 async function payWith(page: Page, card: string) {
-  const email = page.locator('#email');
-  if ((await email.count()) && (await email.isEditable())) await email.fill(SIM('success'));
-  await page.locator('#cardNumber').fill(card);
-  await page.locator('#cardExpiry').fill('12 / 34');
-  await page.locator('#cardCvc').fill('123');
-  await page.locator('#billingName').fill('Test Mode');
-  const zip = page.locator('#billingPostalCode');
-  if (await zip.count()) await zip.fill('78701');
-  await page.locator('[data-testid="hosted-payment-submit-button"], button.SubmitButton').first().click();
+  const cardNumber = (s: Scope) => [s.locator('#cardNumber'), s.getByLabel(/card number/i), s.getByPlaceholder('1234 1234 1234 1234')];
+  if (!(await inAnyFrame(page, cardNumber, 2_000))) {
+    const choose = await inAnyFrame(page, (s) => [
+      s.getByRole('button', { name: 'Card', exact: true }),
+      s.getByRole('radio', { name: /^card$/i }),
+      s.getByTestId('card-accordion-item-button'),
+    ]);
+    if (!choose) await missing(page, 'the "Card" payment option');
+    await choose!.click();
+  }
+  await fill(page, 'the card number field', card, cardNumber);
+  await fill(page, 'the expiry field', '12 / 34', (s) => [s.locator('#cardExpiry'), s.getByLabel(/expiration|expiry/i), s.getByPlaceholder('MM / YY')]);
+  await fill(page, 'the CVC field', '123', (s) => [s.locator('#cardCvc'), s.getByLabel(/^CVC|security code/i), s.getByPlaceholder('CVC')]);
+  await fill(page, 'the cardholder name', 'Test Mode', (s) => [s.locator('#billingName'), s.getByLabel(/cardholder name|name on card/i)], false);
+  await fill(page, 'the ZIP field', '78701', (s) => [s.locator('#billingPostalCode'), s.getByLabel(/^ZIP|postal code/i)], false);
+  // Link's "Save my information" (if Stripe still offers it): off, so Pay doesn't wait for a phone number.
+  const save = await inAnyFrame(page, (s) => [s.getByRole('checkbox', { name: /save my information/i })], 1_000);
+  if (save && (await save.isChecked().catch(() => false))) await save.click();
+  // The terms consent: a styled checkbox whose input is covered, so click its label as a person would.
+  const consent = await inAnyFrame(page, (s) => [s.getByRole('checkbox', { name: /I agree/i }), s.locator('input[name="termsOfServiceConsent"]')], 5_000);
+  if (!consent) await missing(page, 'the terms consent checkbox');
+  if (!(await consent!.isChecked().catch(() => false))) {
+    const label = await inAnyFrame(page, (s) => [s.getByText(/^I agree to /i)], 2_000);
+    await (label ?? consent!).click();
+    if (!(await consent!.isChecked().catch(() => false))) await missing(page, 'a ticked terms consent checkbox');
+  }
+  const pay = await inAnyFrame(page, (s) => [s.getByRole('button', { name: 'Pay', exact: true }), s.getByTestId('hosted-payment-submit-button'), s.locator('button.SubmitButton')], 5_000);
+  if (!pay) await missing(page, 'the Pay button');
+  await pay!.click();
 }
 
 /** Back at the shop's order page: paid, then a draft in the test store ("Test order"). */
@@ -88,14 +149,15 @@ test('4: a declined card stays on Stripe with its message', async ({ page }) => 
   test.setTimeout(180_000);
   await toStripe(page, SIM('success'));
   await payWith(page, '4000 0000 0000 0002');
-  await expect(page.getByText(/card (was|has been) declined/i)).toBeVisible({ timeout: 30_000 });
+  const declined = await inAnyFrame(page, (s) => [s.getByText(/card (was|has been) declined/i)], 30_000);
+  if (!declined) await missing(page, 'the decline message');
   await expect(page).toHaveURL(/^https:\/\/checkout\.stripe\.com\//);
 });
 
 test('4: cancel and return brings the cart back', async ({ page }) => {
   test.setTimeout(180_000);
   await toStripe(page, SIM('success'));
-  await page.locator('a[href*="shop.klaushofrichter.net/cart"], [data-testid="business-link"]').first().click();
+  await page.locator('a[href*="/cart?from=checkout"], [data-testid="business-link"]').first().click();
   await expect(page).toHaveURL(/\/cart\?from=checkout$/, { timeout: 30_000 });
   await expect(page.locator(`input[name="sku"][value="${SKU}"]`).first()).toBeAttached(); // the item is still in the cart
 });
@@ -104,8 +166,10 @@ test('4: 3-D Secure, completed in Stripe test challenge', async ({ page }) => {
   test.setTimeout(240_000);
   await toStripe(page, SIM('success'));
   await payWith(page, '4000 0027 6000 3184');
-  const challenge = page.frameLocator('iframe[name^="__privateStripeFrame"]').first().frameLocator('iframe#challengeFrame');
-  await challenge.getByRole('button', { name: /complete/i }).click({ timeout: 60_000 });
+  // Stripe's test 3-D Secure page, in nested iframes: "Complete" authorises.
+  const complete = await inAnyFrame(page, (s) => [s.getByRole('button', { name: /^complete/i }), s.locator('#test-source-authorize-3ds')], 60_000);
+  if (!complete) await missing(page, 'the 3-D Secure "Complete" button');
+  await complete!.click();
   await expectTestOrder(page);
 });
 

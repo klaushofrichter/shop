@@ -61,7 +61,7 @@ and Stripe test mode ([14 §7](14-mock-services.md#7-verification-against-the-re
 - [ ] Prices set; margins checked in the admin; the fail-safe thresholds set in kube-setup (deliberately different from the proposals published in ADR-0020).
 - [ ] Stripe Tax registration in the home state; resale certificate at Printful.
 - [ ] **Terms of sale confirmed by Klaus**: the draft in `content/legal/terms.md` (Claude, 2026-11-25) reviewed, the open choices settled (seller address shown or not, the address-error rule, the date), served at `/terms`, which the live Stripe Dashboard's terms URL points to.
-- [ ] The other legal pages (shipping and returns, privacy, contact; 10 §6); SES production access, SPF and DKIM; bounce and complaint notices forwarded to the shop's mailbox.
+- [ ] The other legal pages (shipping and returns, privacy, contact; 10 §6), the contact page served at `/support` and the privacy policy at `/privacy`, which the Stripe Dashboard's customer support and privacy policy URLs point to (Klaus, 2026-11-26; the privacy policy covers what Stripe requires: information collected, its use, to whom and how it is disclosed, security practices); SES production access, SPF and DKIM; bounce and complaint notices forwarded to the shop's mailbox.
 - [ ] Printful live store billing: card on file, a modest wallet auto-recharge.
 - [ ] Live Stripe key with the permissions of [05 §8](05-quote-checkout-payment.md#8-keys-and-modes); live webhook endpoint created (latest version); live Printful webhook registered; the Stripe test-mode endpoint and the test store's webhook disabled.
 - [ ] `SHOP_MODE=live` **with the preview gate on** (`PREVIEW_GATE=on`, `/api/offers` empty), applied by Cluster (review C F5).
