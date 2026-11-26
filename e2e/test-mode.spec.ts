@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { expect, test, type Frame, type Locator, type Page } from '@playwright/test';
 
 // docs/design/12 §3 items 3, 4 and 6, and 14 §7.4: the shop in TEST mode on the
@@ -75,13 +76,18 @@ async function inAnyFrame(page: Page, build: (s: Scope) => Locator[], ms = 15_00
 /** On a miss: a screenshot and every frame's ARIA snapshot in the report, then the error. */
 async function missing(page: Page, what: string): Promise<never> {
   const info = test.info();
-  await info.attach('stripe-page.png', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  // Written under test-results/ as well as attached, so whoever runs this can read them.
+  const png = info.outputPath('stripe-page.png');
+  await page.screenshot({ path: png, fullPage: true });
+  await info.attach('stripe-page.png', { path: png, contentType: 'image/png' });
   const parts: string[] = [];
   for (const f of page.frames()) {
     const snap = await f.locator('body').ariaSnapshot({ timeout: 2_000 }).catch(() => '(no snapshot)');
     parts.push(`--- frame ${f.name() || '(unnamed)'} ${f.url().split('?')[0]}\n${snap}`);
   }
-  await info.attach('stripe-frames.txt', { body: parts.join('\n\n'), contentType: 'text/plain' });
+  const txt = info.outputPath('stripe-frames.txt');
+  writeFileSync(txt, parts.join('\n\n'));
+  await info.attach('stripe-frames.txt', { path: txt, contentType: 'text/plain' });
   throw new Error(`Stripe page: ${what} not found (see stripe-page.png and stripe-frames.txt)`);
 }
 
@@ -115,14 +121,20 @@ async function payWith(page: Page, card: string) {
   // Link's "Save my information" (if Stripe still offers it): off, so Pay doesn't wait for a phone number.
   const save = await inAnyFrame(page, (s) => [s.getByRole('checkbox', { name: /save my information/i })], 1_000);
   if (save && (await save.isChecked().catch(() => false))) await save.click();
-  // The terms consent: a styled checkbox whose input is covered, so click its label as a person would.
+  // The terms consent: a styled box covers the input and its label holds two links, so a
+  // click can miss or follow a link. Focus the checkbox and press Space, as a keyboard user
+  // would; fall back to the label's left edge.
   const consent = await inAnyFrame(page, (s) => [s.getByRole('checkbox', { name: /I agree/i }), s.locator('input[name="termsOfServiceConsent"]')], 5_000);
   if (!consent) await missing(page, 'the terms consent checkbox');
   if (!(await consent!.isChecked().catch(() => false))) {
-    const label = await inAnyFrame(page, (s) => [s.getByText(/^I agree to /i)], 2_000);
-    await (label ?? consent!).click();
-    if (!(await consent!.isChecked().catch(() => false))) await missing(page, 'a ticked terms consent checkbox');
+    await consent!.focus();
+    await page.keyboard.press('Space');
   }
+  if (!(await consent!.isChecked().catch(() => false))) {
+    const label = await inAnyFrame(page, (s) => [s.getByText(/^I agree to /i)], 2_000);
+    if (label) await label.click({ position: { x: 2, y: 6 } });
+  }
+  if (!(await consent!.isChecked().catch(() => false))) await missing(page, 'a ticked terms consent checkbox');
   const pay = await inAnyFrame(page, (s) => [s.getByRole('button', { name: 'Pay', exact: true }), s.getByTestId('hosted-payment-submit-button'), s.locator('button.SubmitButton')], 5_000);
   if (!pay) await missing(page, 'the Pay button');
   await pay!.click();
