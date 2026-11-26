@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 // docs/design/12 §3 items 3, 4 and 6, and 14 §7.4: the shop in TEST mode on the
 // cluster, through Stripe's real test-mode Checkout page and the Printful test
@@ -54,16 +54,45 @@ async function toStripe(page: Page, email: string) {
   await expect(page).toHaveURL(/^https:\/\/checkout\.stripe\.com\//, { timeout: 30_000 });
 }
 
-/** Stripe Checkout's card form (field ids as of 2026; the page is Stripe's). */
+/** The first of `candidates` that is visible within `ms`; Stripe's page changes its markup now and then. */
+async function firstVisible(page: Page, candidates: Locator[], ms = 15_000): Promise<Locator | undefined> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    for (const c of candidates) if (await c.first().isVisible().catch(() => false)) return c.first();
+    await page.waitForTimeout(250);
+  }
+  return undefined;
+}
+
+/**
+ * Stripe Checkout as of 2026-11: payment methods are an accordion (Card, and Link's
+ * bank option), the card fields appear once Card is chosen, and the terms consent
+ * (consent_collection) is a checkbox to tick before Pay.
+ */
 async function payWith(page: Page, card: string) {
   const email = page.locator('#email');
   if ((await email.count()) && (await email.isEditable())) await email.fill(SIM('success'));
-  await page.locator('#cardNumber').fill(card);
+  const cardNumber = page.locator('#cardNumber');
+  if (!(await cardNumber.isVisible().catch(() => false))) {
+    const choose = await firstVisible(page, [
+      page.getByRole('radio', { name: /^card$/i }),
+      page.getByTestId('card-accordion-item-button'),
+      page.getByRole('button', { name: /^card$/i }),
+      page.getByText('Card', { exact: true }),
+    ]);
+    if (!choose) throw new Error('Stripe page: no "Card" payment option found');
+    await choose.click();
+  }
+  await cardNumber.fill(card);
   await page.locator('#cardExpiry').fill('12 / 34');
   await page.locator('#cardCvc').fill('123');
-  await page.locator('#billingName').fill('Test Mode');
+  const name = page.locator('#billingName');
+  if (await name.isVisible().catch(() => false)) await name.fill('Test Mode');
   const zip = page.locator('#billingPostalCode');
-  if (await zip.count()) await zip.fill('78701');
+  if (await zip.isVisible().catch(() => false)) await zip.fill('78701');
+  const consent = await firstVisible(page, [page.getByRole('checkbox', { name: /I agree/i }), page.locator('#termsOfServiceConsentCheckbox')], 5_000);
+  if (!consent) throw new Error('Stripe page: no terms consent checkbox found');
+  if (!(await consent.isChecked().catch(() => false))) await consent.check({ force: true });
   await page.locator('[data-testid="hosted-payment-submit-button"], button.SubmitButton').first().click();
 }
 
@@ -95,7 +124,7 @@ test('4: a declined card stays on Stripe with its message', async ({ page }) => 
 test('4: cancel and return brings the cart back', async ({ page }) => {
   test.setTimeout(180_000);
   await toStripe(page, SIM('success'));
-  await page.locator('a[href*="shop.klaushofrichter.net/cart"], [data-testid="business-link"]').first().click();
+  await page.locator('a[href*="/cart?from=checkout"], [data-testid="business-link"]').first().click();
   await expect(page).toHaveURL(/\/cart\?from=checkout$/, { timeout: 30_000 });
   await expect(page.locator(`input[name="sku"][value="${SKU}"]`).first()).toBeAttached(); // the item is still in the cart
 });
