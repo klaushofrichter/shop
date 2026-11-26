@@ -74,7 +74,7 @@ fixtures enforces the synthetic rules ([12 §1](12-testing.md#1-layers)).
 | Terms of sale | seller and contact, USD prices with the tax note, payment by Stripe, production by a print partner, shipping estimates, governing law; linked from Checkout |
 | Shipping & returns | printed to order: no change-of-mind returns; misprints and damage reported within 30 days with a photo are reprinted or refunded; lost parcels |
 | Privacy | §4, naming Stripe, Printful and Amazon SES, the retention periods |
-| Contact | an address for order questions |
+| Contact | an address for order questions; served at `/support` (the Stripe Dashboard's customer support URL, Klaus, 2026-11-26) |
 
 Rendered from Markdown in the repository (`content/legal/*.md`). Drafts on request; not
 legal advice. Terms of sale: drafted 2026-11-25 (`content/legal/terms.md`), awaiting Klaus's
