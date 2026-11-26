@@ -134,7 +134,7 @@ describe('checkout → payment (05 §3–5, 07 §2.1)', () => {
       payment_intent_data: { description: `Order ${o.number}` }, allow_promotion_codes: 'false',
       consent_collection: { terms_of_service: 'required' }, automatic_tax: { enabled: 'true' },
     });
-    expect(Object.values(sent.allowed_payment_method_types)).toEqual(['card', 'link']);
+    expect(Object.values(sent.allowed_payment_method_types)).toEqual(['card']);
     expect(sent).not.toHaveProperty('payment_method_types');
     expect(sent.payment_intent_data).not.toHaveProperty('shipping');
     expect(sent.custom_text.submit.message).toBe('Ships to Jane Doe, 1 Main St, Austin, TX 78701');
