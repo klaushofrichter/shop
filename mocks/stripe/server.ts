@@ -208,7 +208,7 @@ ${ses.customText ? `<p>${esc(ses.customText)}</p>` : ''}
       return fail(res, 400, 'You cannot enable automatic tax calculation with `payment_intent_data[shipping]` set.');
     }
     const pmt = Object.values((b.allowed_payment_method_types as Json) ?? {});
-    if (!pmt.length || pmt.some((p) => p !== 'card' && p !== 'link')) return fail(res, 400, 'mock: allowed_payment_method_types must be card and/or link', { param: 'allowed_payment_method_types' });
+    if (!pmt.length || pmt.some((p) => p !== 'card')) return fail(res, 400, 'mock: allowed_payment_method_types must be card only (Klaus, 2026-11-26)', { param: 'allowed_payment_method_types' });
     const items = Object.values((b.line_items as Json) ?? {}) as Json[];
     if (!items.length) return fail(res, 400, 'Missing required param: line_items.', { param: 'line_items' });
     const state = String((customer.address as Json | undefined)?.state ?? '');

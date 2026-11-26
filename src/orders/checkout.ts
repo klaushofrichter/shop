@@ -206,7 +206,8 @@ function sessionParams(d: CheckoutDeps, orderId: string, number: string, custome
       // Customer's `shipping` (set above), which is also where Stripe Tax takes the location from.
     },
     // API 2026-11-18.endive refuses payment_method_types on Checkout Sessions (changelog 2026-09-30).
-    allowed_payment_method_types: ['card', 'link'],
+    // Card only (Klaus, 2026-11-26): no Link, so no Link bank payments that clear later.
+    allowed_payment_method_types: ['card'],
     line_items: items.map((i, k) => {
       const sku = d.skus.byId.get(i.skuId)!;
       const image = d.catalog

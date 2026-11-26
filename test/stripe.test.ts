@@ -43,7 +43,7 @@ function sessionParams(customer: string, lines = 1, over: Record<string, unknown
   return {
     mode: 'payment', customer, client_reference_id: 'ord1', metadata: { order_id: 'ord1' },
     payment_intent_data: { metadata: { order_id: 'ord1' }, description: 'Order 48213' },
-    allowed_payment_method_types: ['card', 'link'],
+    allowed_payment_method_types: ['card'],
     line_items: Array.from({ length: lines }, (_, i) => ({
       quantity: 1,
       price_data: { currency: 'usd', unit_amount: 1000, tax_behavior: 'exclusive', product_data: { name: `Item ${i}`, tax_code: 'txcd_99999999', metadata: { order_item_id: `oi${i}` } } },

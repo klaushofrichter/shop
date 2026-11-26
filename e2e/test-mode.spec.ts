@@ -112,9 +112,17 @@ async function payWith(page: Page, card: string) {
   await fill(page, 'the CVC field', '123', (s) => [s.locator('#cardCvc'), s.getByLabel(/^CVC|security code/i), s.getByPlaceholder('CVC')]);
   await fill(page, 'the cardholder name', 'Test Mode', (s) => [s.locator('#billingName'), s.getByLabel(/cardholder name|name on card/i)], false);
   await fill(page, 'the ZIP field', '78701', (s) => [s.locator('#billingPostalCode'), s.getByLabel(/^ZIP|postal code/i)], false);
-  const consent = await inAnyFrame(page, (s) => [s.getByRole('checkbox', { name: /I agree/i }), s.locator('#termsOfServiceConsentCheckbox')], 5_000);
+  // Link's "Save my information" (if Stripe still offers it): off, so Pay doesn't wait for a phone number.
+  const save = await inAnyFrame(page, (s) => [s.getByRole('checkbox', { name: /save my information/i })], 1_000);
+  if (save && (await save.isChecked().catch(() => false))) await save.click();
+  // The terms consent: a styled checkbox whose input is covered, so click its label as a person would.
+  const consent = await inAnyFrame(page, (s) => [s.getByRole('checkbox', { name: /I agree/i }), s.locator('input[name="termsOfServiceConsent"]')], 5_000);
   if (!consent) await missing(page, 'the terms consent checkbox');
-  if (!(await consent!.isChecked().catch(() => false))) await consent!.check({ force: true });
+  if (!(await consent!.isChecked().catch(() => false))) {
+    const label = await inAnyFrame(page, (s) => [s.getByText(/^I agree to /i)], 2_000);
+    await (label ?? consent!).click();
+    if (!(await consent!.isChecked().catch(() => false))) await missing(page, 'a ticked terms consent checkbox');
+  }
   const pay = await inAnyFrame(page, (s) => [s.getByRole('button', { name: 'Pay', exact: true }), s.getByTestId('hosted-payment-submit-button'), s.locator('button.SubmitButton')], 5_000);
   if (!pay) await missing(page, 'the Pay button');
   await pay!.click();
