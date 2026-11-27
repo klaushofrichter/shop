@@ -16,7 +16,21 @@ import { expect, test, type Frame, type Locator, type Page } from '@playwright/t
 // suppressionlist@ is refused by SES. Every paid order here is a test-mode
 // payment and a draft in the test store.
 
-const SIM = (box: string) => `${box}@simulator.amazonses.com`;
+/**
+ * Each run buys with its own addresses and rotates its test cards: the repeat-order
+ * fail-safe (REPEAT_ORDERS per 24 hours) counts paid orders per e-mail and per card,
+ * and must not hold these. The shop allows `box+tag@` when `box@` is on EMAIL_ALLOWLIST
+ * (test mode only); SES's simulator accepts the +tag.
+ */
+const RUN = Number(process.env.TEST_RUN_INDEX ?? Math.floor(Date.now() / 60_000));
+const SIM = (box: string, tag = 'x') => `${box}+r${RUN.toString(36)}-${tag}@simulator.amazonses.com`;
+const CARDS = [
+  '4242 4242 4242 4242', '4000 0566 5566 5556', '5555 5555 5555 4444', '2223 0031 2200 3222', '5200 8282 8282 8210',
+  '5105 1051 0510 5100', '6011 1111 1111 1117', '6011 0009 9013 9424', '3056 9300 0902 0004', '3566 0020 2036 0505',
+];
+/** The run's n-th card (0–3): four per run, moving on by four each run. */
+const card = (n: number) => CARDS[(RUN * 4 + n) % CARDS.length];
+const CARDS_3DS = ['4000 0027 6000 3184', '4000 0000 0000 3220'];
 const SKU = process.env.TEST_SKU ?? 'print-8x10';
 
 test.describe.configure({ mode: 'serial' });
@@ -150,10 +164,10 @@ async function expectTestOrder(page: Page) {
   }).toPass({ timeout: 120_000 });
 }
 
-test('3: a purchase with card 4242 becomes a test-store draft; the e-mails go to success@', async ({ page }) => {
+test('3: a purchase with a test card becomes a test-store draft; the e-mails go to success@', async ({ page }) => {
   test.setTimeout(240_000);
-  await toStripe(page, SIM('success'));
-  await payWith(page, '4242 4242 4242 4242');
+  await toStripe(page, SIM('success', 'buy'));
+  await payWith(page, card(0));
   await expectTestOrder(page);
 });
 
@@ -176,8 +190,8 @@ test('4: cancel and return brings the cart back', async ({ page }) => {
 
 test('4: 3-D Secure, completed in Stripe test challenge', async ({ page }) => {
   test.setTimeout(240_000);
-  await toStripe(page, SIM('success'));
-  await payWith(page, '4000 0027 6000 3184');
+  await toStripe(page, SIM('success', '3ds'));
+  await payWith(page, CARDS_3DS[RUN % CARDS_3DS.length]);
   // Stripe's test 3-D Secure page sits in a frame named "stripe-challenge-frame" (URL
   // …/3d_secure_2_test/…) inside Stripe's challenge frame. Find it by name or URL (its
   // heading need not count as visible), wait for its "Complete" button (the upper case on
@@ -205,17 +219,16 @@ test('4: 3-D Secure, completed in Stripe test challenge', async ({ page }) => {
   await expectTestOrder(page);
 });
 
-// A different test card per order: the repeat-order fail-safe counts paid orders per
-// card and per e-mail within 24 hours (REPEAT_ORDERS), and these must not be held.
-for (const [box, card] of [
-  ['bounce', '5555 5555 5555 4444'],
-  ['complaint', '6011 1111 1111 1117'],
-  ['suppressionlist', '3056 9300 0902 0004'],
+// A different test card per order and per run (see CARDS above).
+for (const [box, n] of [
+  ['bounce', 1],
+  ['complaint', 2],
+  ['suppressionlist', 3],
 ] as const) {
   test(`6: an order mailed to ${box}@ (the notice, if any, reaches the feedback address)`, async ({ page }) => {
     test.setTimeout(240_000);
     await toStripe(page, SIM(box));
-    await payWith(page, card);
+    await payWith(page, card(n));
     await expectTestOrder(page);
   });
 }

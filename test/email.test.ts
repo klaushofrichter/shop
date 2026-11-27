@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig, ConfigError } from '../src/config';
-import { alertingLog } from '../src/email/jobs';
+import { alertingLog, withoutTag } from '../src/email/jobs';
 import { signV4 } from '../src/email/ses';
 import { openHold } from '../src/orders/holds';
 import { requestFullRefund } from '../src/orders/refunds';
@@ -191,5 +191,14 @@ describe('alerts (09 §2)', () => {
     expect(queued()).toBe(before + 1);
     log({ level: 'alert', msg: 'reconciliation alarms', alarms: ['Printful order 1 is not the shop\'s', 'Stripe session cs_1 is paid but the shop has no order for it'] });
     expect(queued()).toBe(before + 2);
+  });
+});
+
+describe('the allow-list in mock and test mode', () => {
+  it('ignores a +tag in the local part, so each test run can buy with its own address', () => {
+    expect(withoutTag('Success+r1a2-3ds@Simulator.AmazonSES.com')).toBe('success@simulator.amazonses.com');
+    expect(withoutTag('jane@example.com')).toBe('jane@example.com');
+    expect(withoutTag('a+b+c@x.org')).toBe('a@x.org');
+    expect(withoutTag('+x@x.org')).toBe('+x@x.org');
   });
 });

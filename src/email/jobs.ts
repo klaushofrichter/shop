@@ -43,6 +43,16 @@ interface Payload {
 }
 
 /** Queue a customer e-mail; one per (order, kind, ref). */
+/**
+ * The address without a +tag in its local part, lower case: in mock and test mode
+ * `success+run7@simulator.amazonses.com` is allowed when `success@…` is on
+ * EMAIL_ALLOWLIST, so each test run can buy with its own address (the repeat-order
+ * fail-safe counts orders per e-mail).
+ */
+export function withoutTag(address: string): string {
+  return address.toLowerCase().replace(/^([^@+]+)\+[^@]*@/, '$1@');
+}
+
 export function queueEmail(db: Db, clock: Clock, orderId: string, kind: EmailKind, ref = ''): void {
   enqueue(db, clock, 'email.send', `${orderId}/${kind}${ref ? `/${ref}` : ''}`, { orderId, kind, ref });
 }
@@ -129,7 +139,7 @@ export async function sendCustomerEmail(d: EmailDeps, p: Payload): Promise<'sent
     note('nothing to send (no order, shipment or address)');
     return 'skipped';
   }
-  if (d.mode !== 'live' && !d.email.allowlist.includes(mail.to.toLowerCase())) {
+  if (d.mode !== 'live' && !d.email.allowlist.includes(withoutTag(mail.to))) {
     note(`${d.mode} mode: recipient not on EMAIL_ALLOWLIST`);
     return 'suppressed';
   }
