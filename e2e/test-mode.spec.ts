@@ -178,32 +178,29 @@ test('4: 3-D Secure, completed in Stripe test challenge', async ({ page }) => {
   test.setTimeout(240_000);
   await toStripe(page, SIM('success'));
   await payWith(page, '4000 0027 6000 3184');
-  // Stripe's test 3-D Secure page ("3D Secure 2 Test Page", FAIL and COMPLETE), in nested
-  // iframes. Use the frame that shows that heading, wait until its COMPLETE button is
-  // enabled, click it, and click once more if the challenge is still there after a while.
-  const challengeFrame = async (): Promise<Frame | undefined> => {
-    for (const f of page.frames()) {
-      if (await f.getByText(/3D Secure 2 Test Page/i).first().isVisible().catch(() => false)) return f;
-    }
-    return undefined;
-  };
+  // Stripe's test 3-D Secure page sits in a frame named "stripe-challenge-frame" (URL
+  // …/3d_secure_2_test/…) inside Stripe's challenge frame. Find it by name or URL (its
+  // heading need not count as visible), wait for its "Complete" button (the upper case on
+  // screen is CSS), click it, and click once more if the challenge is still there.
+  const challengeFrame = (): Frame | undefined =>
+    page.frames().find((f) => !f.isDetached() && (f.name() === 'stripe-challenge-frame' || f.url().includes('/3d_secure_2_test/')));
   let frame: Frame | undefined;
   for (let i = 0; i < 120 && !frame; i++) {
-    frame = await challengeFrame();
+    frame = challengeFrame();
     if (!frame) await page.waitForTimeout(500);
   }
   if (!frame) await missing(page, 'the 3-D Secure test page');
   for (let attempt = 0; attempt < 2; attempt++) {
-    const complete = frame!.getByRole('button', { name: 'COMPLETE', exact: true }).or(frame!.locator('#test-source-authorize-3ds')).first();
-    await expect(complete).toBeEnabled({ timeout: 30_000 });
+    const complete = frame!.getByRole('button', { name: /^complete$/i }).or(frame!.locator('#test-source-authorize-3ds')).first();
+    await complete.waitFor({ state: 'visible', timeout: 30_000 });
     await complete.click();
     const gone = await expect
-      .poll(async () => !(await challengeFrame()), { timeout: 15_000 })
+      .poll(() => !challengeFrame(), { timeout: 15_000 })
       .toBe(true)
       .then(() => true, () => false);
-    if (gone) break;
-    if (attempt === 1) await missing(page, 'a 3-D Secure challenge that closes after COMPLETE');
-    frame = (await challengeFrame()) ?? frame;
+    if (gone || page.url().includes('shop.klaushofrichter.net/order/')) break;
+    if (attempt === 1) await missing(page, 'a 3-D Secure challenge that closes after Complete');
+    frame = challengeFrame() ?? frame;
   }
   await expectTestOrder(page);
 });
