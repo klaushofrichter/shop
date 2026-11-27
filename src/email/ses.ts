@@ -101,7 +101,9 @@ export class SesClient {
     const json = (await res.json().catch(() => ({}))) as { MessageId?: string; message?: string; Message?: string };
     if (res.ok && json.MessageId) return json.MessageId;
     const msg = `ses: ${json.message ?? json.Message ?? `HTTP ${res.status}`}`.slice(0, 300);
-    // 429 and 5xx are worth another try; other 4xx (MessageRejected, a sandbox recipient, a bad address) are not.
-    throw new SesError(res.status < 500 && res.status !== 429, msg, res.status);
+    // 429 and 5xx are worth another try, and so are 401/403: a missing permission or a bad
+    // signature is our configuration, fixable while the job waits (2026-11-26: an IAM policy
+    // without the feedback identity). Other 4xx (MessageRejected, a bad address) are not.
+    throw new SesError(res.status < 500 && ![401, 403, 429].includes(res.status), msg, res.status);
   }
 }
