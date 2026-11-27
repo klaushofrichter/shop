@@ -132,6 +132,15 @@ describe('customer e-mails (09 §1)', () => {
     expect((db().prepare("SELECT last_error FROM emails WHERE order_id = ? AND kind = 'link' ORDER BY rowid DESC LIMIT 1").get(id) as { last_error: string }).last_error).toMatch(/EMAIL_ALLOWLIST/);
   });
 
+  it('a permission error at SES (403) is retried, not failed: a configuration fix lets it through', async () => {
+    h.ses.control.denyNext = true;
+    const id = await paidOrder(h);
+    await settle();
+    const job = db().prepare("SELECT state FROM jobs WHERE kind = 'email.send' AND key = ?").get(`${id}/confirmation`) as { state: string };
+    expect(job.state).not.toBe('failed');
+    expect(db().prepare("SELECT sent_at IS NOT NULL sent FROM emails WHERE order_id = ? AND kind = 'confirmation'").get(id)).toEqual({ sent: 1 });
+  });
+
   it('a refused address fails the e-mail at once and alerts Klaus', async () => {
     h.ses.control.rejectNext = true;
     const id = await paidOrder(h);

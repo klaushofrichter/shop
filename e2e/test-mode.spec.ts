@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { expect, test, type Frame, type Locator, type Page } from '@playwright/test';
 
 // docs/design/12 §3 items 3, 4 and 6, and 14 §7.4: the shop in TEST mode on the
@@ -75,13 +76,18 @@ async function inAnyFrame(page: Page, build: (s: Scope) => Locator[], ms = 15_00
 /** On a miss: a screenshot and every frame's ARIA snapshot in the report, then the error. */
 async function missing(page: Page, what: string): Promise<never> {
   const info = test.info();
-  await info.attach('stripe-page.png', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' });
+  // Written under test-results/ as well as attached, so whoever runs this can read them.
+  const png = info.outputPath('stripe-page.png');
+  await page.screenshot({ path: png, fullPage: true });
+  await info.attach('stripe-page.png', { path: png, contentType: 'image/png' });
   const parts: string[] = [];
   for (const f of page.frames()) {
     const snap = await f.locator('body').ariaSnapshot({ timeout: 2_000 }).catch(() => '(no snapshot)');
     parts.push(`--- frame ${f.name() || '(unnamed)'} ${f.url().split('?')[0]}\n${snap}`);
   }
-  await info.attach('stripe-frames.txt', { body: parts.join('\n\n'), contentType: 'text/plain' });
+  const txt = info.outputPath('stripe-frames.txt');
+  writeFileSync(txt, parts.join('\n\n'));
+  await info.attach('stripe-frames.txt', { path: txt, contentType: 'text/plain' });
   throw new Error(`Stripe page: ${what} not found (see stripe-page.png and stripe-frames.txt)`);
 }
 
@@ -115,14 +121,20 @@ async function payWith(page: Page, card: string) {
   // Link's "Save my information" (if Stripe still offers it): off, so Pay doesn't wait for a phone number.
   const save = await inAnyFrame(page, (s) => [s.getByRole('checkbox', { name: /save my information/i })], 1_000);
   if (save && (await save.isChecked().catch(() => false))) await save.click();
-  // The terms consent: a styled checkbox whose input is covered, so click its label as a person would.
+  // The terms consent: a styled box covers the input and its label holds two links, so a
+  // click can miss or follow a link. Focus the checkbox and press Space, as a keyboard user
+  // would; fall back to the label's left edge.
   const consent = await inAnyFrame(page, (s) => [s.getByRole('checkbox', { name: /I agree/i }), s.locator('input[name="termsOfServiceConsent"]')], 5_000);
   if (!consent) await missing(page, 'the terms consent checkbox');
   if (!(await consent!.isChecked().catch(() => false))) {
-    const label = await inAnyFrame(page, (s) => [s.getByText(/^I agree to /i)], 2_000);
-    await (label ?? consent!).click();
-    if (!(await consent!.isChecked().catch(() => false))) await missing(page, 'a ticked terms consent checkbox');
+    await consent!.focus();
+    await page.keyboard.press('Space');
   }
+  if (!(await consent!.isChecked().catch(() => false))) {
+    const label = await inAnyFrame(page, (s) => [s.getByText(/^I agree to /i)], 2_000);
+    if (label) await label.click({ position: { x: 2, y: 6 } });
+  }
+  if (!(await consent!.isChecked().catch(() => false))) await missing(page, 'a ticked terms consent checkbox');
   const pay = await inAnyFrame(page, (s) => [s.getByRole('button', { name: 'Pay', exact: true }), s.getByTestId('hosted-payment-submit-button'), s.locator('button.SubmitButton')], 5_000);
   if (!pay) await missing(page, 'the Pay button');
   await pay!.click();
@@ -166,10 +178,30 @@ test('4: 3-D Secure, completed in Stripe test challenge', async ({ page }) => {
   test.setTimeout(240_000);
   await toStripe(page, SIM('success'));
   await payWith(page, '4000 0027 6000 3184');
-  // Stripe's test 3-D Secure page, in nested iframes: "Complete" authorises.
-  const complete = await inAnyFrame(page, (s) => [s.getByRole('button', { name: /^complete/i }), s.locator('#test-source-authorize-3ds')], 60_000);
-  if (!complete) await missing(page, 'the 3-D Secure "Complete" button');
-  await complete!.click();
+  // Stripe's test 3-D Secure page sits in a frame named "stripe-challenge-frame" (URL
+  // …/3d_secure_2_test/…) inside Stripe's challenge frame. Find it by name or URL (its
+  // heading need not count as visible), wait for its "Complete" button (the upper case on
+  // screen is CSS), click it, and click once more if the challenge is still there.
+  const challengeFrame = (): Frame | undefined =>
+    page.frames().find((f) => !f.isDetached() && (f.name() === 'stripe-challenge-frame' || f.url().includes('/3d_secure_2_test/')));
+  let frame: Frame | undefined;
+  for (let i = 0; i < 120 && !frame; i++) {
+    frame = challengeFrame();
+    if (!frame) await page.waitForTimeout(500);
+  }
+  if (!frame) await missing(page, 'the 3-D Secure test page');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const complete = frame!.getByRole('button', { name: /^complete$/i }).or(frame!.locator('#test-source-authorize-3ds')).first();
+    await complete.waitFor({ state: 'visible', timeout: 30_000 });
+    await complete.click();
+    const gone = await expect
+      .poll(() => !challengeFrame(), { timeout: 15_000 })
+      .toBe(true)
+      .then(() => true, () => false);
+    if (gone || page.url().includes('shop.klaushofrichter.net/order/')) break;
+    if (attempt === 1) await missing(page, 'a 3-D Secure challenge that closes after Complete');
+    frame = challengeFrame() ?? frame;
+  }
   await expectTestOrder(page);
 });
 

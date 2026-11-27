@@ -17,7 +17,7 @@ export interface SentEmail {
 
 export function createMockSes(opts: { accessKeyId: string; secretAccessKey: string; region?: string }) {
   const sent: SentEmail[] = [];
-  const state = { rejectNext: false, failNext: false };
+  const state = { rejectNext: false, denyNext: false, failNext: false };
   const app = express();
   app.disable('x-powered-by');
   app.use(express.text({ type: '*/*', limit: '1mb' }));
@@ -46,6 +46,10 @@ export function createMockSes(opts: { accessKeyId: string; secretAccessKey: stri
       Content: { Simple: { Subject: { Data: string }; Body: { Text: { Data: string }; Html: { Data: string } } } };
       FeedbackForwardingEmailAddress?: string;
     };
+    if (state.denyNext) {
+      state.denyNext = false;
+      return res.status(403).json({ message: "User is not authorized to perform 'ses:SendEmail' on resource" });
+    }
     if (state.rejectNext) {
       state.rejectNext = false;
       return res.status(400).json({ message: 'Email address is not verified.' });
